@@ -19,7 +19,7 @@ import {
   FiStar,
   FiTarget,
   FiUsers,
-  FiAlertCircle
+  FiAlertCircle,
 } from "react-icons/fi";
 
 import API from "../../services/api";
@@ -155,13 +155,11 @@ function StudentDashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [liveClasses, setLiveClasses] = useState([]);
   const [lessonProgress, setLessonProgress] = useState([]);
-  const [courseLessonsMap, setCourseLessonsMap] = useState({}); // Dynamic storage for course lesson structures
+  const [courseLessonsMap, setCourseLessonsMap] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Grab the logged-in user's token from localStorage or your state manager
-    const token = localStorage.getItem("token"); 
-    
+    const token = localStorage.getItem("token");
     if (token) {
       initPushNotifications(token);
     }
@@ -175,7 +173,7 @@ function StudentDashboard() {
         const [dashboardRes, liveClassesRes, progressRes] = await Promise.all([
           API.get("/dashboard/student"),
           API.get("/live-classes/student"),
-          API.get("/lessons/progress").catch(() => ({ data: [] }))
+          API.get("/lessons/progress").catch(() => ({ data: [] })),
         ]);
 
         if (!isMounted) return;
@@ -184,47 +182,34 @@ function StudentDashboard() {
         setLessonProgress(progressRes.data || []);
 
         const extractedClasses =
-          Array.isArray(liveClassesRes.data) ? liveClassesRes.data :
-            Array.isArray(liveClassesRes.data?.classes) ? liveClassesRes.data.classes :
-              Array.isArray(liveClassesRes.data?.data) ? liveClassesRes.data.data : [];
+          Array.isArray(liveClassesRes.data)
+            ? liveClassesRes.data
+            : Array.isArray(liveClassesRes.data?.classes)
+            ? liveClassesRes.data.classes
+            : Array.isArray(liveClassesRes.data?.data)
+            ? liveClassesRes.data.data
+            : [];
 
         setLiveClasses(extractedClasses);
 
-        // Dynamic deep-fetch loop matching your structure layout
         const enrolled = dashboardRes.data?.enrolledCourses || [];
         const lessonsMap = {};
 
-        await Promise.all(
-          enrolled.map(async (item) => {
-            const cId = item._id || item.courseId || item;
-            if (!cId || typeof cId !== "string") return;
+        enrolled.forEach((item) => {
+          const actualCourse = item.courseId || item.course || item;
+          const cId = String(actualCourse._id || actualCourse);
 
-            try {
-              // 1. Fetch modules for this course
-              const modulesRes = await API.get(`/modules/${cId}`);
-              const rawModules = modulesRes.data || [];
-
-              // 2. Fetch lessons for all modules parallelly
-              const lessonPromises = rawModules.map(mod =>
-                API.get(`/lessons/module/${mod._id}`)
-                  .then(res => res.data || [])
-                  .catch(() => [])
-              );
-
-              const resolvedLessonsArrays = await Promise.all(lessonPromises);
-              const allLessons = resolvedLessonsArrays.flat();
-
-              lessonsMap[cId] = allLessons;
-            } catch (err) {
-              console.error(`Could not resolve lessons for course ${cId}:`, err);
-            }
-          })
-        );
+          if (Array.isArray(actualCourse.modules)) {
+            const allLessons = actualCourse.modules.flatMap(
+              (mod) => mod.lessons || mod.content || []
+            );
+            lessonsMap[cId] = allLessons;
+          }
+        });
 
         if (isMounted) {
           setCourseLessonsMap(lessonsMap);
         }
-
       } catch (error) {
         console.error("Dashboard database synchronization failure:", error);
       } finally {
@@ -271,13 +256,12 @@ function StudentDashboard() {
 
     const badgeNames = Array.isArray(dashboard?.badges)
       ? dashboard.badges.map((badge) =>
-        typeof badge === "string" ? badge : badge?.name || badge?.title || "Badge"
-      )
+          typeof badge === "string" ? badge : badge?.name || badge?.title || "Badge"
+        )
       : [];
 
     const consistencyGraph = buildConsistencyGraph(learningSummary);
 
-    // Extract unique completed lesson IDs matching StudentsCourseDetails
     const completedLessonIds = new Set(
       lessonProgress.map((p) => String(p.lesson?._id || p.lesson))
     );
@@ -285,56 +269,54 @@ function StudentDashboard() {
     const courses =
       dashboard?.enrolledCourses?.length > 0
         ? dashboard.enrolledCourses.slice(0, 2).map((enrollment) => {
-          const actualCourse = enrollment.courseId || enrollment.course || enrollment;
-          const courseIdStr = String(actualCourse._id || actualCourse);
+            const actualCourse = enrollment.courseId || enrollment.course || enrollment;
+            const courseIdStr = String(actualCourse._id || actualCourse);
 
-          let completedCount = 0;
-          let totalCount = 0;
+            let completedCount = 0;
+            let totalCount = 0;
 
-          // Cross reference with the dynamically fetched actual lessons map
-          const courseLessonsList = courseLessonsMap[courseIdStr] || [];
+            const courseLessonsList = courseLessonsMap[courseIdStr] || [];
 
-          if (courseLessonsList.length > 0) {
-            totalCount = courseLessonsList.length;
-            courseLessonsList.forEach((les) => {
-              const lessonId = les._id || les;
-              if (completedLessonIds.has(String(lessonId))) {
-                completedCount++;
-              }
-            });
-          } else {
-            // Static fallbacks if backend fields ever populate later
-            completedCount =
-              enrollment.completedLessonsCount ??
-              enrollment.progress?.completedLessonsCount ??
-              0;
+            if (courseLessonsList.length > 0) {
+              totalCount = courseLessonsList.length;
+              courseLessonsList.forEach((les) => {
+                const lessonId = les._id || les;
+                if (completedLessonIds.has(String(lessonId))) {
+                  completedCount++;
+                }
+              });
+            } else {
+              completedCount =
+                enrollment.completedLessonsCount ??
+                enrollment.progress?.completedLessonsCount ??
+                0;
 
-            totalCount =
-              enrollment.totalLessonsCount ??
-              enrollment.progress?.totalLessonsCount ??
-              actualCourse.totalLessonsCount ??
-              0;
-          }
+              totalCount =
+                enrollment.totalLessonsCount ??
+                enrollment.progress?.totalLessonsCount ??
+                actualCourse.totalLessonsCount ??
+                0;
+            }
 
-          let calculatedProgress = 0;
-          if (totalCount > 0) {
-            calculatedProgress = Math.round((completedCount / totalCount) * 100);
-          } else if (typeof enrollment.progress === 'number') {
-            calculatedProgress = enrollment.progress;
-          }
+            let calculatedProgress = 0;
+            if (totalCount > 0) {
+              calculatedProgress = Math.round((completedCount / totalCount) * 100);
+            } else if (typeof enrollment.progress === "number") {
+              calculatedProgress = enrollment.progress;
+            }
 
-          calculatedProgress = Math.max(0, Math.min(100, calculatedProgress));
+            calculatedProgress = Math.max(0, Math.min(100, calculatedProgress));
 
-          return {
-            id: courseIdStr,
-            title: actualCourse.title || "Untitled Program",
-            description: actualCourse.description || "No overview provided.",
-            progress: calculatedProgress,
-            lessons: `Completed: ${completedCount} / ${totalCount}`,
-            subLessonsLabel: `${calculatedProgress}% Complete • ${totalCount} Lessons`,
-            status: calculatedProgress >= 100 ? "Completed" : "In Progress",
-          };
-        })
+            return {
+              id: courseIdStr,
+              title: actualCourse.title || "Untitled Program",
+              description: actualCourse.description || "No overview provided.",
+              progress: calculatedProgress,
+              lessons: `Completed: ${completedCount} / ${totalCount}`,
+              subLessonsLabel: `${calculatedProgress}% Complete • ${totalCount} Lessons`,
+              status: calculatedProgress >= 100 ? "Completed" : "In Progress",
+            };
+          })
         : [];
 
     return {
@@ -348,7 +330,9 @@ function StudentDashboard() {
       badgeNames,
       consistencyGraph,
       courses,
-      recentLiveSessions: [...liveClasses].sort((a, b) => new Date(a.startTime) - new Date(b.startTime)).slice(0, 2),
+      recentLiveSessions: [...liveClasses]
+        .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+        .slice(0, 2),
       recentActivities: dashboard?.recentActivities || [],
     };
   }, [dashboard, liveClasses, lessonProgress, courseLessonsMap]);
@@ -496,14 +480,9 @@ function StudentDashboard() {
             <div className="student-section-head student-section-head-inline">
               <h3>Continue Learning</h3>
               <div className="student-carousel-actions" aria-hidden="true">
-                {/* <button type="button">
-                  <FiArrowRight className="student-rotate-left" />
-                </button> */}
-                <button>
-                  <Link to="/student/courses" type="button">
-                    <FiArrowRight />
-                  </Link>
-                </button>
+                <Link to="/student/courses" className="student-action-icon-link">
+                  <FiArrowRight />
+                </Link>
               </div>
             </div>
 
@@ -555,7 +534,7 @@ function StudentDashboard() {
                     border: "1px dashed rgba(255,255,255,0.1)",
                     display: "flex",
                     gap: "1rem",
-                    alignItems: "center"
+                    alignItems: "center",
                   }}
                 >
                   <span
@@ -604,9 +583,14 @@ function StudentDashboard() {
                       <div className="student-live-meta">
                         <FiCalendar />
                         <span>
-                          {classDate.toLocaleDateString([], { month: 'short', day: 'numeric' })} at {classDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {classDate.toLocaleDateString([], { month: "short", day: "numeric" })} at{" "}
+                          {classDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         </span>
-                        {isLiveNow && <span className="student-live-pill" style={{ marginLeft: "auto", fontSize: "0.7rem" }}>LIVE NOW</span>}
+                        {isLiveNow && (
+                          <span className="student-live-pill" style={{ marginLeft: "auto", fontSize: "0.7rem" }}>
+                            LIVE NOW
+                          </span>
+                        )}
                       </div>
                       <h4>{session.title}</h4>
                       <p>Mentor: {session.instructor?.fullName || "Unassigned Faculty"}</p>
@@ -663,7 +647,7 @@ function StudentDashboard() {
                     </span>
                     <div>
                       <strong>{item.title}</strong>
-                      <p>{item.type.replaceAll("_", " ")}</p>
+                      <p>{(item.type || "").replaceAll("_", " ")}</p>
                       <span>{formatTimeAgo(item.createdAt)}</span>
                     </div>
                   </motion.article>

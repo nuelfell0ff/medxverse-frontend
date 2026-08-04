@@ -17,11 +17,18 @@ function AdminPayments() {
     const fetchPayments = async () => {
       try {
         setLoading(true);
-        // Assumes linkage to the general administrative or payment-specific ecosystem aggregator endpoint
         const res = await API.get("/payments/all");
-        setPayments(res.data);
+
+        // 🚨 SAFE DATA EXTRACTION FIX:
+        // Handles both object payload { success: true, payments: [...] } and raw array [...]
+        const paymentList = Array.isArray(res.data)
+          ? res.data
+          : res.data?.payments || [];
+
+        setPayments(paymentList);
       } catch (error) {
         console.error("Critical transaction ledger synchronization failure:", error);
+        setPayments([]); // Fallback to empty array on error
       } finally {
         setLoading(false);
       }
@@ -30,16 +37,19 @@ function AdminPayments() {
     fetchPayments();
   }, []);
 
+  // Ensure payments is strictly an array before running telemetry calculations
+  const safePayments = Array.isArray(payments) ? payments : [];
+
   // TELEMETRY AGGREGATIONS (Calculated directly from active state memory)
-  const totalRevenue = payments
+  const totalRevenue = safePayments
     .filter(p => p.status === "success")
     .reduce((sum, p) => sum + (p.amount || 0), 0);
 
-  const successfulCount = payments.filter(p => p.status === "success").length;
-  const pendingCount = payments.filter(p => p.status === "pending").length;
+  const successfulCount = safePayments.filter(p => p.status === "success").length;
+  const pendingCount = safePayments.filter(p => p.status === "pending").length;
 
   // MULTI-TIER LEDGER FILTER ALGORITHM
-  const filteredPayments = payments.filter(p => {
+  const filteredPayments = safePayments.filter(p => {
     const matchesSearch =
       p.reference?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.student?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -50,7 +60,7 @@ function AdminPayments() {
     return matchesSearch && matchesStatus;
   });
 
-  // EXACT UNIFORM SYSTEMIC LOADER ACCROSS PANELS
+  // EXACT UNIFORM SYSTEMIC LOADER ACROSS PANELS
   if (loading) {
     return (
       <div className="bx-pm-loading-pane">
@@ -168,7 +178,7 @@ function AdminPayments() {
               {filteredPayments.length > 0 ? (
                 filteredPayments.map((payment, idx) => (
                   <motion.tr
-                    key={payment._id}
+                    key={payment._id || idx}
                     initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.02 }}
