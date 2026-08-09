@@ -1,41 +1,65 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-
-export interface IUser {
-  _id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  role: string;
-  hospitalId?: string;
-  hmoId?: string;
-}
+import { AccountPayload, AccountType } from '@/types/auth.types';
 
 interface AuthState {
-  user: IUser | null;
+  account: AccountPayload | null;
   token: string | null;
   isAuthenticated: boolean;
-  setAuth: (user: IUser, token: string) => void;
+
+  // Actions
+  setAuth: (account: AccountPayload, token: string) => void;
   logout: () => void;
+
+  // Helper Methods
+  hasModule: (moduleKey: string | string[]) => boolean;
+  isHmo: () => boolean;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
-      user: null,
+    (set, get) => ({
+      account: null,
       token: null,
       isAuthenticated: false,
-      setAuth: (user, token) => {
-        localStorage.setItem('token', token);
-        set({ user, token, isAuthenticated: true });
+
+      setAuth: (account, token) => {
+        // Sync token to standard localStorage for direct fetch calls
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('token', token);
+        }
+        set({ account, token, isAuthenticated: true });
       },
+
       logout: () => {
-        localStorage.removeItem('token');
-        set({ user: null, token: null, isAuthenticated: false });
+        // Clean up direct localStorage token on sign out
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('token');
+        }
+        set({ account: null, token: null, isAuthenticated: false });
       },
+
+      hasModule: (moduleKey: string | string[]) => {
+        const userModules = get().account?.modules || [];
+
+        // Fallback: If no modules list is defined for the account, allow access by default
+        if (!userModules.length) return true;
+
+        const normalizedUserModules = userModules.map((m) => m.toLowerCase());
+
+        if (Array.isArray(moduleKey)) {
+          return moduleKey.some((key) =>
+            normalizedUserModules.includes(key.toLowerCase())
+          );
+        }
+
+        return normalizedUserModules.includes(moduleKey.toLowerCase());
+      },
+
+      isHmo: () => get().account?.accountType === AccountType.HMO,
     }),
     {
-      name: 'medxverse-auth',
+      name: 'medxverse-auth-storage',
       storage: createJSONStorage(() => localStorage),
     }
   )

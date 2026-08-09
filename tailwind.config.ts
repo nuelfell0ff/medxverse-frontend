@@ -9,20 +9,27 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        brand: {
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-          900: '#312e81',
+        teal: {
+          50: '#e6f4f1',
+          100: '#c2e3db',
+          500: '#1e9b80',
+          600: '#137a63', // Main Accent Color from Reference
+          700: '#0f5f4d',
+          800: '#0b4639',
         },
-        sidebar: {
-          bg: '#0f172a',
-          border: '#1e293b',
-          text: '#94a3b8',
-          active: '#38bdf8',
+        surface: {
+          bg: '#f4f7f6', // Soft neutral canvas
+          card: '#ffffff',
+          border: '#e2e8f0',
         },
+      },
+      boxShadow: {
+        card: '0px 4px 20px rgba(0, 0, 0, 0.03)',
+        floating: '0px 8px 30px rgba(0, 0, 0, 0.06)',
+      },
+      borderRadius: {
+        '2xl': '1rem',
+        '3xl': '1.5rem',
       },
     },
   },

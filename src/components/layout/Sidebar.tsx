@@ -1,102 +1,138 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import {
-  BedDouble,
-  Users,
-  Calendar,
-  Pill,
-  TestTube,
-  FileText,
-  ShieldCheck,
-  Building2,
-  Bot,
-  Activity,
-  ChevronDown,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { usePathname, useRouter } from 'next/navigation';
+import { useAuthStore } from '@/store/useAuthStore';
+import { NAV_CONFIG } from '@/config/navigation';
+import { AccountType } from '@/types/auth.types';
+import { LogOut } from 'lucide-react';
 
-export function Sidebar() {
+interface SidebarProps {
+  isCollapsed: boolean;
+  isMobileOpen: boolean;
+  onCloseMobile: () => void;
+}
+
+export default function Sidebar({ isCollapsed, isMobileOpen, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
-  const [activeModule, setActiveModule] = useState<'HMS' | 'HMO'>('HMS');
+  const router = useRouter();
+  const { account, logout } = useAuthStore();
 
-  const hmsNav = [
-    { name: 'Overview', href: '/', icon: Activity },
-    { name: 'IPD (Inpatient)', href: '/hms/ipd', icon: BedDouble },
-    { name: 'OPD (Outpatient)', href: '/hms/opd', icon: Users },
-    { name: 'Appointments', href: '/hms/appointments', icon: Calendar },
-    { name: 'Pharmacy', href: '/hms/pharmacy', icon: Pill },
-    { name: 'Laboratory', href: '/hms/lab', icon: TestTube },
-    { name: 'Lexi Clinical AI', href: '/lexi-ai', icon: Bot },
-  ];
+  const accountType = account?.accountType || AccountType.HOSPITAL;
+  const rawNavItems = NAV_CONFIG[accountType] || [];
+  const userModules = account?.modules || [];
 
-  const hmoNav = [
-    { name: 'Claims Management', href: '/hmo/claims', icon: FileText },
-    { name: 'Pre-Authorizations', href: '/hmo/pre-auth', icon: ShieldCheck },
-    { name: 'Provider Network', href: '/hmo/providers', icon: Building2 },
-    { name: 'Enrollees & Members', href: '/hmo/members', icon: Users },
-  ];
+  const visibleNavItems = rawNavItems.filter((item) => {
+    // 1. Always show items without a moduleKey (e.g., Overview)
+    if (!item.moduleKey) return true;
 
-  const currentNav = activeModule === 'HMS' ? hmsNav : hmoNav;
+    // 2. If the user object specifies active modules, check case-insensitively
+    if (userModules && userModules.length > 0) {
+      return userModules.some(
+        (m) => m.toLowerCase() === item.moduleKey?.toLowerCase()
+      );
+    }
+
+    // 3. Fallback: If no modules array exists on account, show all items by default
+    return true;
+  });
+
+  const handleLogout = () => {
+    logout();
+    router.push('/auth/login');
+  };
 
   return (
-    <aside className="w-64 bg-slate-900 border-r border-slate-800 text-slate-300 flex flex-col h-screen sticky top-0">
-      {/* Brand & Module Toggle */}
-      <div className="p-4 border-b border-slate-800">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-lg font-bold text-white tracking-wide">MedxVerse</span>
-          <span className="px-2 py-0.5 text-xs font-semibold bg-indigo-500/20 text-indigo-400 rounded border border-indigo-500/30">
-            v1.0
-          </span>
+    <>
+      {/* Mobile Backdrop */}
+      {isMobileOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden transition-opacity"
+          onClick={onCloseMobile}
+        />
+      )}
+
+      {/* Fixed Left Sidebar Container */}
+      <aside
+        className={`fixed top-16 left-0 bottom-0 z-40 bg-white border-r border-slate-100 flex flex-col justify-between py-5 transition-all duration-300 ease-in-out font-sans ${
+          isCollapsed ? 'w-20 px-3' : 'w-64 px-4'
+        } ${
+          isMobileOpen
+            ? 'translate-x-0 w-64 px-4 shadow-2xl'
+            : '-translate-x-full md:translate-x-0'
+        }`}
+      >
+        {/* Navigation Items */}
+        <div className="space-y-1.5 overflow-y-auto no-scrollbar">
+          {visibleNavItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = pathname === item.href;
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={onCloseMobile}
+                title={isCollapsed ? item.label : undefined}
+                className={`flex items-center gap-3.5 px-3.5 py-3 rounded-2xl text-xs font-semibold transition-all duration-200 group ${
+                  isActive
+                    ? 'bg-[#1b7b68] text-white shadow-lg shadow-[#1b7b68]/25 font-bold'
+                    : 'text-slate-500 hover:text-[#1b7b68] hover:bg-[#e8f5f3]'
+                } ${isCollapsed ? 'justify-center px-0' : ''}`}
+              >
+                <Icon
+                  className={`w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${
+                    isActive ? 'text-white' : 'text-slate-400 group-hover:text-[#1b7b68]'
+                  }`}
+                />
+                {!isCollapsed && (
+                  <span className="truncate tracking-wide">{item.label}</span>
+                )}
+              </Link>
+            );
+          })}
         </div>
 
-        {/* Segmented Switcher */}
-        <div className="grid grid-cols-2 p-1 bg-slate-800/80 rounded-lg text-xs font-medium">
-          <button
-            onClick={() => setActiveModule('HMS')}
-            className={cn(
-              'py-1.5 rounded-md transition-all text-center',
-              activeModule === 'HMS' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-            )}
-          >
-            Hospital (HMS)
-          </button>
-          <button
-            onClick={() => setActiveModule('HMO')}
-            className={cn(
-              'py-1.5 rounded-md transition-all text-center',
-              activeModule === 'HMO' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-            )}
-          >
-            Payer (HMO)
-          </button>
-        </div>
-      </div>
+        {/* User Card & Logout Section */}
+        <div className="pt-4 border-t border-slate-100 space-y-3">
+          {!isCollapsed ? (
+            <>
+              {/* Profile Card */}
+              <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-slate-50 border border-slate-100">
+                <div className="w-9 h-9 rounded-xl bg-[#1b7b68] text-white flex items-center justify-center font-bold text-xs uppercase shadow-sm">
+                  {account?.name?.substring(0, 2) || 'RM'}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-slate-800 truncate">
+                    {account?.name || 'Admin User'}
+                  </p>
+                  <p className="text-[10px] text-slate-400 truncate">
+                    {account?.email || 'admin@hospital.com'}
+                  </p>
+                </div>
+              </div>
 
-      {/* Navigation Items */}
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {currentNav.map((item) => {
-          const Icon = item.icon;
-          const isActive = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-              )}
+              {/* Red Sign Out Pill */}
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl border border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-bold transition-all duration-200 active:scale-98"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Sign Out</span>
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={handleLogout}
+              title="Sign Out"
+              className="w-full flex items-center justify-center py-3 rounded-2xl text-rose-600 hover:bg-rose-50 transition-all"
             >
-              <Icon className="w-4 h-4" />
-              {item.name}
-            </Link>
-          );
-        })}
-      </nav>
-    </aside>
+              <LogOut className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+      </aside>
+    </>
   );
 }
