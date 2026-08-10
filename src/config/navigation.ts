@@ -10,6 +10,7 @@ import {
   BarChart3,
   CreditCard,
   Settings,
+  UserCog, // Imported for Staff Management
 } from 'lucide-react';
 import { AccountType } from '@/types/auth.types';
 
@@ -25,6 +26,7 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
     { label: 'Hospital Overview', href: '/hms', icon: Building2 },
     { label: 'Patients EMR', href: '/hms/patients', icon: Users, moduleKey: 'patients' },
     { label: 'Appointments', href: '/hms/appointments', icon: Calendar, moduleKey: 'appointments' },
+    { label: 'Staff Management', href: '/hms/staff', icon: UserCog, moduleKey: 'staff' },
     { label: 'Pharmacy', href: '/hms/pharmacy', icon: Pill, moduleKey: 'pharmacy' },
     { label: 'Bed Management', href: '/hms/beds', icon: Bed, moduleKey: 'beds' },
     { label: 'Billing & Invoices', href: '/hms/billing', icon: Receipt, moduleKey: 'billing' },
