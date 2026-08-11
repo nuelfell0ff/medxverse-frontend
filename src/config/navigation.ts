@@ -11,6 +11,7 @@ import {
   CreditCard,
   Settings,
   UserCog, // Imported for Staff Management
+  Stethoscope, // Added for Outpatient
 } from 'lucide-react';
 import { AccountType } from '@/types/auth.types';
 
@@ -24,6 +25,7 @@ export interface NavItem {
 export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
   [AccountType.HOSPITAL]: [
     { label: 'Hospital Overview', href: '/hms', icon: Building2 },
+    { label: 'Outpatient Clinic', href: '/hms/outpatients', icon: Stethoscope, moduleKey: 'outpatient' },
     { label: 'Patients EMR', href: '/hms/patients', icon: Users, moduleKey: 'patients' },
     { label: 'Appointments', href: '/hms/appointments', icon: Calendar, moduleKey: 'appointments' },
     { label: 'Staff Management', href: '/hms/staff', icon: UserCog, moduleKey: 'staff' },
