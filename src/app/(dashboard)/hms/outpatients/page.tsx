@@ -8,10 +8,13 @@ import {
   TriagePriority, 
   TRIAGE_CONFIG 
 } from '@/types/outpatient';
+import { PatientApiService } from '@/services/patient.service';
+
 import { OutpatientStatCards } from '../../../../components/outpatient/OutpatientStatCards';
 import { RecordVitalsModal } from '../../../../components/outpatient/RecordVitalsModal';
 import { ConsultationModal } from '../../../../components/outpatient/ConsultationModal';
 import { CheckInModal } from '../../../../components/outpatient/CheckInModal';
+
 import { 
   UserPlus, 
   RefreshCw, 
@@ -22,37 +25,12 @@ import {
   CheckCircle2 
 } from 'lucide-react';
 
-export interface IPatient {
-  _id: string;
-  hospitalId: string;
-  mrn: string;
-  firstName: string;
-  lastName: string;
-  dateOfBirth: string;
-  gender: any;
-  phone: string;
-  isFlagged?: boolean;
-  createdAt: string;
-  updatedAt: string;
-  vitalsHistory?: any[];
-  allergies?: string[];
-  medicalHistory?: string[];
-}
-
-export interface IOutpatientQueueItem {
-  _id: string;
-  patient: IPatient;
-  chiefComplaint: string;
-  triagePriority: TriagePriority;
-  status: ConsultationStatus;
-  arrivalTime: string;
-  vitalSigns?: IVitalSigns;
-  nursingNotes?: string;
-}
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://medxverse-backend.onrender.com';
 
 export default function OutpatientsPage() {
   const [encounters, setEncounters] = useState<IOutpatientEncounter[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [patientsLoading, setPatientsLoading] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
@@ -66,28 +44,40 @@ export default function OutpatientsPage() {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('/api/v1/outpatients', {
+      const res = await fetch(`${API_BASE_URL}/api/v1/outpatients/queue`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
       if (res.ok) {
         const data = await res.json();
-        setEncounters(data.data || data);
+        setEncounters(data.data || data || []);
       } else {
-        setEncounters(MOCK_ENCOUNTERS);
+        setEncounters([]);
       }
     } catch (err) {
       console.error('Failed to fetch encounters:', err);
-      setEncounters(MOCK_ENCOUNTERS);
+      setEncounters([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
+  const fetchPatients = useCallback(async () => {
+    setPatientsLoading(true);
+    try {
+      await PatientApiService.getPatients({ limit: 50 });
+    } catch (err) {
+      console.error('Failed to fetch patients:', err);
+    } finally {
+      setPatientsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchEncounters();
-  }, [fetchEncounters]);
+    fetchPatients();
+  }, [fetchEncounters, fetchPatients]);
 
   const handleRecordVitals = async (
     encounterId: string, 
@@ -96,7 +86,7 @@ export default function OutpatientsPage() {
   ) => {
     try {
       const token = localStorage.getItem('token');
-      await fetch(`/api/v1/outpatients/${encounterId}/vitals`, {
+      await fetch(`${API_BASE_URL}/api/v1/outpatients/${encounterId}/vitals`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -129,7 +119,7 @@ export default function OutpatientsPage() {
   ) => {
     try {
       const token = localStorage.getItem('token');
-      await fetch(`/api/v1/outpatients/${encounterId}/consultation`, {
+      await fetch(`${API_BASE_URL}/api/v1/outpatients/${encounterId}/complete`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -177,11 +167,14 @@ export default function OutpatientsPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => fetchEncounters()}
+            onClick={() => {
+              fetchEncounters();
+              fetchPatients();
+            }}
             className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all"
             title="Refresh"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loading || patientsLoading ? 'animate-spin' : ''}`} />
           </button>
           <button
             onClick={() => setIsCheckInOpen(true)}
@@ -241,10 +234,12 @@ export default function OutpatientsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-              {filteredEncounters.length === 0 ? (
+              {loading ? (
+                <TableSkeleton />
+              ) : filteredEncounters.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400">
-                    No outpatient encounters found.
+                  <td colSpan={6} className="py-12 text-center text-slate-400 font-medium">
+                    No data found
                   </td>
                 </tr>
               ) : (
@@ -347,6 +342,37 @@ export default function OutpatientsPage() {
   );
 }
 
+function TableSkeleton() {
+  return (
+    <>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <tr key={i} className="animate-pulse border-b border-slate-100">
+          <td className="py-3.5 px-4">
+            <div className="h-4 bg-slate-200 rounded w-28 mb-1.5" />
+            <div className="h-3 bg-slate-100 rounded w-20" />
+          </td>
+          <td className="py-3.5 px-4">
+            <div className="h-4 bg-slate-200 rounded w-48" />
+          </td>
+          <td className="py-3.5 px-4">
+            <div className="h-5 bg-slate-200 rounded-full w-20" />
+          </td>
+          <td className="py-3.5 px-4">
+            <div className="h-5 bg-slate-200 rounded-full w-24" />
+          </td>
+          <td className="py-3.5 px-4">
+            <div className="h-3 bg-slate-200 rounded w-32 mb-1" />
+            <div className="h-3 bg-slate-100 rounded w-24" />
+          </td>
+          <td className="py-3.5 px-4 text-right">
+            <div className="h-8 bg-slate-200 rounded-lg w-28 ml-auto" />
+          </td>
+        </tr>
+      ))}
+    </>
+  );
+}
+
 function StatusBadge({ status }: { status: ConsultationStatus }) {
   switch (status) {
     case ConsultationStatus.IN_QUEUE:
@@ -361,50 +387,3 @@ function StatusBadge({ status }: { status: ConsultationStatus }) {
       return <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600">{status}</span>;
   }
 }
-
-// Type assertion avoids object-literal excess property check errors across varying interface definitions
-const MOCK_ENCOUNTERS = [
-  {
-    _id: 'enc-1',
-    hospitalId: 'hosp-1',
-    patientId: {
-      _id: 'pat-1',
-      mrn: 'MRN-2026-001',
-      firstName: 'John',
-      lastName: 'Doe',
-      dateOfBirth: '1990-05-12',
-      gender: 'MALE',
-      phone: '+123456789',
-    },
-    chiefComplaint: 'Severe persistent migraine and dizziness',
-    triagePriority: TriagePriority.URGENT,
-    status: ConsultationStatus.IN_QUEUE,
-    createdAt: '2026-08-11T08:00:00.000Z',
-  },
-  {
-    _id: 'enc-2',
-    hospitalId: 'hosp-1',
-    patientId: {
-      _id: 'pat-2',
-      mrn: 'MRN-2026-002',
-      firstName: 'Jane',
-      lastName: 'Smith',
-      dateOfBirth: '1985-09-20',
-      gender: 'FEMALE',
-      phone: '+987654321',
-    },
-    chiefComplaint: 'High fever for 2 days, body weakness',
-    triagePriority: TriagePriority.STANDARD,
-    status: ConsultationStatus.WAITING_FOR_DOCTOR,
-    vitalSigns: {
-      temperature: 38.5,
-      bloodPressureSystolic: 125,
-      bloodPressureDiastolic: 82,
-      pulseRate: 88,
-      oxygenSaturation: 97,
-      respiratoryRate: 20,
-    },
-    nursingNotes: 'Patient feels chills',
-    createdAt: '2026-08-11T08:15:00.000Z',
-  },
-] as unknown as IOutpatientEncounter[];
