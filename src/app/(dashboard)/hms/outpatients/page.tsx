@@ -49,9 +49,20 @@ export default function OutpatientsPage() {
           Authorization: `Bearer ${token}`,
         },
       });
+
       if (res.ok) {
-        const data = await res.json();
-        setEncounters(data.data || data || []);
+        const json = await res.json();
+        
+        // Extract array across standard backend response shapes
+        const rawData = 
+          Array.isArray(json) ? json :
+          Array.isArray(json?.data) ? json.data :
+          Array.isArray(json?.encounters) ? json.encounters :
+          Array.isArray(json?.data?.encounters) ? json.data.encounters :
+          Array.isArray(json?.data?.queue) ? json.data.queue :
+          [];
+
+        setEncounters(rawData);
       } else {
         setEncounters([]);
       }
@@ -96,7 +107,7 @@ export default function OutpatientsPage() {
       });
       
       setEncounters((prev) =>
-        prev.map((enc) =>
+        (Array.isArray(prev) ? prev : []).map((enc) =>
           enc._id === encounterId
             ? {
                 ...enc,
@@ -129,7 +140,7 @@ export default function OutpatientsPage() {
       });
 
       setEncounters((prev) =>
-        prev.map((enc) =>
+        (Array.isArray(prev) ? prev : []).map((enc) =>
           enc._id === encounterId
             ? {
                 ...enc,
@@ -145,7 +156,10 @@ export default function OutpatientsPage() {
     }
   };
 
-  const filteredEncounters = encounters.filter((enc) => {
+  // Safe fallback to empty array in case state ever receives non-array
+  const safeEncounters = Array.isArray(encounters) ? encounters : [];
+
+  const filteredEncounters = safeEncounters.filter((enc) => {
     const matchesSearch =
       enc.patientId?.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       enc.patientId?.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -186,7 +200,7 @@ export default function OutpatientsPage() {
       </div>
 
       {/* Analytics Cards */}
-      <OutpatientStatCards encounters={encounters} />
+      <OutpatientStatCards encounters={safeEncounters} />
 
       {/* Main Table Container */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
