@@ -8,7 +8,6 @@ import {
   Settings,
   Bell,
   Building2,
-  ShieldCheck,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -20,10 +19,13 @@ export default function Navbar({ isSidebarCollapsed, onToggleSidebar }: NavbarPr
   const { account } = useAuthStore();
   const isHmo = account?.accountType === 'HMO';
 
+  // Dynamic hospital or account name
+  const hospitalName = account?.name || 'Hospital';
+
   return (
     <header className="fixed top-0 left-0 right-0 h-16 bg-white/95 backdrop-blur-md border-b border-slate-100 z-40 px-4 md:px-6 flex items-center justify-between transition-all duration-300 font-sans">
       {/* Left: Brand Logo & Gemini-Style Sidebar Toggle */}
-      <div className="flex items-center gap-3 md:gap-5 min-w-[200px]">
+      <div className="flex items-center gap-3 md:gap-5 min-w-[240px]">
         <button
           onClick={onToggleSidebar}
           className="p-2 rounded-xl text-slate-500 hover:text-[#1b7b68] hover:bg-[#e8f5f3] transition-all duration-200 active:scale-95"
@@ -33,13 +35,20 @@ export default function Navbar({ isSidebarCollapsed, onToggleSidebar }: NavbarPr
           <PanelLeft className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-[#1b7b68] text-white flex items-center justify-center font-extrabold text-xl shadow-md shadow-[#1b7b68]/20">
-            H
+        {/* Dynamic Hospital Brand */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#1b7b68] text-white flex items-center justify-center shadow-md shadow-[#1b7b68]/20 shrink-0">
+            <Building2 className="w-5 h-5" />
           </div>
-          <span className="text-xl font-bold tracking-tight text-slate-800 hidden sm:inline-block">
-            Holistic
-          </span>
+          
+          <div className="flex flex-col hidden sm:flex">
+            <span className="text-base font-bold tracking-tight text-slate-800 leading-tight">
+              {hospitalName}
+            </span>
+            <span className="text-[10px] font-semibold text-slate-400 tracking-wider uppercase">
+              {isHmo ? 'HMO Portal' : 'Hospital Management System'}
+            </span>
+          </div>
         </div>
       </div>
 
