@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { TriagePriority, TRIAGE_CONFIG } from '@/types/outpatient';
-import { UserPlus, Search, X } from 'lucide-react';
+import { UserPlus, Search, X, AlertCircle } from 'lucide-react';
 import { PatientApiService } from '@/services/patient.service';
 import { IPatient } from '@/types/patient';
 
@@ -12,6 +12,8 @@ interface Props {
   onSuccess: () => void;
 }
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://medxverse-backend.onrender.com';
+
 export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
   const [loading, setLoading] = useState(false);
   const [patientSearch, setPatientSearch] = useState('');
@@ -20,8 +22,9 @@ export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
   const [selectedPatient, setSelectedPatient] = useState<{ id: string; name: string; mrn: string } | null>(null);
   const [chiefComplaint, setChiefComplaint] = useState('');
   const [triagePriority, setTriagePriority] = useState<TriagePriority>(TriagePriority.STANDARD);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Dynamic patient fetching matching AppointmentsPage logic
+  // Dynamic patient fetching
   const fetchPatients = useCallback(async (queryTerm: string = '') => {
     try {
       setLoadingPatients(true);
@@ -34,9 +37,15 @@ export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
     }
   }, []);
 
-  // Debounced search on typing / initial open
+  // Reset form on modal open/close
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setSelectedPatient(null);
+      setChiefComplaint('');
+      setPatientSearch('');
+      setErrorMessage(null);
+      return;
+    }
     const timer = setTimeout(() => {
       fetchPatients(patientSearch);
     }, 300);
@@ -47,30 +56,55 @@ export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPatient) return;
+    setErrorMessage(null);
+
+    const patientId = selectedPatient?.id;
+    if (!patientId) {
+      setErrorMessage('Please select a valid patient.');
+      return;
+    }
+
+    if (!chiefComplaint.trim()) {
+      setErrorMessage('Please enter a chief complaint.');
+      return;
+    }
+
     setLoading(true);
 
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('https://medxverse-backend.onrender.com/api/v1/outpatients', {
+      const res = await fetch(`${API_BASE_URL}/api/v1/outpatients`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          patientId: selectedPatient.id,
-          chiefComplaint,
-          triagePriority,
+          patientId: patientId,
+          patient: patientId, // Fallback for backend schema variations
+          chiefComplaint: chiefComplaint.trim(),
+          triagePriority: triagePriority || 'STANDARD',
+          priority: triagePriority || 'STANDARD', // Fallback for backend schema variations
         }),
       });
+
+      const data = await res.json().catch(() => ({}));
 
       if (res.ok) {
         onSuccess();
         onClose();
+      } else {
+        const errorText =
+          data.message ||
+          data.error ||
+          (Array.isArray(data.errors) ? data.errors.map((e: any) => e.msg || e.message).join(', ') : null) ||
+          'Failed to check in patient. Check input data.';
+        setErrorMessage(errorText);
+        console.error('Outpatient check-in 400 error payload response:', data);
       }
-    } catch (err) {
-      console.error('Check-in error:', err);
+    } catch (err: any) {
+      console.error('Check-in network error:', err);
+      setErrorMessage(err?.message || 'An unexpected error occurred during check-in.');
     } finally {
       setLoading(false);
     }
@@ -93,6 +127,13 @@ export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {errorMessage && (
+          <div className="mt-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <div>
@@ -129,10 +170,10 @@ export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
               <select
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-blue-500"
                 onChange={(e) => {
-                  const p = patients.find((pat) => pat._id === e.target.value);
+                  const p = patients.find((pat) => (pat._id || (pat as any).id) === e.target.value);
                   if (p) {
                     setSelectedPatient({
-                      id: p._id,
+                      id: p._id || (p as any).id,
                       name: `${p.firstName} ${p.lastName}`,
                       mrn: p.mrn,
                     });
@@ -143,11 +184,14 @@ export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
                 <option value="" disabled>
                   {loadingPatients ? 'Loading results...' : `-- Select Patient (${patients.length} found) --`}
                 </option>
-                {patients.map((p) => (
-                  <option key={p._id} value={p._id}>
-                    {p.firstName} {p.lastName} ({p.mrn})
-                  </option>
-                ))}
+                {patients.map((p) => {
+                  const patientId = p._id || (p as any).id;
+                  return (
+                    <option key={patientId} value={patientId}>
+                      {p.firstName} {p.lastName} ({p.mrn})
+                    </option>
+                  );
+                })}
               </select>
             )}
           </div>
@@ -175,10 +219,11 @@ export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
                     key={pr}
                     type="button"
                     onClick={() => setTriagePriority(pr)}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-all text-left ${isSelected
+                    className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-all text-left ${
+                      isSelected
                         ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-sm'
                         : 'border-slate-200 hover:bg-slate-50 text-slate-600'
-                      }`}
+                    }`}
                   >
                     {config.label}
                   </button>

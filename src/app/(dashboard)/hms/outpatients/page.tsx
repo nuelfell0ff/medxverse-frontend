@@ -53,7 +53,6 @@ export default function OutpatientsPage() {
       if (res.ok) {
         const json = await res.json();
         
-        // Extract array across standard backend response shapes
         const rawData = 
           Array.isArray(json) ? json :
           Array.isArray(json?.data) ? json.data :
@@ -156,7 +155,6 @@ export default function OutpatientsPage() {
     }
   };
 
-  // Safe fallback to empty array in case state ever receives non-array
   const safeEncounters = Array.isArray(encounters) ? encounters : [];
 
   const filteredEncounters = safeEncounters.filter((enc) => {
