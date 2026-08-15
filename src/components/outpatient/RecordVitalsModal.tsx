@@ -68,8 +68,16 @@ export function RecordVitalsModal({ encounter, isOpen, onClose, onSubmit }: Prop
     setLoading(true);
 
     try {
+      // Clean up undefined values and substitute numbers if needed
       const finalVitals: IVitalSigns = {
-        ...form,
+        temperature: form.temperature ?? 36.6,
+        bloodPressureSystolic: form.bloodPressureSystolic ?? 120,
+        bloodPressureDiastolic: form.bloodPressureDiastolic ?? 80,
+        pulseRate: form.pulseRate ?? 72,
+        respiratoryRate: form.respiratoryRate ?? 18,
+        oxygenSaturation: form.oxygenSaturation ?? 98,
+        height: form.height ?? 170,
+        weight: form.weight ?? 70,
         bmi: calculatedBmi ? parseFloat(calculatedBmi) : undefined,
       };
 

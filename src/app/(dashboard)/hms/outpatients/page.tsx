@@ -101,7 +101,7 @@ export default function OutpatientsPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ vitals, nursingNotes }),
+        body: JSON.stringify({ ...vitals, nursingNotes })
       });
 
       if (!res.ok) {
