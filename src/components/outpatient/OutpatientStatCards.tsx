@@ -22,17 +22,17 @@ export function OutpatientStatCards({ encounters }: Props) {
       label: 'Total Inflow',
       count: counts.total,
       icon: Users,
-      color: 'text-slate-600',
-      bgColor: 'bg-slate-100',
-      borderColor: 'border-slate-200',
+      color: 'text-[#1b7b68]',
+      bgColor: 'bg-[#e8f5f3]',
+      borderColor: 'border-[#1b7b68]/20',
     },
     {
-      label: 'In Queue (Triage)',
+      label: 'In Triage',
       count: counts.inQueue,
       icon: Clock,
       color: 'text-purple-600',
       bgColor: 'bg-purple-50',
-      borderColor: 'border-purple-200',
+      borderColor: 'border-purple-100',
     },
     {
       label: 'Awaiting Doctor',
@@ -40,15 +40,15 @@ export function OutpatientStatCards({ encounters }: Props) {
       icon: UserCheck,
       color: 'text-amber-600',
       bgColor: 'bg-amber-50',
-      borderColor: 'border-amber-200',
+      borderColor: 'border-amber-100',
     },
     {
-      label: 'In Consultation',
+      label: 'In Consult',
       count: counts.inConsultation,
       icon: Stethoscope,
       color: 'text-blue-600',
       bgColor: 'bg-blue-50',
-      borderColor: 'border-blue-200',
+      borderColor: 'border-blue-100',
     },
     {
       label: 'Completed Today',
@@ -56,28 +56,28 @@ export function OutpatientStatCards({ encounters }: Props) {
       icon: CheckCircle2,
       color: 'text-emerald-600',
       bgColor: 'bg-emerald-50',
-      borderColor: 'border-emerald-200',
+      borderColor: 'border-emerald-100',
     },
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
       {stats.map((item, idx) => {
         const Icon = item.icon;
         return (
           <div
             key={idx}
-            className={`p-4 bg-white rounded-xl border ${item.borderColor} shadow-sm border-l-4 transition-all hover:shadow-md`}
+            className={`p-5 bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between`}
           >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                 {item.label}
               </span>
-              <div className={`p-2 rounded-lg ${item.bgColor}`}>
+              <div className={`p-2.5 rounded-2xl ${item.bgColor}`}>
                 <Icon className={`w-4 h-4 ${item.color}`} />
               </div>
             </div>
-            <p className="text-2xl font-bold tracking-tight text-slate-900">{item.count}</p>
+            <p className="text-3xl font-black tracking-tight text-slate-800">{item.count}</p>
           </div>
         );
       })}

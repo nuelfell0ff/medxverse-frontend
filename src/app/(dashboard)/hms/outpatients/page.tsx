@@ -22,7 +22,9 @@ import {
   Filter, 
   Stethoscope, 
   Activity, 
-  CheckCircle2 
+  CheckCircle2,
+  Clock,
+  Sparkles
 } from 'lucide-react';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://medxverse-backend.onrender.com';
@@ -96,7 +98,7 @@ export default function OutpatientsPage() {
   ) => {
     try {
       const token = localStorage.getItem('token');
-      await fetch(`${API_BASE_URL}/api/v1/outpatients/${encounterId}/vitals`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/outpatients/${encounterId}/vitals`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -104,6 +106,11 @@ export default function OutpatientsPage() {
         },
         body: JSON.stringify({ vitals, nursingNotes }),
       });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to update vitals on server.');
+      }
       
       setEncounters((prev) =>
         (Array.isArray(prev) ? prev : []).map((enc) =>
@@ -119,6 +126,7 @@ export default function OutpatientsPage() {
       );
     } catch (err) {
       console.error('Failed to record vitals:', err);
+      throw err;
     }
   };
 
@@ -129,7 +137,7 @@ export default function OutpatientsPage() {
   ) => {
     try {
       const token = localStorage.getItem('token');
-      await fetch(`${API_BASE_URL}/api/v1/outpatients/${encounterId}/complete`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/outpatients/${encounterId}/complete`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -137,6 +145,11 @@ export default function OutpatientsPage() {
         },
         body: JSON.stringify({ consultationNotes: notes, diagnoses }),
       });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to complete consultation on server.');
+      }
 
       setEncounters((prev) =>
         (Array.isArray(prev) ? prev : []).map((enc) =>
@@ -152,6 +165,7 @@ export default function OutpatientsPage() {
       );
     } catch (err) {
       console.error('Failed to complete consultation:', err);
+      throw err;
     }
   };
 
@@ -170,65 +184,79 @@ export default function OutpatientsPage() {
   });
 
   return (
-    <div className="p-6 font-sans max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="p-6 font-sans max-w-7xl mx-auto space-y-6 bg-slate-50/50 min-h-screen">
+      
+      {/* Header Section */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Outpatient Department (OPD)</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Manage daily queue, triage vitals, and consultations</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-black text-slate-800 tracking-tight">Outpatient Department</h1>
+            <span className="bg-[#e8f5f3] text-[#1b7b68] text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+              Live Queue
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mt-1 font-medium">
+            Manage daily check-ins, triage vital signs, and clinical consultations
+          </p>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => {
               fetchEncounters();
               fetchPatients();
             }}
-            className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all"
-            title="Refresh"
+            className="p-3 rounded-2xl border border-slate-100 bg-slate-50 text-slate-500 hover:text-[#1b7b68] hover:bg-[#e8f5f3] transition-all duration-200"
+            title="Refresh Queue"
           >
             <RefreshCw className={`w-4 h-4 ${loading || patientsLoading ? 'animate-spin' : ''}`} />
           </button>
+          
           <button
             onClick={() => setIsCheckInOpen(true)}
-            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-sm transition-all flex items-center gap-2"
+            className="px-5 py-3 bg-[#1b7b68] hover:bg-[#145f50] text-white text-xs font-bold uppercase tracking-wider rounded-2xl shadow-sm hover:shadow transition-all flex items-center gap-2"
           >
             <UserPlus className="w-4 h-4" /> New Patient Check-In
           </button>
         </div>
       </div>
 
-      {/* Analytics Cards */}
+      {/* Metric Cards Section */}
       <OutpatientStatCards encounters={safeEncounters} />
 
-      {/* Main Table Container */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        {/* Filters Header */}
-        <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row items-center justify-between gap-3 bg-slate-50/50">
-          <div className="relative w-full md:w-80">
-            <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+      {/* Main Queue & Table Container */}
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+        
+        {/* Search & Filter Toolbar */}
+        <div className="p-5 border-b border-slate-100 flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-50/30">
+          <div className="relative w-full md:w-96">
+            <Search className="w-4 h-4 absolute left-4 top-3.5 text-slate-400" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Filter by name, MRN, complaint..."
-              className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-slate-200 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              placeholder="Search by name, MRN, complaint..."
+              className="w-full pl-11 pr-4 py-2.5 text-xs rounded-2xl border border-slate-200/80 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/20 focus:border-[#1b7b68] transition-all"
             />
           </div>
 
           <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-            <Filter className="w-4 h-4 text-slate-400 shrink-0" />
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider shrink-0">Filter Status:</span>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            >
-              <option value="ALL">All Statuses</option>
-              <option value={ConsultationStatus.IN_QUEUE}>In Queue (Triage)</option>
-              <option value={ConsultationStatus.WAITING_FOR_DOCTOR}>Awaiting Doctor</option>
-              <option value={ConsultationStatus.IN_CONSULTATION}>In Consultation</option>
-              <option value={ConsultationStatus.COMPLETED}>Completed</option>
-            </select>
+            <Filter className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1">Status:</span>
+            
+            {['ALL', ConsultationStatus.IN_QUEUE, ConsultationStatus.WAITING_FOR_DOCTOR, ConsultationStatus.IN_CONSULTATION, ConsultationStatus.COMPLETED].map((st) => (
+              <button
+                key={st}
+                onClick={() => setStatusFilter(st)}
+                className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all shrink-0 ${
+                  statusFilter === st
+                    ? 'bg-[#1b7b68] text-white shadow-sm'
+                    : 'bg-white text-slate-600 border border-slate-200/60 hover:bg-slate-50'
+                }`}
+              >
+                {st === 'ALL' ? 'All Queue' : st === ConsultationStatus.IN_QUEUE ? 'Triage Queue' : st === ConsultationStatus.WAITING_FOR_DOCTOR ? 'Awaiting Doctor' : st === ConsultationStatus.IN_CONSULTATION ? 'In Consult' : 'Completed'}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -237,12 +265,12 @@ export default function OutpatientsPage() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/50">
-                <th className="py-3 px-4">Patient</th>
-                <th className="py-3 px-4">Chief Complaint</th>
-                <th className="py-3 px-4">Priority</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4">Vitals / Notes</th>
-                <th className="py-3 px-4 text-right">Actions</th>
+                <th className="py-4 px-6">Patient</th>
+                <th className="py-4 px-6">Chief Complaint</th>
+                <th className="py-4 px-6">Triage Level</th>
+                <th className="py-4 px-6">Status</th>
+                <th className="py-4 px-6">Latest Vitals</th>
+                <th className="py-4 px-6 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
@@ -250,68 +278,102 @@ export default function OutpatientsPage() {
                 <TableSkeleton />
               ) : filteredEncounters.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400 font-medium">
-                    No data found
+                  <td colSpan={6} className="py-16 text-center text-slate-400 font-medium">
+                    <div className="max-w-xs mx-auto space-y-2">
+                      <Sparkles className="w-8 h-8 text-slate-300 mx-auto" />
+                      <p className="text-sm font-semibold text-slate-600">No matching outpatient encounters</p>
+                      <p className="text-xs text-slate-400">Try adjusting your filter or check in a new patient.</p>
+                    </div>
                   </td>
                 </tr>
               ) : (
                 filteredEncounters.map((enc) => {
                   const triage = TRIAGE_CONFIG[enc.triagePriority || TriagePriority.STANDARD];
+                  const fullName = `${enc.patientId?.firstName || 'Unknown'} ${enc.patientId?.lastName || 'Patient'}`;
+                  const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(fullName)}`;
+
                   return (
-                    <tr key={enc._id} className="hover:bg-slate-50/80 transition-all">
-                      <td className="py-3.5 px-4 font-medium text-slate-900">
-                        <div className="font-semibold text-sm">
-                          {enc.patientId?.firstName} {enc.patientId?.lastName}
+                    <tr key={enc._id} className="hover:bg-[#e8f5f3]/20 transition-all duration-150 group">
+                      {/* Patient Details */}
+                      <td className="py-4 px-6">
+                        <div className="flex items-center gap-3">
+                          <img 
+                            src={avatarUrl} 
+                            alt={fullName} 
+                            className="w-10 h-10 rounded-2xl bg-slate-100 border border-slate-200/60 shrink-0" 
+                          />
+                          <div>
+                            <div className="font-bold text-slate-800 text-sm group-hover:text-[#1b7b68] transition-colors">
+                              {fullName}
+                            </div>
+                            <div className="text-[11px] font-mono text-slate-400">
+                              MRN: {enc.patientId?.mrn || 'N/A'}
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-[11px] text-slate-400">MRN: {enc.patientId?.mrn}</div>
                       </td>
-                      <td className="py-3.5 px-4 max-w-xs truncate text-slate-600">
-                        {enc.chiefComplaint}
+
+                      {/* Chief Complaint */}
+                      <td className="py-4 px-6 max-w-xs">
+                        <p className="text-slate-700 font-medium line-clamp-2">
+                          {enc.chiefComplaint || 'No complaint specified'}
+                        </p>
                       </td>
-                      <td className="py-3.5 px-4">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${triage.badge}`}>
+
+                      {/* Triage Priority */}
+                      <td className="py-4 px-6">
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold tracking-wide uppercase ${triage.badge}`}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
                           {triage.label}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4">
+
+                      {/* Status */}
+                      <td className="py-4 px-6">
                         <StatusBadge status={enc.status} />
                       </td>
-                      <td className="py-3.5 px-4">
+
+                      {/* Vital Signs Overview */}
+                      <td className="py-4 px-6">
                         {enc.vitalSigns ? (
-                          <div className="text-[11px] text-slate-600 space-y-0.5">
-                            <div>BP: <strong>{enc.vitalSigns.bloodPressureSystolic}/{enc.vitalSigns.bloodPressureDiastolic}</strong> | Temp: <strong>{enc.vitalSigns.temperature}°C</strong></div>
-                            <div className="text-slate-400">Pulse: {enc.vitalSigns.pulseRate} bpm</div>
+                          <div className="text-[11px] text-slate-600 space-y-0.5 font-medium">
+                            <div>BP: <strong className="text-slate-800">{enc.vitalSigns.bloodPressureSystolic}/{enc.vitalSigns.bloodPressureDiastolic}</strong> | Temp: <strong className="text-slate-800">{enc.vitalSigns.temperature}°C</strong></div>
+                            <div className="text-slate-400">Pulse: {enc.vitalSigns.pulseRate} bpm • SpO2: {enc.vitalSigns.oxygenSaturation || '--'}%</div>
                           </div>
                         ) : (
-                          <span className="text-slate-400 italic">Pending triage</span>
+                          <span className="text-slate-400 italic text-[11px] bg-slate-100 px-2.5 py-1 rounded-lg">Pending triage</span>
                         )}
                       </td>
-                      <td className="py-3.5 px-4 text-right space-x-2">
+
+                      {/* Actions */}
+                      <td className="py-4 px-6 text-right space-x-2">
                         {enc.status === ConsultationStatus.IN_QUEUE && (
                           <button
                             onClick={() => {
                               setSelectedEncounter(enc);
                               setIsVitalsOpen(true);
                             }}
-                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100 transition-all inline-flex items-center gap-1"
+                            className="px-3.5 py-2 text-xs font-bold rounded-2xl bg-purple-50 text-purple-700 hover:bg-purple-100 transition-all inline-flex items-center gap-1.5"
                           >
                             <Activity className="w-3.5 h-3.5" /> Record Vitals
                           </button>
                         )}
+
                         {(enc.status === ConsultationStatus.WAITING_FOR_DOCTOR || enc.status === ConsultationStatus.IN_CONSULTATION) && (
                           <button
                             onClick={() => {
                               setSelectedEncounter(enc);
                               setIsConsultationOpen(true);
                             }}
-                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all inline-flex items-center gap-1"
+                            className="px-3.5 py-2 text-xs font-bold rounded-2xl bg-[#e8f5f3] text-[#1b7b68] hover:bg-[#1b7b68] hover:text-white transition-all inline-flex items-center gap-1.5"
                           >
                             <Stethoscope className="w-3.5 h-3.5" /> Consult
                           </button>
                         )}
+
                         {enc.status === ConsultationStatus.COMPLETED && (
-                          <span className="text-xs font-semibold text-slate-400 inline-flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Done
+                          <span className="text-xs font-bold text-emerald-600 inline-flex items-center gap-1 bg-emerald-50 px-3 py-1.5 rounded-2xl">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Completed
                           </span>
                         )}
                       </td>
@@ -359,25 +421,30 @@ function TableSkeleton() {
     <>
       {Array.from({ length: 5 }).map((_, i) => (
         <tr key={i} className="animate-pulse border-b border-slate-100">
-          <td className="py-3.5 px-4">
-            <div className="h-4 bg-slate-200 rounded w-28 mb-1.5" />
-            <div className="h-3 bg-slate-100 rounded w-20" />
+          <td className="py-4 px-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-slate-200 shrink-0" />
+              <div>
+                <div className="h-4 bg-slate-200 rounded-lg w-28 mb-1.5" />
+                <div className="h-3 bg-slate-100 rounded-lg w-20" />
+              </div>
+            </div>
           </td>
-          <td className="py-3.5 px-4">
-            <div className="h-4 bg-slate-200 rounded w-48" />
+          <td className="py-4 px-6">
+            <div className="h-4 bg-slate-200 rounded-lg w-48" />
           </td>
-          <td className="py-3.5 px-4">
-            <div className="h-5 bg-slate-200 rounded-full w-20" />
+          <td className="py-4 px-6">
+            <div className="h-6 bg-slate-200 rounded-full w-20" />
           </td>
-          <td className="py-3.5 px-4">
-            <div className="h-5 bg-slate-200 rounded-full w-24" />
+          <td className="py-4 px-6">
+            <div className="h-6 bg-slate-200 rounded-full w-24" />
           </td>
-          <td className="py-3.5 px-4">
-            <div className="h-3 bg-slate-200 rounded w-32 mb-1" />
-            <div className="h-3 bg-slate-100 rounded w-24" />
+          <td className="py-4 px-6">
+            <div className="h-3 bg-slate-200 rounded-lg w-32 mb-1" />
+            <div className="h-3 bg-slate-100 rounded-lg w-24" />
           </td>
-          <td className="py-3.5 px-4 text-right">
-            <div className="h-8 bg-slate-200 rounded-lg w-28 ml-auto" />
+          <td className="py-4 px-6 text-right">
+            <div className="h-8 bg-slate-200 rounded-2xl w-28 ml-auto" />
           </td>
         </tr>
       ))}
@@ -388,14 +455,34 @@ function TableSkeleton() {
 function StatusBadge({ status }: { status: ConsultationStatus }) {
   switch (status) {
     case ConsultationStatus.IN_QUEUE:
-      return <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">In Queue</span>;
+      return (
+        <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-100 inline-flex items-center gap-1">
+          <Clock className="w-3 h-3" /> Triage Queue
+        </span>
+      );
     case ConsultationStatus.WAITING_FOR_DOCTOR:
-      return <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">Awaiting Doctor</span>;
+      return (
+        <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-100 inline-flex items-center gap-1">
+          <Clock className="w-3 h-3" /> Awaiting Doctor
+        </span>
+      );
     case ConsultationStatus.IN_CONSULTATION:
-      return <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">In Consultation</span>;
+      return (
+        <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-100 inline-flex items-center gap-1">
+          <Stethoscope className="w-3 h-3" /> In Consult
+        </span>
+      );
     case ConsultationStatus.COMPLETED:
-      return <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">Completed</span>;
+      return (
+        <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100 inline-flex items-center gap-1">
+          <CheckCircle2 className="w-3 h-3" /> Completed
+        </span>
+      );
     default:
-      return <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600">{status}</span>;
+      return (
+        <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600">
+          {status}
+        </span>
+      );
   }
 }

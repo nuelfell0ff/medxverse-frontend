@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { TriagePriority, TRIAGE_CONFIG } from '@/types/outpatient';
-import { UserPlus, Search, X, AlertCircle, Loader2 } from 'lucide-react';
+import { UserPlus, Search, X, AlertCircle, Loader2, Check } from 'lucide-react';
 import { PatientApiService } from '@/services/patient.service';
 import { IPatient } from '@/types/patient';
 
@@ -70,7 +70,7 @@ export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
 
     const patientId = selectedPatient?.id;
     if (!patientId) {
-      setErrorMessage('Please select a valid patient.');
+      setErrorMessage('Please select a valid patient record.');
       return;
     }
 
@@ -83,8 +83,7 @@ export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
 
     try {
       const token = localStorage.getItem('token');
-      
-      // Clean request payload matching backend CreateOutpatientInput exact fields
+
       const payload = {
         patientId,
         chiefComplaint: chiefComplaint.trim(),
@@ -112,7 +111,7 @@ export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
           (Array.isArray(data.errors)
             ? data.errors.map((e: any) => e.msg || e.message).join(', ')
             : null) ||
-          'Failed to check in patient. Please check input parameters.';
+          'Failed to check in patient. Please verify input parameters.';
         setErrorMessage(errorText);
         console.error('Check-in failed:', data);
       }
@@ -127,23 +126,28 @@ export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-      <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200/80 max-h-[90vh] overflow-y-auto">
         
         {/* Header */}
         <div className="flex justify-between items-center pb-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-blue-50 rounded-xl text-blue-600">
+            <div className="p-2.5 bg-teal-50 text-teal-600 rounded-xl border border-teal-100 shadow-xs">
               <UserPlus className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">New Patient Check-in</h3>
-              <p className="text-xs text-slate-500">Queue an outpatient for triage and consultation</p>
+              <h3 className="text-base font-bold text-slate-900 tracking-tight">
+                New Patient Check-in
+              </h3>
+              <p className="text-xs text-slate-500 font-medium">
+                Queue an outpatient for triage and clinical consultation
+              </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -151,9 +155,9 @@ export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
 
         {/* Error Alert */}
         {errorMessage && (
-          <div className="mt-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
-            <span>{errorMessage}</span>
+          <div className="mt-4 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
+            <span className="leading-relaxed">{errorMessage}</span>
           </div>
         )}
 
@@ -161,42 +165,43 @@ export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
           
           {/* Patient Selection */}
           <div>
-            <label className="text-xs font-semibold text-slate-600 mb-1 block">
+            <label className="text-xs font-bold text-slate-700 mb-1.5 block tracking-wide">
               Patient Search (MRN / Name)
             </label>
 
             <div className="relative mb-2">
-              <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+              <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
               <input
                 type="text"
                 value={patientSearch}
                 onChange={(e) => setPatientSearch(e.target.value)}
                 placeholder="Type name or MRN to search..."
-                className="w-full pl-9 pr-20 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                className="w-full pl-9 pr-24 py-2.5 text-sm rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all"
               />
               {loadingPatients && (
-                <span className="absolute right-3 top-2.5 text-[10px] text-slate-400 flex items-center gap-1">
-                  <Loader2 className="w-3 h-3 animate-spin text-blue-600" /> Searching...
+                <span className="absolute right-3.5 top-3 text-[10px] font-semibold text-teal-600 flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin text-teal-600" /> Searching...
                 </span>
               )}
             </div>
 
             {selectedPatient ? (
-              <div className="p-2.5 bg-blue-50 rounded-lg border border-blue-200 flex justify-between items-center">
-                <span className="text-xs font-medium text-blue-900">
-                  {selectedPatient.name} ({selectedPatient.mrn})
-                </span>
+              <div className="p-3 bg-teal-50/80 rounded-xl border border-teal-200/80 flex justify-between items-center shadow-2xs">
+                <div>
+                  <p className="text-xs font-bold text-teal-950">{selectedPatient.name}</p>
+                  <p className="text-[11px] font-medium text-teal-700">MRN: {selectedPatient.mrn}</p>
+                </div>
                 <button
                   type="button"
                   onClick={() => setSelectedPatient(null)}
-                  className="text-xs text-blue-600 hover:underline font-semibold"
+                  className="px-2.5 py-1 text-xs font-semibold text-teal-700 hover:text-teal-900 hover:bg-teal-100 rounded-lg transition-colors"
                 >
                   Change
                 </button>
               </div>
             ) : (
               <select
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all"
                 onChange={(e) => {
                   const p = patients.find(
                     (pat) => (pat._id || (pat as any).id) === e.target.value
@@ -213,7 +218,7 @@ export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
               >
                 <option value="" disabled>
                   {loadingPatients
-                    ? 'Searching records...'
+                    ? 'Searching patient records...'
                     : `-- Select Patient (${patients.length} found) --`}
                 </option>
                 {patients.map((p) => {
@@ -228,9 +233,9 @@ export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
             )}
           </div>
 
-          {/* Chief Complaint */}
+          {/* Chief Complaint Input */}
           <div>
-            <label className="text-xs font-semibold text-slate-600 mb-1 block">
+            <label className="text-xs font-bold text-slate-700 mb-1.5 block tracking-wide">
               Chief Complaint
             </label>
             <textarea
@@ -238,15 +243,15 @@ export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
               required
               value={chiefComplaint}
               onChange={(e) => setChiefComplaint(e.target.value)}
-              placeholder="e.g. Severe persistent migraine, fever for 2 days..."
-              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              placeholder="e.g., Severe persistent migraine, fever for 2 days, difficulty breathing..."
+              className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all leading-relaxed"
             />
           </div>
 
-          {/* Triage Priority */}
+          {/* Triage Priority Selector */}
           <div>
-            <label className="text-xs font-semibold text-slate-600 mb-1 block">
-              Triage Priority
+            <label className="text-xs font-bold text-slate-700 mb-1.5 block tracking-wide">
+              Triage Priority Level
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {Object.values(TriagePriority).map((pr) => {
@@ -257,34 +262,39 @@ export function CheckInModal({ isOpen, onClose, onSuccess }: Props) {
                     key={pr}
                     type="button"
                     onClick={() => setTriagePriority(pr)}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-all text-left ${
+                    className={`p-2.5 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between ${
                       isSelected
-                        ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-sm'
-                        : 'border-slate-200 hover:bg-slate-50 text-slate-600'
+                        ? 'border-teal-600 bg-teal-50/90 text-teal-900 ring-2 ring-teal-500/20 shadow-2xs'
+                        : 'border-slate-200/90 hover:bg-slate-50 text-slate-700'
                     }`}
                   >
-                    {config?.label || pr}
+                    <span>{config?.label || pr}</span>
+                    {isSelected && <Check className="w-3.5 h-3.5 text-teal-600 shrink-0" />}
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+          {/* Modal Actions */}
+          <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm font-medium rounded-lg text-slate-600 hover:bg-slate-100 transition-all"
+              className="px-4 py-2 text-sm font-semibold rounded-xl text-slate-600 hover:bg-slate-100 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || !selectedPatient}
-              className="px-5 py-2 text-sm font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white shadow-sm transition-all flex items-center gap-2"
+              className="px-5 py-2 text-sm font-semibold rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white shadow-sm transition-all flex items-center gap-2"
             >
-              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <UserPlus className="w-4 h-4" />
+              )}
               {loading ? 'Adding to Queue...' : 'Check-In Patient'}
             </button>
           </div>
