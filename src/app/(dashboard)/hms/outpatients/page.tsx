@@ -24,15 +24,22 @@ import {
   Activity, 
   CheckCircle2,
   Clock,
-  Sparkles
+  Sparkles,
+  AlertCircle
 } from 'lucide-react';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://medxverse-backend.onrender.com';
 
+// Fallback styling if triage config lookup fails
+const DEFAULT_TRIAGE_BADGE = {
+  label: 'Standard',
+  badge: 'bg-slate-100 text-slate-700'
+};
+
 export default function OutpatientsPage() {
   const [encounters, setEncounters] = useState<IOutpatientEncounter[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [patientsLoading, setPatientsLoading] = useState<boolean>(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
@@ -44,6 +51,7 @@ export default function OutpatientsPage() {
 
   const fetchEncounters = useCallback(async () => {
     setLoading(true);
+    setActionError(null);
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE_URL}/api/v1/outpatients/queue`, {
@@ -75,27 +83,16 @@ export default function OutpatientsPage() {
     }
   }, []);
 
-  const fetchPatients = useCallback(async () => {
-    setPatientsLoading(true);
-    try {
-      await PatientApiService.getPatients({ limit: 50 });
-    } catch (err) {
-      console.error('Failed to fetch patients:', err);
-    } finally {
-      setPatientsLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     fetchEncounters();
-    fetchPatients();
-  }, [fetchEncounters, fetchPatients]);
+  }, [fetchEncounters]);
 
   const handleRecordVitals = async (
     encounterId: string, 
     vitals: IVitalSigns, 
     nursingNotes: string
   ) => {
+    setActionError(null);
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE_URL}/api/v1/outpatients/${encounterId}/vitals`, {
@@ -112,6 +109,7 @@ export default function OutpatientsPage() {
         throw new Error(errData.message || 'Failed to update vitals on server.');
       }
       
+      // Optimistic update + re-fetch to ensure sync
       setEncounters((prev) =>
         (Array.isArray(prev) ? prev : []).map((enc) =>
           enc._id === encounterId
@@ -124,8 +122,11 @@ export default function OutpatientsPage() {
             : enc
         )
       );
-    } catch (err) {
+      
+      fetchEncounters();
+    } catch (err: any) {
       console.error('Failed to record vitals:', err);
+      setActionError(err.message || 'An error occurred while updating vitals.');
       throw err;
     }
   };
@@ -135,6 +136,7 @@ export default function OutpatientsPage() {
     notes: string, 
     diagnoses: string[]
   ) => {
+    setActionError(null);
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE_URL}/api/v1/outpatients/${encounterId}/complete`, {
@@ -163,20 +165,34 @@ export default function OutpatientsPage() {
             : enc
         )
       );
-    } catch (err) {
+
+      fetchEncounters();
+    } catch (err: any) {
       console.error('Failed to complete consultation:', err);
+      setActionError(err.message || 'An error occurred while completing consultation.');
       throw err;
     }
   };
 
   const safeEncounters = Array.isArray(encounters) ? encounters : [];
 
+  // Safe search filtering preventing runtime null checks
   const filteredEncounters = safeEncounters.filter((enc) => {
+    const query = searchTerm.trim().toLowerCase();
+    
+    if (!query && statusFilter === 'ALL') return true;
+
+    const firstName = enc.patientId?.firstName?.toLowerCase() ?? '';
+    const lastName = enc.patientId?.lastName?.toLowerCase() ?? '';
+    const mrn = enc.patientId?.mrn?.toLowerCase() ?? '';
+    const chiefComplaint = enc.chiefComplaint?.toLowerCase() ?? '';
+
     const matchesSearch =
-      enc.patientId?.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      enc.patientId?.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      enc.patientId?.mrn?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      enc.chiefComplaint?.toLowerCase().includes(searchTerm.toLowerCase());
+      !query ||
+      firstName.includes(query) ||
+      lastName.includes(query) ||
+      mrn.includes(query) ||
+      chiefComplaint.includes(query);
 
     const matchesStatus = statusFilter === 'ALL' || enc.status === statusFilter;
 
@@ -186,6 +202,14 @@ export default function OutpatientsPage() {
   return (
     <div className="p-6 font-sans max-w-7xl mx-auto space-y-6 bg-slate-50/50 min-h-screen">
       
+      {/* Action Error Banner */}
+      {actionError && (
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-3">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span className="font-medium">{actionError}</span>
+        </div>
+      )}
+
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
         <div>
@@ -202,14 +226,11 @@ export default function OutpatientsPage() {
 
         <div className="flex items-center gap-2.5">
           <button
-            onClick={() => {
-              fetchEncounters();
-              fetchPatients();
-            }}
+            onClick={() => fetchEncounters()}
             className="p-3 rounded-2xl border border-slate-100 bg-slate-50 text-slate-500 hover:text-[#1b7b68] hover:bg-[#e8f5f3] transition-all duration-200"
             title="Refresh Queue"
           >
-            <RefreshCw className={`w-4 h-4 ${loading || patientsLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
           
           <button
@@ -288,8 +309,12 @@ export default function OutpatientsPage() {
                 </tr>
               ) : (
                 filteredEncounters.map((enc) => {
-                  const triage = TRIAGE_CONFIG[enc.triagePriority || TriagePriority.STANDARD];
-                  const fullName = `${enc.patientId?.firstName || 'Unknown'} ${enc.patientId?.lastName || 'Patient'}`;
+                  const triageKey = enc.triagePriority || TriagePriority.STANDARD;
+                  const triage = TRIAGE_CONFIG[triageKey] || DEFAULT_TRIAGE_BADGE;
+                  
+                  const firstName = enc.patientId?.firstName || 'Unknown';
+                  const lastName = enc.patientId?.lastName || 'Patient';
+                  const fullName = `${firstName} ${lastName}`;
                   const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(fullName)}`;
 
                   return (
