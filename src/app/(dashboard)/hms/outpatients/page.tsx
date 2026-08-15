@@ -8,7 +8,6 @@ import {
   TriagePriority, 
   TRIAGE_CONFIG 
 } from '@/types/outpatient';
-import { PatientApiService } from '@/services/patient.service';
 
 import { OutpatientStatCards } from '../../../../components/outpatient/OutpatientStatCards';
 import { RecordVitalsModal } from '../../../../components/outpatient/RecordVitalsModal';
@@ -101,7 +100,7 @@ export default function OutpatientsPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ ...vitals, nursingNotes })
+        body: JSON.stringify({ vitalSigns: vitals, nursingNotes }),
       });
 
       if (!res.ok) {
