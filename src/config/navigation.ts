@@ -25,8 +25,8 @@ export interface NavItem {
 export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
   [AccountType.HOSPITAL]: [
     { label: 'Hospital Overview', href: '/hms', icon: Building2 },
-    { label: 'Outpatient Clinic', href: '/hms/outpatients', icon: Stethoscope, moduleKey: 'outpatient' },
     { label: 'Patients EMR', href: '/hms/patients', icon: Users, moduleKey: 'patients' },
+    { label: 'Outpatient Clinic', href: '/hms/outpatients', icon: Stethoscope, moduleKey: 'outpatient' },
     { label: 'Appointments', href: '/hms/appointments', icon: Calendar, moduleKey: 'appointments' },
     { label: 'Staff Management', href: '/hms/staff', icon: UserCog, moduleKey: 'staff' },
     { label: 'Pharmacy', href: '/hms/pharmacy', icon: Pill, moduleKey: 'pharmacy' },
