@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { StaffApiService } from '@/services/staff.service';
 import {
   Activity,
   AlertCircle,
@@ -279,14 +280,10 @@ const getStaffDisplayName = (person?: Staff | null) => {
   return fullName || 'Assigned Staff';
 };
 
-const resolveStaffFromValue = (
-  value: Staff | string | undefined,
-  directory: Record<string, Staff>
-): Staff | undefined => {
-  if (!value) return undefined;
-  if (typeof value === 'object') return value;
-  return directory[value];
-};
+const getPersonName = (person?: Patient | Staff | null) =>
+  person
+    ? `${person.firstName || ''} ${person.lastName || ''}`.trim() || 'Unnamed Person'
+    : '';
 
 const inputClass =
   'w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/20 focus:border-[#1b7b68]';
@@ -386,27 +383,8 @@ export default function SurgeryCaseDetailsPage() {
 
   const fetchStaff = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
-
-      const res = await fetch(`${API_BASE_URL}/staff?isActive=true`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const json = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(json?.message || 'Failed to load staff directory.');
-      }
-
-      const data = Array.isArray(json?.data)
-        ? json.data
-        : Array.isArray(json)
-          ? json
-          : [];
-
-      setStaff(data);
+      const res = await StaffApiService.getStaff({ isActive: true });
+      setStaff(res.data || []);
     } catch (error) {
       console.error('Failed to load staff directory:', error);
       setStaff([]);
@@ -448,7 +426,7 @@ export default function SurgeryCaseDetailsPage() {
     leadSurgeon;
 
   const surgeonName = resolvedLeadSurgeon
-    ? `${resolvedLeadSurgeon.firstName || ''} ${resolvedLeadSurgeon.lastName || ''}`.trim() || 'Assigned Surgeon'
+    ? getPersonName(resolvedLeadSurgeon) || 'Assigned Surgeon'
     : 'Assigned Surgeon';
 
   const request = async (
@@ -1627,9 +1605,7 @@ function TeamTab({
                   ? member.userId
                   : staff.find((person) => person._id === member.userId);
 
-              const name = resolvedStaff
-                ? `${resolvedStaff.firstName || ''} ${resolvedStaff.lastName || ''}`.trim() || 'Assigned Staff'
-                : 'Assigned Staff';
+              const name = getPersonName(resolvedStaff) || 'Assigned Staff';
 
               const isLead =
                 member.role === SurgicalRole.PRIMARY_SURGEON ||
