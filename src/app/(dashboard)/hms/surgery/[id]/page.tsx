@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { StaffApiService } from '@/services/staff.service';
 import {
@@ -85,8 +85,18 @@ interface Staff {
   isActive?: boolean;
 }
 
+type IdRef =
+  | string
+  | {
+      $oid?: string;
+      _id?: string | { $oid?: string };
+      id?: string | { $oid?: string };
+    };
+
+type StaffRef = Staff | IdRef;
+
 interface SurgicalTeamMember {
-  userId: Staff | string;
+  userId: StaffRef;
   role: SurgicalRole | string;
   credentialVerified?: boolean;
   notes?: string;
@@ -174,7 +184,7 @@ interface IntraopDocs {
 interface SurgeryCase {
   _id: string;
   patientId: Patient | string;
-  leadSurgeonId: Staff | string;
+  leadSurgeonId: StaffRef;
   theatreId: string;
   procedureName: string;
   icdCode?: string;
@@ -285,19 +295,67 @@ const getPersonName = (person?: Patient | Staff | null) =>
     ? `${person.firstName || ''} ${person.lastName || ''}`.trim() || 'Unnamed Person'
     : '';
 
+const extractRefId = (value: unknown): string | undefined => {
+  if (!value) return undefined;
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+
+    if (typeof record.$oid === 'string') {
+      return record.$oid;
+    }
+
+    const nestedId = record._id;
+    if (typeof nestedId === 'string') {
+      return nestedId;
+    }
+
+    if (
+      nestedId &&
+      typeof nestedId === 'object' &&
+      typeof (nestedId as Record<string, unknown>).$oid === 'string'
+    ) {
+      return (nestedId as Record<string, string>).$oid;
+    }
+
+    const plainId = record.id;
+    if (typeof plainId === 'string') {
+      return plainId;
+    }
+
+    if (
+      plainId &&
+      typeof plainId === 'object' &&
+      typeof (plainId as Record<string, unknown>).$oid === 'string'
+    ) {
+      return (plainId as Record<string, string>).$oid;
+    }
+  }
+
+  return undefined;
+};
+
 const resolveStaffMember = (
-  value: Staff | string | undefined,
+  value: StaffRef | undefined,
   staffList: Staff[]
 ): Staff | undefined => {
   if (!value) return undefined;
 
-  // If it's already an object, return it
   if (typeof value === 'object') {
-    return value as Staff;
+    const person = value as Staff;
+    if (person.firstName || person.lastName) {
+      return person;
+    }
   }
 
-  // If it's a string, find in staff list by _id
-  return staffList.find((person) => String(person._id) === String(value));
+  const staffId = extractRefId(value);
+  if (!staffId) return undefined;
+
+  return staffList.find((person) => extractRefId(person._id) === staffId);
 };
 
 const inputClass =
@@ -323,6 +381,7 @@ export default function SurgeryCaseDetailsPage() {
 
   const [surgeryCase, setSurgeryCase] = useState<SurgeryCase | null>(null);
   const [staff, setStaff] = useState<Staff[]>([]);
+  const requestedStaffIdsRef = useRef<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
@@ -411,6 +470,66 @@ export default function SurgeryCaseDetailsPage() {
     fetchStaff();
   }, [fetchCase, fetchStaff]);
 
+  useEffect(() => {
+    const fetchMissingReferencedStaff = async () => {
+      if (!surgeryCase) return;
+
+      const referencedIds = new Set<string>();
+
+      const leadId = extractRefId(surgeryCase.leadSurgeonId);
+      if (leadId) referencedIds.add(leadId);
+
+      for (const member of surgeryCase.surgicalTeam || []) {
+        const memberId = extractRefId(member.userId);
+        if (memberId) referencedIds.add(memberId);
+      }
+
+      const knownIds = new Set(
+        staff
+          .map((person) => extractRefId(person._id))
+          .filter((id): id is string => Boolean(id))
+      );
+
+      const missingIds = Array.from(referencedIds).filter(
+        (id) => !knownIds.has(id) && !requestedStaffIdsRef.current.has(id)
+      );
+
+      if (!missingIds.length) return;
+
+      missingIds.forEach((id) => requestedStaffIdsRef.current.add(id));
+
+      const resolved = await Promise.all(
+        missingIds.map((id) =>
+          StaffApiService.getStaffById(id).catch(() => null)
+        )
+      );
+
+      const found = resolved.filter(
+        (person): person is NonNullable<typeof person> => Boolean(person)
+      );
+
+      if (!found.length) return;
+
+      setStaff((prev) => {
+        const byId = new Map<string, Staff>();
+
+        for (const person of prev) {
+          const id = extractRefId(person._id);
+          if (id) byId.set(id, person);
+        }
+
+        for (const person of found) {
+          const id = extractRefId(person._id);
+          if (id) byId.set(id, person);
+        }
+
+        return Array.from(byId.values());
+      });
+    };
+
+    fetchMissingReferencedStaff();
+  }, [surgeryCase, staff]);
+
   const patient = useMemo(() => {
     if (!surgeryCase || typeof surgeryCase.patientId === 'string') {
       return undefined;
@@ -420,14 +539,16 @@ export default function SurgeryCaseDetailsPage() {
   }, [surgeryCase]);
 
   const leadSurgeon = useMemo(() => {
-    if (
-      !surgeryCase ||
-      typeof surgeryCase.leadSurgeonId === 'string'
-    ) {
+    if (!surgeryCase || typeof surgeryCase.leadSurgeonId === 'string') {
       return undefined;
     }
 
-    return surgeryCase.leadSurgeonId;
+    const person = surgeryCase.leadSurgeonId as Staff;
+    if (!person.firstName && !person.lastName) {
+      return undefined;
+    }
+
+    return person;
   }, [surgeryCase]);
 
   const patientName = patient
@@ -435,11 +556,7 @@ export default function SurgeryCaseDetailsPage() {
     : 'Patient';
 
   const resolvedLeadSurgeon =
-    (typeof surgeryCase?.leadSurgeonId === 'object'
-      ? (surgeryCase.leadSurgeonId as Staff)
-      : staff.find(
-          (person) => String(person._id) === String(surgeryCase?.leadSurgeonId)
-        )) || leadSurgeon;
+    resolveStaffMember(surgeryCase?.leadSurgeonId, staff) || leadSurgeon;
 
   const surgeonName = resolvedLeadSurgeon
     ? `${resolvedLeadSurgeon.firstName || ''} ${resolvedLeadSurgeon.lastName || ''}`.trim() || 'Assigned Surgeon'
@@ -1066,11 +1183,7 @@ export default function SurgeryCaseDetailsPage() {
               <TeamTab
                 team={surgeryCase.surgicalTeam || []}
                 staff={staff}
-                leadSurgeonId={
-                  typeof surgeryCase.leadSurgeonId === 'string'
-                    ? surgeryCase.leadSurgeonId
-                    : surgeryCase.leadSurgeonId?._id
-                }
+                leadSurgeonId={extractRefId(surgeryCase.leadSurgeonId)}
               />
             )}
 
@@ -1616,12 +1729,8 @@ function TeamTab({
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {team.map((member, index) => {
-              const person =
-                typeof member.userId === 'object'
-                  ? (member.userId as Staff)
-                  : staff.find(
-                      (item) => String(item._id) === String(member.userId)
-                    );
+              const person = resolveStaffMember(member.userId, staff);
+              const memberId = extractRefId(member.userId);
 
               const name = person
                 ? `${person.firstName || ''} ${person.lastName || ''}`.trim() || 'Assigned Staff'
@@ -1629,9 +1738,7 @@ function TeamTab({
 
               const isLead =
                 member.role === SurgicalRole.PRIMARY_SURGEON ||
-                (!!leadSurgeonId &&
-                  typeof member.userId === 'string' &&
-                  member.userId === leadSurgeonId);
+                (!!leadSurgeonId && !!memberId && memberId === leadSurgeonId);
 
               return (
                 <div
