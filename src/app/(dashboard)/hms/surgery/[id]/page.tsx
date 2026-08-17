@@ -707,6 +707,33 @@ export default function SurgeryCaseDetailsPage() {
     }
   };
 
+  const verifyTeamMember = (userId?: string) => {
+    if (!surgeryCase || !userId) return;
+
+    setSurgeryCase((current) => {
+      if (!current) return current;
+
+      return {
+        ...current,
+        surgicalTeam: (current.surgicalTeam || []).map((member) => {
+          const memberId =
+            typeof member.userId === 'string'
+              ? member.userId
+              : member.userId?._id;
+
+          if (memberId === userId) {
+            return {
+              ...member,
+              credentialVerified: true,
+            };
+          }
+
+          return member;
+        }),
+      };
+    });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50/50 flex items-center justify-center">
@@ -1069,6 +1096,7 @@ export default function SurgeryCaseDetailsPage() {
                     ? surgeryCase.leadSurgeonId
                     : surgeryCase.leadSurgeonId?._id
                 }
+                onVerifyMember={verifyTeamMember}
               />
             )}
 
@@ -1590,10 +1618,12 @@ function TeamTab({
   team,
   staff,
   leadSurgeonId,
+  onVerifyMember,
 }: {
   team: SurgicalTeamMember[];
   staff: Staff[];
   leadSurgeonId?: string;
+  onVerifyMember: (userId?: string) => void;
 }) {
   return (
     <SectionCard
@@ -1656,17 +1686,35 @@ function TeamTab({
                     </p>
                   </div>
 
-                  <span
-                    className={`shrink-0 text-[9px] font-bold px-2 py-1 rounded-lg ${
-                      member.credentialVerified
-                        ? 'bg-emerald-50 text-emerald-600'
-                        : 'bg-amber-50 text-amber-600'
-                    }`}
-                  >
-                    {member.credentialVerified
-                      ? 'Verified'
-                      : 'Unverified'}
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span
+                      className={`text-[9px] font-bold px-2 py-1 rounded-lg ${
+                        member.credentialVerified
+                          ? 'bg-emerald-50 text-emerald-600'
+                          : 'bg-amber-50 text-amber-600'
+                      }`}
+                    >
+                      {member.credentialVerified
+                        ? 'Verified'
+                        : 'Unverified'}
+                    </span>
+
+                    {!member.credentialVerified && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onVerifyMember(
+                            typeof member.userId === 'string'
+                              ? member.userId
+                              : member.userId?._id
+                          )
+                        }
+                        className="px-2 py-1 rounded-lg bg-[#1b7b68] text-[9px] font-bold text-white hover:bg-[#146253]"
+                      >
+                        Mark Verified
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
