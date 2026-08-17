@@ -291,13 +291,12 @@ const resolveStaffMember = (
 ): Staff | undefined => {
   if (!value) return undefined;
 
+  // If it's already an object, return it
   if (typeof value === 'object') {
-    const person = value as Staff;
-    return person?._id || person?.firstName || person?.lastName
-      ? person
-      : undefined;
+    return value as Staff;
   }
 
+  // If it's a string, find in staff list by _id
   return staffList.find((person) => String(person._id) === String(value));
 };
 
@@ -1640,6 +1639,17 @@ function TeamTab({
   leadSurgeonId?: string;
   onVerifyMember: (userId?: string) => void;
 }) {
+  // Debug: log staff resolution info
+  if (typeof window !== 'undefined') {
+    console.log('=== SURGICAL TEAM DEBUG ===');
+    console.log('Team members:', team.map(m => ({ userId: m.userId, role: m.role })));
+    console.log('Available staff:', staff.map(s => ({ _id: s._id, name: `${s.firstName} ${s.lastName}` })));
+    team.forEach((member, i) => {
+      const resolved = resolveStaffMember(member.userId, staff);
+      console.log(`Team[${i}]:`, { userId: member.userId, resolved: resolved ? `${resolved.firstName} ${resolved.lastName}` : 'NOT FOUND' });
+    });
+  }
+
   return (
     <SectionCard
       title="Surgical Team"
