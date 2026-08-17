@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { PatientApiService } from '@/services/patient.service';
 import {
   Activity,
@@ -22,9 +23,16 @@ import {
   X,
 } from 'lucide-react';
 
-const API_BASE_URL =
+const DEFAULT_HOST = 'https://medxverse-backend.onrender.com';
+const RAW_API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_BASE_URL ||
-  'https://medxverse-backend.onrender.com';
+  process.env.NEXT_PUBLIC_API_URL ||
+  DEFAULT_HOST
+).trim().replace(/\/+$/, '');
+
+const API_BASE_URL = RAW_API_BASE_URL.endsWith('/api/v1')
+  ? RAW_API_BASE_URL
+  : `${RAW_API_BASE_URL}/api/v1`;
 
 enum SurgeryStatus {
   SCHEDULED = 'SCHEDULED',
@@ -196,6 +204,8 @@ function formatLabel(value?: string) {
 }
 
 export default function SurgeryPage() {
+  const router = useRouter();
+
   const [cases, setCases] = useState<SurgeryCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -257,7 +267,9 @@ export default function SurgeryPage() {
 
       const params = new URLSearchParams();
       params.set('isActive', 'true');
-      if (queryTerm.trim()) params.set('search', queryTerm.trim());
+      if (queryTerm.trim()) {
+        params.set('search', queryTerm.trim());
+      }
 
       const token = localStorage.getItem('token');
 
@@ -271,6 +283,10 @@ export default function SurgeryPage() {
       );
 
       const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.message || 'Failed to load staff.');
+      }
 
       const data = json?.data || json;
       setStaff(Array.isArray(data) ? data : []);
@@ -1100,7 +1116,9 @@ export default function SurgeryPage() {
 
                       <td className="py-4 px-6 text-right">
                         <button
-                          onClick={() => setSelectedCase(surgery)}
+                          onClick={() =>
+                            router.push(`/hms/surgery/${surgery._id}`)
+                          }
                           className="flex items-center gap-1 px-3 py-1.5 ml-auto bg-[#1b7b68]/10 hover:bg-[#1b7b68] text-[#1b7b68] hover:text-white rounded-xl text-xs font-bold transition-all"
                         >
                           <Eye className="w-3.5 h-3.5" />
@@ -1304,7 +1322,7 @@ function SurgeryDetailsModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-3xl w-full shadow-2xl my-8 overflow-hidden">
+      <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] shadow-2xl my-8 overflow-y-auto">
         <div className="p-6 border-b border-slate-100 flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
@@ -1619,7 +1637,7 @@ function ScheduleSurgeryModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-3xl w-full shadow-2xl my-8 overflow-hidden">
+      <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] shadow-2xl my-8 overflow-y-auto">
         <div className="p-6 border-b border-slate-100 flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
