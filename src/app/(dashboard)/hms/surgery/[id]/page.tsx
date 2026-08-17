@@ -12,6 +12,7 @@ import {
   FileCheck2,
   Hospital,
   Loader2,
+  Plus,
   ShieldAlert,
   Stethoscope,
   UserRound,
@@ -110,10 +111,54 @@ interface Consent {
   signedAt?: string;
 }
 
+interface EquipmentItem {
+  itemName: string;
+  sterileStatus: string;
+  maintenanceOk: boolean;
+  notes?: string;
+}
+
+interface ConsumableItem {
+  itemName: string;
+  quantityUsed: number;
+  unitCost?: number;
+  lotNumber?: string;
+}
+
+interface VitalsLog {
+  timestamp: string;
+  bpSystolic?: number;
+  bpDiastolic?: number;
+  heartRate?: number;
+  spO2?: number;
+  respRate?: number;
+  tempCelsius?: number;
+  etCO2?: number;
+  ecgRhythm?: string;
+  notes?: string;
+}
+
 interface WHOStage {
   completed?: boolean;
   completedAt?: string;
   completedBy?: Staff | string;
+  [key: string]: any;
+}
+
+interface IntraopDocs {
+  incisionTime?: string;
+  closureTime?: string;
+  operativeDiagnosis?: string;
+  postOperativeDiagnosis?: string;
+  surgicalFindings?: string;
+  techniqueNotes?: string;
+  eblMl?: number;
+  fluidsAdministeredMl?: number;
+  bloodProductsAdministered?: string;
+  drainsInserted?: string;
+  implantsUsed?: string;
+  specimensCollected?: string;
+  complications?: string;
 }
 
 interface SurgeryCase {
@@ -133,34 +178,18 @@ interface SurgeryCase {
   surgicalTeam?: SurgicalTeamMember[];
   preOpAssessment?: PreOpAssessment;
   consent?: Consent;
+  equipmentChecklist?: EquipmentItem[];
+  consumablesUsed?: ConsumableItem[];
   whoChecklist?: {
     signIn?: WHOStage;
     timeOut?: WHOStage;
     signOut?: WHOStage;
   };
-  equipmentChecklist?: unknown[];
-  consumablesUsed?: unknown[];
-  vitalsTimeline?: unknown[];
-  intraopDocs?: {
-    incisionTime?: string;
-    closureTime?: string;
-    operativeDiagnosis?: string;
-    postOperativeDiagnosis?: string;
-    surgicalFindings?: string;
-    techniqueNotes?: string;
-    eblMl?: number;
-    fluidsAdministeredMl?: number;
-    bloodProductsAdministered?: string;
-    drainsInserted?: string;
-    implantsUsed?: string;
-    specimensCollected?: string;
-    complications?: string;
-  };
+  vitalsTimeline?: VitalsLog[];
+  intraopDocs?: IntraopDocs;
   anesthesiaNotes?: string;
   postOpNotes?: string;
   cancellationReason?: string;
-  createdAt?: string;
-  updatedAt?: string;
 }
 
 type Tab =
@@ -235,6 +264,9 @@ const roleLabels: Record<string, string> = {
   [SurgicalRole.THEATRE_TECHNICIAN]: 'Theatre Technician',
 };
 
+const inputClass =
+  'w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/20 focus:border-[#1b7b68]';
+
 export default function SurgeryCaseDetailsPage() {
   const router = useRouter();
   const params = useParams();
@@ -246,6 +278,27 @@ export default function SurgeryCaseDetailsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [actionLoading, setActionLoading] = useState(false);
+
+  const [preOpForm, setPreOpForm] = useState<PreOpAssessment>({});
+  const [consentForm, setConsentForm] = useState<Consent>({});
+  const [whoForm, setWhoForm] = useState<Record<string, any>>({});
+  const [vitalsForm, setVitalsForm] = useState({
+    bpSystolic: '',
+    bpDiastolic: '',
+    heartRate: '',
+    spO2: '',
+    respRate: '',
+    tempCelsius: '',
+    etCO2: '',
+    ecgRhythm: '',
+    notes: '',
+  });
+
+  const [intraopForm, setIntraopForm] = useState<IntraopDocs>({});
+  const [equipment, setEquipment] = useState<EquipmentItem[]>([]);
+  const [consumables, setConsumables] = useState<ConsumableItem[]>([]);
+  const [anaesthesiaNotes, setAnaesthesiaNotes] = useState('');
+  const [postOpNotes, setPostOpNotes] = useState('');
 
   const fetchCase = useCallback(async () => {
     if (!caseId) return;
@@ -273,9 +326,18 @@ export default function SurgeryCaseDetailsPage() {
         );
       }
 
-      setSurgeryCase(json?.data || json);
+      const data = json?.data || json;
+
+      setSurgeryCase(data);
+      setPreOpForm(data.preOpAssessment || {});
+      setConsentForm(data.consent || {});
+      setEquipment(data.equipmentChecklist || []);
+      setConsumables(data.consumablesUsed || []);
+      setIntraopForm(data.intraopDocs || {});
+      setAnaesthesiaNotes(data.anesthesiaNotes || '');
+      setPostOpNotes(data.postOpNotes || '');
     } catch (error: any) {
-      console.error('Failed to fetch surgical case:', error);
+      console.error(error);
       setActionError(
         error?.message || 'Unable to load surgical case.'
       );
@@ -309,9 +371,7 @@ export default function SurgeryCaseDetailsPage() {
   }, [surgeryCase]);
 
   const patientName = patient
-    ? `${patient.firstName || 'Unknown'} ${
-        patient.lastName || 'Patient'
-      }`
+    ? `${patient.firstName || 'Unknown'} ${patient.lastName || 'Patient'}`
     : 'Patient';
 
   const surgeonName = leadSurgeon
@@ -320,89 +380,206 @@ export default function SurgeryCaseDetailsPage() {
       }`.trim()
     : 'Assigned Surgeon';
 
-  const formatDate = (value?: string) => {
-    if (!value) return '--';
+  const request = async (
+    url: string,
+    options: RequestInit = {}
+  ) => {
+    const token = localStorage.getItem('token');
 
-    return new Date(value).toLocaleDateString([], {
-      weekday: 'short',
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
+    const res = await fetch(`${API_BASE_URL}${url}`, {
+      ...options,
+      headers: {
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        Authorization: `Bearer ${token}`,
+        ...(options.headers || {}),
+      },
     });
-  };
 
-  const formatTime = (value?: string) => {
-    if (!value) return '--';
+    const json = await res.json().catch(() => ({}));
 
-    return new Date(value).toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  const getDuration = () => {
-    if (!surgeryCase) return '--';
-
-    const start = new Date(
-      surgeryCase.scheduledStartTime
-    ).getTime();
-
-    const end = new Date(
-      surgeryCase.scheduledEndTime
-    ).getTime();
-
-    const minutes = Math.round((end - start) / 60000);
-
-    if (!Number.isFinite(minutes) || minutes <= 0) {
-      return '--';
+    if (!res.ok) {
+      throw new Error(json?.message || 'Request failed.');
     }
 
-    const hours = Math.floor(minutes / 60);
-    const remaining = minutes % 60;
-
-    if (hours === 0) return `${remaining} min`;
-
-    return `${hours}h ${remaining > 0 ? `${remaining}m` : ''}`;
+    return json?.data || json;
   };
 
-  const handleStartSurgery = async () => {
+  const savePreOp = async () => {
     if (!surgeryCase) return;
 
     setActionLoading(true);
     setActionError(null);
 
     try {
-      const token = localStorage.getItem('token');
-
-      const res = await fetch(
-        `${API_BASE_URL}/api/v1/surgery/${surgeryCase._id}/start`,
+      const updated = await request(
+        `/api/v1/surgery/${surgeryCase._id}/pre-op`,
         {
           method: 'PATCH',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          body: JSON.stringify(preOpForm),
         }
       );
 
-      const json = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(
-          json?.message || 'Unable to start surgery.'
-        );
-      }
-
-      setSurgeryCase(json?.data || json);
+      setSurgeryCase(updated);
+      setPreOpForm(updated.preOpAssessment || {});
     } catch (error: any) {
-      setActionError(
-        error?.message || 'Unable to start surgery.'
-      );
+      setActionError(error.message);
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleCancelCase = async () => {
+  const saveConsent = async () => {
+    if (!surgeryCase) return;
+
+    setActionLoading(true);
+    setActionError(null);
+
+    try {
+      const updated = await request(
+        `/api/v1/surgery/${surgeryCase._id}/consent`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify(consentForm),
+        }
+      );
+
+      setSurgeryCase(updated);
+      setConsentForm(updated.consent || {});
+    } catch (error: any) {
+      setActionError(error.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const saveWHO = async (
+    stage: 'signIn' | 'timeOut' | 'signOut'
+  ) => {
+    if (!surgeryCase) return;
+
+    setActionLoading(true);
+    setActionError(null);
+
+    try {
+      const updated = await request(
+        `/api/v1/surgery/${surgeryCase._id}/who-checklist`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            stage,
+            data: whoForm,
+          }),
+        }
+      );
+
+      setSurgeryCase(updated);
+      setWhoForm({});
+    } catch (error: any) {
+      setActionError(error.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const addVitals = async () => {
+    if (!surgeryCase) return;
+
+    setActionLoading(true);
+    setActionError(null);
+
+    try {
+      const payload = Object.fromEntries(
+        Object.entries(vitalsForm)
+          .filter(([_, value]) => value !== '')
+          .map(([key, value]) => [
+            key,
+            ['ecgRhythm', 'notes'].includes(key)
+              ? value
+              : Number(value),
+          ])
+      );
+
+      const updated = await request(
+        `/api/v1/surgery/${surgeryCase._id}/vitals`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }
+      );
+
+      setSurgeryCase(updated);
+
+      setVitalsForm({
+        bpSystolic: '',
+        bpDiastolic: '',
+        heartRate: '',
+        spO2: '',
+        respRate: '',
+        tempCelsius: '',
+        etCO2: '',
+        ecgRhythm: '',
+        notes: '',
+      });
+    } catch (error: any) {
+      setActionError(error.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const saveIntraop = async () => {
+    if (!surgeryCase) return;
+
+    setActionLoading(true);
+    setActionError(null);
+
+    try {
+      const updated = await request(
+        `/api/v1/surgery/${surgeryCase._id}/intraop-docs`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            ...intraopForm,
+            equipmentChecklist: equipment,
+            consumablesUsed: consumables,
+          }),
+        }
+      );
+
+      setSurgeryCase(updated);
+      setIntraopForm(updated.intraopDocs || {});
+      setEquipment(updated.equipmentChecklist || []);
+      setConsumables(updated.consumablesUsed || []);
+    } catch (error: any) {
+      setActionError(error.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const startSurgery = async () => {
+    if (!surgeryCase) return;
+
+    setActionLoading(true);
+    setActionError(null);
+
+    try {
+      const updated = await request(
+        `/api/v1/surgery/${surgeryCase._id}/start`,
+        {
+          method: 'PATCH',
+        }
+      );
+
+      setSurgeryCase(updated);
+    } catch (error: any) {
+      setActionError(error.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const cancelCase = async () => {
     if (!surgeryCase) return;
 
     const reason = window.prompt(
@@ -415,35 +592,53 @@ export default function SurgeryCaseDetailsPage() {
     setActionError(null);
 
     try {
-      const token = localStorage.getItem('token');
-
-      const res = await fetch(
-        `${API_BASE_URL}/api/v1/surgery/${surgeryCase._id}/cancel`,
+      const updated = await request(
+        `/api/v1/surgery/${surgeryCase._id}/cancel`,
         {
           method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
           body: JSON.stringify({
             cancellationReason: reason.trim(),
           }),
         }
       );
 
-      const json = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(
-          json?.message || 'Unable to cancel surgical case.'
-        );
-      }
-
-      setSurgeryCase(json?.data || json);
+      setSurgeryCase(updated);
     } catch (error: any) {
-      setActionError(
-        error?.message || 'Unable to cancel surgical case.'
+      setActionError(error.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const completeSurgery = async () => {
+    if (!surgeryCase) return;
+
+    setActionLoading(true);
+    setActionError(null);
+
+    try {
+      const updated = await request(
+        `/api/v1/surgery/${surgeryCase._id}/complete`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            anesthesiaNotes: anaesthesiaNotes,
+            postOpNotes,
+            intraopDocs: {
+              ...intraopForm,
+              consumablesUsed: consumables,
+              equipmentChecklist: equipment,
+            },
+          }),
+        }
       );
+
+      setSurgeryCase(updated);
+      setIntraopForm(updated.intraopDocs || {});
+      setAnaesthesiaNotes(updated.anesthesiaNotes || '');
+      setPostOpNotes(updated.postOpNotes || '');
+    } catch (error: any) {
+      setActionError(error.message);
     } finally {
       setActionLoading(false);
     }
@@ -467,8 +662,8 @@ export default function SurgeryCaseDetailsPage() {
       <div className="min-h-screen bg-slate-50/50 p-6">
         <div className="max-w-4xl mx-auto">
           <button
-            onClick={() => router.back()}
-            className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-[#1b7b68] transition-all mb-6"
+            onClick={() => router.push('/hms/surgery')}
+            className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-[#1b7b68] mb-6"
           >
             <ArrowLeft className="w-4 h-4" />
             Back to Surgery
@@ -476,11 +671,9 @@ export default function SurgeryCaseDetailsPage() {
 
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-10 text-center">
             <AlertCircle className="w-10 h-10 text-rose-400 mx-auto mb-3" />
-
             <h2 className="text-sm font-extrabold text-slate-800">
               Surgical case not found
             </h2>
-
             <p className="text-xs text-slate-400 mt-1">
               {actionError || 'Unable to load this surgical case.'}
             </p>
@@ -504,22 +697,18 @@ export default function SurgeryCaseDetailsPage() {
     surgeryCase.whoChecklist?.signOut?.completed,
   ].filter(Boolean).length;
 
-  const preOpComplete =
-    surgeryCase.preOpAssessment?.clearedForSurgery === true;
-
-  const consentComplete =
-    surgeryCase.consent?.procedureConsent === true &&
-    surgeryCase.consent?.anesthesiaConsent === true &&
-    surgeryCase.consent?.signedByPatient === true;
-
   const readinessItems = [
     {
       label: 'Pre-operative assessment',
-      complete: preOpComplete,
+      complete:
+        surgeryCase.preOpAssessment?.clearedForSurgery === true,
     },
     {
       label: 'Surgical consent',
-      complete: consentComplete,
+      complete:
+        surgeryCase.consent?.procedureConsent === true &&
+        surgeryCase.consent?.anesthesiaConsent === true &&
+        surgeryCase.consent?.signedByPatient === true,
     },
     {
       label: 'WHO Sign In',
@@ -534,10 +723,43 @@ export default function SurgeryCaseDetailsPage() {
     {
       label: 'Equipment checklist',
       complete:
-        Array.isArray(surgeryCase.equipmentChecklist) &&
-        surgeryCase.equipmentChecklist.length > 0,
+        !!surgeryCase.equipmentChecklist?.length,
     },
   ];
+
+  const formatDate = (value?: string) =>
+    value
+      ? new Date(value).toLocaleDateString([], {
+          weekday: 'short',
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        })
+      : '--';
+
+  const formatTime = (value?: string) =>
+    value
+      ? new Date(value).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : '--';
+
+  const getDuration = () => {
+    const start = new Date(surgeryCase.scheduledStartTime).getTime();
+    const end = new Date(surgeryCase.scheduledEndTime).getTime();
+
+    const minutes = Math.round((end - start) / 60000);
+
+    if (!Number.isFinite(minutes) || minutes <= 0) return '--';
+
+    const hours = Math.floor(minutes / 60);
+    const remaining = minutes % 60;
+
+    return hours
+      ? `${hours}h ${remaining ? `${remaining}m` : ''}`
+      : `${remaining} min`;
+  };
 
   return (
     <div className="min-h-screen bg-slate-50/50 font-sans text-slate-800 p-6">
@@ -545,11 +767,7 @@ export default function SurgeryCaseDetailsPage() {
         {actionError && (
           <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-3">
             <AlertCircle className="w-4 h-4 shrink-0" />
-
-            <span className="font-medium">
-              {actionError}
-            </span>
-
+            <span>{actionError}</span>
             <button
               onClick={() => setActionError(null)}
               className="ml-auto p-1 rounded-lg hover:bg-rose-100"
@@ -561,8 +779,8 @@ export default function SurgeryCaseDetailsPage() {
 
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.back()}
-            className="w-10 h-10 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center text-slate-500 hover:text-[#1b7b68] hover:bg-[#e8f5f3] transition-all"
+            onClick={() => router.push('/hms/surgery')}
+            className="w-10 h-10 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center text-slate-500 hover:text-[#1b7b68] hover:bg-[#e8f5f3]"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -573,11 +791,11 @@ export default function SurgeryCaseDetailsPage() {
             </p>
 
             <div className="flex items-center gap-2 mt-0.5">
-              <h1 className="text-xl font-extrabold tracking-tight text-slate-800">
+              <h1 className="text-xl font-extrabold">
                 Surgical Case
               </h1>
 
-              <span className="bg-[#e8f5f3] text-[#1b7b68] text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
+              <span className="bg-[#e8f5f3] text-[#1b7b68] text-[10px] font-bold px-2.5 py-1 rounded-full uppercase">
                 Case Details
               </span>
             </div>
@@ -597,29 +815,19 @@ export default function SurgeryCaseDetailsPage() {
 
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-xl font-extrabold text-slate-800">
+                  <h2 className="text-xl font-extrabold">
                     {surgeryCase.procedureName}
                   </h2>
 
                   <span
-                    className={`px-3 py-1 rounded-full border text-[10px] font-bold uppercase tracking-wide ${urgency.className}`}
+                    className={`px-3 py-1 rounded-full border text-[10px] font-bold uppercase ${urgency.className}`}
                   >
-                    {surgeryCase.urgency ===
-                      UrgencyLevel.EMERGENCY && (
-                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-current animate-pulse mr-1.5" />
-                    )}
-
                     {urgency.label}
                   </span>
 
                   <span
-                    className={`px-3 py-1 rounded-full border text-[10px] font-bold uppercase tracking-wide ${status.className}`}
+                    className={`px-3 py-1 rounded-full border text-[10px] font-bold uppercase ${status.className}`}
                   >
-                    {surgeryCase.status ===
-                      SurgeryStatus.IN_PROGRESS && (
-                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-current animate-pulse mr-1.5" />
-                    )}
-
                     {status.label}
                   </span>
                 </div>
@@ -647,35 +855,42 @@ export default function SurgeryCaseDetailsPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              {surgeryCase.status !==
-                SurgeryStatus.IN_PROGRESS &&
-                surgeryCase.status !==
-                  SurgeryStatus.COMPLETED &&
-                surgeryCase.status !==
-                  SurgeryStatus.CANCELLED && (
+              {surgeryCase.status !== SurgeryStatus.IN_PROGRESS &&
+                surgeryCase.status !== SurgeryStatus.COMPLETED &&
+                surgeryCase.status !== SurgeryStatus.CANCELLED && (
                   <button
                     disabled={actionLoading}
-                    onClick={handleStartSurgery}
-                    className="px-4 py-2.5 bg-[#1b7b68] hover:bg-[#145f50] disabled:opacity-50 text-white text-xs font-bold rounded-2xl shadow-sm transition-all flex items-center gap-2"
+                    onClick={startSurgery}
+                    className="px-4 py-2.5 bg-[#1b7b68] hover:bg-[#145f50] disabled:opacity-50 text-white text-xs font-bold rounded-2xl flex items-center gap-2"
                   >
                     {actionLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <Activity className="w-4 h-4" />
                     )}
-
                     Start Surgery
                   </button>
                 )}
 
-              {surgeryCase.status !==
-                SurgeryStatus.COMPLETED &&
-                surgeryCase.status !==
-                  SurgeryStatus.CANCELLED && (
+              {surgeryCase.status === SurgeryStatus.IN_PROGRESS && (
+                <button
+                  disabled={actionLoading}
+                  onClick={completeSurgery}
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-2xl flex items-center gap-2"
+                >
+                  {actionLoading && (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  )}
+                  Complete Surgery
+                </button>
+              )}
+
+              {surgeryCase.status !== SurgeryStatus.COMPLETED &&
+                surgeryCase.status !== SurgeryStatus.CANCELLED && (
                   <button
                     disabled={actionLoading}
-                    onClick={handleCancelCase}
-                    className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-600 text-xs font-bold rounded-2xl transition-all flex items-center gap-2"
+                    onClick={cancelCase}
+                    className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-2xl flex items-center gap-2"
                   >
                     <ShieldAlert className="w-4 h-4" />
                     Cancel Case
@@ -695,9 +910,7 @@ export default function SurgeryCaseDetailsPage() {
           <InfoCard
             icon={<CalendarDays className="w-4 h-4" />}
             label="Date"
-            value={formatDate(
-              surgeryCase.scheduledStartTime
-            )}
+            value={formatDate(surgeryCase.scheduledStartTime)}
           />
 
           <InfoCard
@@ -705,9 +918,7 @@ export default function SurgeryCaseDetailsPage() {
             label="Schedule"
             value={`${formatTime(
               surgeryCase.scheduledStartTime
-            )} — ${formatTime(
-              surgeryCase.scheduledEndTime
-            )}`}
+            )} — ${formatTime(surgeryCase.scheduledEndTime)}`}
           />
 
           <InfoCard
@@ -732,70 +943,27 @@ export default function SurgeryCaseDetailsPage() {
         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <div className="flex items-center gap-1 p-2 min-w-max border-b border-slate-100 bg-slate-50/30">
-              <TabButton
-                active={activeTab === 'overview'}
-                onClick={() => setActiveTab('overview')}
-                icon={<Hospital className="w-3.5 h-3.5" />}
-                label="Overview"
-              />
-
-              <TabButton
-                active={activeTab === 'pre-op'}
-                onClick={() => setActiveTab('pre-op')}
-                icon={<Activity className="w-3.5 h-3.5" />}
-                label="Pre-Op"
-              />
-
-              <TabButton
-                active={activeTab === 'consent'}
-                onClick={() => setActiveTab('consent')}
-                icon={<FileCheck2 className="w-3.5 h-3.5" />}
-                label="Consent"
-              />
-
-              <TabButton
-                active={activeTab === 'team'}
-                onClick={() => setActiveTab('team')}
-                icon={<Users className="w-3.5 h-3.5" />}
-                label="Surgical Team"
-              />
-
-              <TabButton
-                active={activeTab === 'who'}
-                onClick={() => setActiveTab('who')}
-                icon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                label="WHO Checklist"
-              />
-
-              <TabButton
-                active={activeTab === 'equipment'}
-                onClick={() => setActiveTab('equipment')}
-                icon={<Hospital className="w-3.5 h-3.5" />}
-                label="Equipment"
-              />
-
-              <TabButton
-                active={activeTab === 'intraoperative'}
-                onClick={() =>
-                  setActiveTab('intraoperative')
-                }
-                icon={<Activity className="w-3.5 h-3.5" />}
-                label="Intraoperative"
-              />
-
-              <TabButton
-                active={activeTab === 'anaesthesia'}
-                onClick={() => setActiveTab('anaesthesia')}
-                icon={<Activity className="w-3.5 h-3.5" />}
-                label="Anaesthesia"
-              />
-
-              <TabButton
-                active={activeTab === 'post-op'}
-                onClick={() => setActiveTab('post-op')}
-                icon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                label="Post-Op"
-              />
+              {(
+                [
+                  ['overview', 'Overview', Hospital],
+                  ['pre-op', 'Pre-Op', Activity],
+                  ['consent', 'Consent', FileCheck2],
+                  ['team', 'Surgical Team', Users],
+                  ['who', 'WHO Checklist', CheckCircle2],
+                  ['equipment', 'Equipment', Hospital],
+                  ['intraoperative', 'Intraoperative', Activity],
+                  ['anaesthesia', 'Anaesthesia', Activity],
+                  ['post-op', 'Post-Op', CheckCircle2],
+                ] as const
+              ).map(([tab, label, Icon]) => (
+                <TabButton
+                  key={tab}
+                  active={activeTab === tab}
+                  onClick={() => setActiveTab(tab)}
+                  icon={<Icon className="w-3.5 h-3.5" />}
+                  label={label}
+                />
+              ))}
             </div>
           </div>
 
@@ -808,16 +976,81 @@ export default function SurgeryCaseDetailsPage() {
                 surgeonName={surgeonName}
                 readinessItems={readinessItems}
                 whoCompleted={whoCompleted}
-                teamCount={
-                  surgeryCase.surgicalTeam?.length || 0
-                }
               />
             )}
 
-            {activeTab !== 'overview' && (
-              <PlaceholderTab
-                title={getTabTitle(activeTab)}
-                description={getTabDescription(activeTab)}
+            {activeTab === 'pre-op' && (
+              <PreOpTab
+                form={preOpForm}
+                setForm={setPreOpForm}
+                onSave={savePreOp}
+                loading={actionLoading}
+              />
+            )}
+
+            {activeTab === 'consent' && (
+              <ConsentTab
+                form={consentForm}
+                setForm={setConsentForm}
+                onSave={saveConsent}
+                loading={actionLoading}
+              />
+            )}
+
+            {activeTab === 'team' && (
+              <TeamTab team={surgeryCase.surgicalTeam || []} />
+            )}
+
+            {activeTab === 'who' && (
+              <WHOTab
+                checklist={surgeryCase.whoChecklist}
+                form={whoForm}
+                setForm={setWhoForm}
+                onSave={saveWHO}
+                loading={actionLoading}
+              />
+            )}
+
+            {activeTab === 'equipment' && (
+              <EquipmentTab
+                equipment={equipment}
+                setEquipment={setEquipment}
+                consumables={consumables}
+                setConsumables={setConsumables}
+                onSave={saveIntraop}
+                loading={actionLoading}
+              />
+            )}
+
+            {activeTab === 'intraoperative' && (
+              <IntraoperativeTab
+                form={intraopForm}
+                setForm={setIntraopForm}
+                vitals={surgeryCase.vitalsTimeline || []}
+                vitalsForm={vitalsForm}
+                setVitalsForm={setVitalsForm}
+                onAddVitals={addVitals}
+                onSave={saveIntraop}
+                loading={actionLoading}
+              />
+            )}
+
+            {activeTab === 'anaesthesia' && (
+              <AnaesthesiaTab
+                notes={anaesthesiaNotes}
+                setNotes={setAnaesthesiaNotes}
+                vitals={surgeryCase.vitalsTimeline || []}
+                anesthesiaType={surgeryCase.anesthesiaType}
+              />
+            )}
+
+            {activeTab === 'post-op' && (
+              <PostOpTab
+                notes={postOpNotes}
+                setNotes={setPostOpNotes}
+                surgeryCase={surgeryCase}
+                onComplete={completeSurgery}
+                loading={actionLoading}
               />
             )}
           </div>
@@ -834,26 +1067,18 @@ function OverviewTab({
   surgeonName,
   readinessItems,
   whoCompleted,
-  teamCount,
 }: {
   surgeryCase: SurgeryCase;
   patient?: Patient;
   patientName: string;
   surgeonName: string;
-  readinessItems: {
-    label: string;
-    complete: boolean;
-  }[];
+  readinessItems: { label: string; complete: boolean }[];
   whoCompleted: number;
-  teamCount: number;
 }) {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-sm font-extrabold text-slate-800">
-          Case Overview
-        </h2>
-
+        <h2 className="text-sm font-extrabold">Case Overview</h2>
         <p className="text-[11px] text-slate-400 mt-0.5">
           Clinical and operational summary for this surgical case.
         </p>
@@ -864,23 +1089,17 @@ function OverviewTab({
           title="Patient Information"
           icon={<UserRound className="w-4 h-4" />}
         >
-          <div className="grid grid-cols-2 gap-x-5 gap-y-4">
-            <DetailItem
-              label="Patient"
-              value={patientName}
-            />
-
+          <div className="grid grid-cols-2 gap-4">
+            <DetailItem label="Patient" value={patientName} />
             <DetailItem
               label="MRN"
               value={patient?.mrn || 'N/A'}
               mono
             />
-
             <DetailItem
               label="Gender"
               value={patient?.gender || 'N/A'}
             />
-
             <DetailItem
               label="Date of Birth"
               value={
@@ -898,109 +1117,34 @@ function OverviewTab({
           title="Surgical Information"
           icon={<Stethoscope className="w-4 h-4" />}
         >
-          <div className="grid grid-cols-2 gap-x-5 gap-y-4">
+          <div className="grid grid-cols-2 gap-4">
             <DetailItem
               label="Procedure"
               value={surgeryCase.procedureName}
             />
-
             <DetailItem
               label="ICD Code"
               value={surgeryCase.icdCode || 'N/A'}
-              mono
             />
-
             <DetailItem
               label="Lead Surgeon"
               value={surgeonName}
             />
-
             <DetailItem
               label="Anaesthesia"
-              value={formatLabel(
-                surgeryCase.anesthesiaType
-              )}
+              value={formatLabel(surgeryCase.anesthesiaType)}
             />
-
             <DetailItem
               label="Theatre"
               value={surgeryCase.theatreId}
             />
-
             <DetailItem
-              label="Team Members"
-              value={`${teamCount} assigned`}
+              label="Urgency"
+              value={formatLabel(surgeryCase.urgency)}
             />
           </div>
         </SectionCard>
       </div>
-
-      <SectionCard
-        title="Surgical Team"
-        subtitle={`${teamCount} team member${
-          teamCount === 1 ? '' : 's'
-        } assigned to this case`}
-        icon={<Users className="w-4 h-4" />}
-      >
-        {surgeryCase.surgicalTeam &&
-        surgeryCase.surgicalTeam.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {surgeryCase.surgicalTeam.map(
-              (member, index) => {
-                const staff =
-                  typeof member.userId === 'object'
-                    ? member.userId
-                    : undefined;
-
-                const name = staff
-                  ? `${staff.firstName || ''} ${
-                      staff.lastName || ''
-                    }`.trim()
-                  : 'Assigned Staff';
-
-                return (
-                  <div
-                    key={`${member.role}-${index}`}
-                    className="flex items-center gap-3 p-3 rounded-2xl border border-slate-100 bg-slate-50/50"
-                  >
-                    <div className="w-9 h-9 rounded-xl bg-[#e8f5f3] text-[#1b7b68] flex items-center justify-center shrink-0">
-                      <UserRound className="w-4 h-4" />
-                    </div>
-
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-slate-700 truncate">
-                        {name || 'Assigned Staff'}
-                      </p>
-
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        {roleLabels[member.role] ||
-                          formatLabel(member.role)}
-                      </p>
-                    </div>
-
-                    <div className="ml-auto">
-                      {member.credentialVerified ? (
-                        <span className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                        </span>
-                      ) : (
-                        <span className="w-6 h-6 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-                          <AlertCircle className="w-3.5 h-3.5" />
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              }
-            )}
-          </div>
-        ) : (
-          <EmptyState
-            icon={<Users className="w-6 h-6" />}
-            text="No surgical team members assigned."
-          />
-        )}
-      </SectionCard>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <SectionCard
@@ -1035,7 +1179,7 @@ function OverviewTab({
                 </div>
 
                 <span
-                  className={`text-[10px] font-bold uppercase tracking-wide ${
+                  className={`text-[10px] font-bold ${
                     item.complete
                       ? 'text-emerald-600'
                       : 'text-amber-600'
@@ -1057,46 +1201,1279 @@ function OverviewTab({
             <ChecklistStage
               label="Sign In"
               completed={
-                surgeryCase.whoChecklist?.signIn
-                  ?.completed
+                surgeryCase.whoChecklist?.signIn?.completed
               }
             />
-
             <ChecklistStage
               label="Time Out"
               completed={
-                surgeryCase.whoChecklist?.timeOut
-                  ?.completed
+                surgeryCase.whoChecklist?.timeOut?.completed
               }
             />
-
             <ChecklistStage
               label="Sign Out"
               completed={
-                surgeryCase.whoChecklist?.signOut
-                  ?.completed
+                surgeryCase.whoChecklist?.signOut?.completed
               }
             />
           </div>
         </SectionCard>
       </div>
+    </div>
+  );
+}
+
+function PreOpTab({
+  form,
+  setForm,
+  onSave,
+  loading,
+}: {
+  form: PreOpAssessment;
+  setForm: React.Dispatch<React.SetStateAction<PreOpAssessment>>;
+  onSave: () => void;
+  loading: boolean;
+}) {
+  return (
+    <FormSection
+      title="Pre-Operative Assessment"
+      description="Complete surgical and anaesthetic readiness assessment."
+      onSave={onSave}
+      loading={loading}
+    >
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Field label="ASA Classification">
+          <select
+            value={form.asaClassification || ''}
+            onChange={(e) =>
+              setForm((p) => ({
+                ...p,
+                asaClassification: e.target.value,
+              }))
+            }
+            className={inputClass}
+          >
+            <option value="">Select ASA</option>
+            {['ASA_1', 'ASA_2', 'ASA_3', 'ASA_4', 'ASA_5', 'ASA_6', 'ASA_E'].map(
+              (x) => (
+                <option key={x} value={x}>
+                  {formatLabel(x)}
+                </option>
+              )
+            )}
+          </select>
+        </Field>
+
+        <Field label="Mallampati Score">
+          <select
+            value={form.mallampatiScore || ''}
+            onChange={(e) =>
+              setForm((p) => ({
+                ...p,
+                mallampatiScore: e.target.value,
+              }))
+            }
+            className={inputClass}
+          >
+            <option value="">Select Class</option>
+            <option value="CLASS_I">Class I</option>
+            <option value="CLASS_II">Class II</option>
+            <option value="CLASS_III">Class III</option>
+            <option value="CLASS_IV">Class IV</option>
+          </select>
+        </Field>
+
+        <Field label="VTE Risk Score">
+          <input
+            value={form.vteRiskScore || ''}
+            onChange={(e) =>
+              setForm((p) => ({
+                ...p,
+                vteRiskScore: e.target.value,
+              }))
+            }
+            className={inputClass}
+          />
+        </Field>
+
+        <Field label="Pregnancy Status">
+          <select
+            value={form.pregnancyStatus || 'NOT_APPLICABLE'}
+            onChange={(e) =>
+              setForm((p) => ({
+                ...p,
+                pregnancyStatus: e.target.value,
+              }))
+            }
+            className={inputClass}
+          >
+            <option value="NOT_APPLICABLE">Not Applicable</option>
+            <option value="NEGATIVE">Negative</option>
+            <option value="POSITIVE">Positive</option>
+          </select>
+        </Field>
+
+        <Field label="Pre-Op Systolic BP">
+          <input
+            type="number"
+            value={form.preOpVitals?.bpSystolic ?? ''}
+            onChange={(e) =>
+              setForm((p) => ({
+                ...p,
+                preOpVitals: {
+                  ...p.preOpVitals,
+                  bpSystolic: Number(e.target.value),
+                },
+              }))
+            }
+            className={inputClass}
+          />
+        </Field>
+
+        <Field label="Pre-Op Diastolic BP">
+          <input
+            type="number"
+            value={form.preOpVitals?.bpDiastolic ?? ''}
+            onChange={(e) =>
+              setForm((p) => ({
+                ...p,
+                preOpVitals: {
+                  ...p.preOpVitals,
+                  bpDiastolic: Number(e.target.value),
+                },
+              }))
+            }
+            className={inputClass}
+          />
+        </Field>
+
+        <Field label="Heart Rate">
+          <input
+            type="number"
+            value={form.preOpVitals?.heartRate ?? ''}
+            onChange={(e) =>
+              setForm((p) => ({
+                ...p,
+                preOpVitals: {
+                  ...p.preOpVitals,
+                  heartRate: Number(e.target.value),
+                },
+              }))
+            }
+            className={inputClass}
+          />
+        </Field>
+
+        <Field label="Temperature °C">
+          <input
+            type="number"
+            step="0.1"
+            value={form.preOpVitals?.tempCelsius ?? ''}
+            onChange={(e) =>
+              setForm((p) => ({
+                ...p,
+                preOpVitals: {
+                  ...p.preOpVitals,
+                  tempCelsius: Number(e.target.value),
+                },
+              }))
+            }
+            className={inputClass}
+          />
+        </Field>
+
+        <Field label="SpO₂ %">
+          <input
+            type="number"
+            value={form.preOpVitals?.spO2 ?? ''}
+            onChange={(e) =>
+              setForm((p) => ({
+                ...p,
+                preOpVitals: {
+                  ...p.preOpVitals,
+                  spO2: Number(e.target.value),
+                },
+              }))
+            }
+            className={inputClass}
+          />
+        </Field>
+      </div>
+
+      <Field label="Infection Screening Notes">
+        <textarea
+          rows={3}
+          value={form.infectionScreeningNotes || ''}
+          onChange={(e) =>
+            setForm((p) => ({
+              ...p,
+              infectionScreeningNotes: e.target.value,
+            }))
+          }
+          className={inputClass}
+        />
+      </Field>
+
+      <label className="flex items-center gap-3 p-4 rounded-2xl bg-emerald-50 border border-emerald-100">
+        <input
+          type="checkbox"
+          checked={form.clearedForSurgery === true}
+          onChange={(e) =>
+            setForm((p) => ({
+              ...p,
+              clearedForSurgery: e.target.checked,
+            }))
+          }
+          className="accent-[#1b7b68]"
+        />
+        <span className="text-xs font-bold text-emerald-700">
+          Patient cleared for surgery
+        </span>
+      </label>
+    </FormSection>
+  );
+}
+
+function ConsentTab({
+  form,
+  setForm,
+  onSave,
+  loading,
+}: {
+  form: Consent;
+  setForm: React.Dispatch<React.SetStateAction<Consent>>;
+  onSave: () => void;
+  loading: boolean;
+}) {
+  const toggle = (key: keyof Consent) =>
+    setForm((p) => ({
+      ...p,
+      [key]: !p[key],
+    }));
+
+  return (
+    <FormSection
+      title="Digital Surgical Consent"
+      description="Record required surgical and anaesthetic consents."
+      onSave={onSave}
+      loading={loading}
+    >
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {[
+          ['procedureConsent', 'Procedure Consent'],
+          ['anesthesiaConsent', 'Anaesthesia Consent'],
+          ['bloodTransfusionConsent', 'Blood Transfusion Consent'],
+          ['highRiskConsent', 'High-Risk Procedure Consent'],
+          ['signedByPatient', 'Signed By Patient'],
+        ].map(([key, label]) => (
+          <label
+            key={key}
+            className="flex items-center justify-between p-4 rounded-2xl border border-slate-100 bg-slate-50/50"
+          >
+            <span className="text-xs font-bold text-slate-700">
+              {label}
+            </span>
+
+            <input
+              type="checkbox"
+              checked={Boolean(form[key as keyof Consent])}
+              onChange={() => toggle(key as keyof Consent)}
+              className="w-4 h-4 accent-[#1b7b68]"
+            />
+          </label>
+        ))}
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        <Field label="Witness Name">
+          <input
+            value={form.witnessName || ''}
+            onChange={(e) =>
+              setForm((p) => ({
+                ...p,
+                witnessName: e.target.value,
+              }))
+            }
+            className={inputClass}
+          />
+        </Field>
+
+        <Field label="Digital Signature URL">
+          <input
+            value={form.digitalSignatureUrl || ''}
+            onChange={(e) =>
+              setForm((p) => ({
+                ...p,
+                digitalSignatureUrl: e.target.value,
+              }))
+            }
+            className={inputClass}
+          />
+        </Field>
+      </div>
+    </FormSection>
+  );
+}
+
+function TeamTab({ team }: { team: SurgicalTeamMember[] }) {
+  return (
+    <SectionCard
+      title="Surgical Team"
+      subtitle={`${team.length} team member${team.length === 1 ? '' : 's'} assigned`}
+      icon={<Users className="w-4 h-4" />}
+    >
+      {team.length ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {team.map((member, index) => {
+            const staff =
+              typeof member.userId === 'object'
+                ? member.userId
+                : undefined;
+
+            const name = staff
+              ? `${staff.firstName || ''} ${staff.lastName || ''}`.trim()
+              : 'Assigned Staff';
+
+            return (
+              <div
+                key={`${member.role}-${index}`}
+                className="flex items-center gap-3 p-4 rounded-2xl border border-slate-100 bg-slate-50/50"
+              >
+                <div className="w-10 h-10 rounded-xl bg-[#e8f5f3] text-[#1b7b68] flex items-center justify-center">
+                  <UserRound className="w-4 h-4" />
+                </div>
+
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-slate-700">
+                    {name}
+                  </p>
+
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    {roleLabels[member.role] ||
+                      formatLabel(member.role)}
+                  </p>
+                </div>
+
+                <span
+                  className={`ml-auto text-[9px] font-bold px-2 py-1 rounded-lg ${
+                    member.credentialVerified
+                      ? 'bg-emerald-50 text-emerald-600'
+                      : 'bg-amber-50 text-amber-600'
+                  }`}
+                >
+                  {member.credentialVerified
+                    ? 'Verified'
+                    : 'Unverified'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <EmptyState text="No surgical team members assigned." />
+      )}
+    </SectionCard>
+  );
+}
+
+function WHOTab({
+  checklist,
+  form,
+  setForm,
+  onSave,
+  loading,
+}: {
+  checklist?: SurgeryCase['whoChecklist'];
+  form: Record<string, any>;
+  setForm: React.Dispatch<React.SetStateAction<Record<string, any>>>;
+  onSave: (stage: 'signIn' | 'timeOut' | 'signOut') => void;
+  loading: boolean;
+}) {
+  const [stage, setStage] =
+    useState<'signIn' | 'timeOut' | 'signOut'>('signIn');
+
+  const current =
+    checklist?.[stage]?.completed === true;
+
+  const fields: Record<string, string[]> = {
+    signIn: [
+      'patientIdentityConfirmed',
+      'siteMarked',
+      'consentVerified',
+      'pulseOximeterOn',
+      'allergyKnown',
+      'airwayRisk',
+      'bloodLossRiskOver500ml',
+    ],
+    timeOut: [
+      'teamIntroduced',
+      'confirmPatientSiteProcedure',
+      'antibioticProphylaxisGiven',
+      'imagingDisplayed',
+    ],
+    signOut: [
+      'countsCorrect',
+      'specimenLabeled',
+    ],
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap gap-2">
+        {(['signIn', 'timeOut', 'signOut'] as const).map((item) => (
+          <button
+            key={item}
+            onClick={() => setStage(item)}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold ${
+              stage === item
+                ? 'bg-[#1b7b68] text-white'
+                : 'bg-slate-100 text-slate-500'
+            }`}
+          >
+            {formatLabel(item)}
+          </button>
+        ))}
+      </div>
+
+      <SectionCard
+        title={`${formatLabel(stage)} Checklist`}
+        subtitle={
+          current ? 'This stage has been completed.' : 'Complete all applicable checks.'
+        }
+        icon={<ShieldAlert className="w-4 h-4" />}
+      >
+        <div className="grid md:grid-cols-2 gap-3">
+          {fields[stage].map((field) => (
+            <label
+              key={field}
+              className="flex items-center justify-between p-4 rounded-2xl border border-slate-100 bg-slate-50/50"
+            >
+              <span className="text-xs font-semibold text-slate-700">
+                {formatLabel(field)}
+              </span>
+
+              <input
+                type="checkbox"
+                checked={Boolean(form[field])}
+                onChange={(e) =>
+                  setForm((p) => ({
+                    ...p,
+                    [field]: e.target.checked,
+                  }))
+                }
+                className="w-4 h-4 accent-[#1b7b68]"
+              />
+            </label>
+          ))}
+        </div>
+
+        {stage === 'signIn' && (
+          <Field label="Additional Notes">
+            <textarea
+              rows={3}
+              value={form.notes || ''}
+              onChange={(e) =>
+                setForm((p) => ({
+                  ...p,
+                  notes: e.target.value,
+                }))
+              }
+              className={inputClass}
+            />
+          </Field>
+        )}
+
+        {stage === 'timeOut' && (
+          <div className="grid md:grid-cols-3 gap-4">
+            <Field label="Surgeon's Critical Concerns">
+              <textarea
+                rows={3}
+                value={form.criticalConcernsSurgeon || ''}
+                onChange={(e) =>
+                  setForm((p) => ({
+                    ...p,
+                    criticalConcernsSurgeon: e.target.value,
+                  }))
+                }
+                className={inputClass}
+              />
+            </Field>
+
+            <Field label="Anaesthetist's Critical Concerns">
+              <textarea
+                rows={3}
+                value={form.criticalConcernsAnaesthetist || ''}
+                onChange={(e) =>
+                  setForm((p) => ({
+                    ...p,
+                    criticalConcernsAnaesthetist: e.target.value,
+                  }))
+                }
+                className={inputClass}
+              />
+            </Field>
+
+            <Field label="Nursing Critical Concerns">
+              <textarea
+                rows={3}
+                value={form.criticalConcernsNursing || ''}
+                onChange={(e) =>
+                  setForm((p) => ({
+                    ...p,
+                    criticalConcernsNursing: e.target.value,
+                  }))
+                }
+                className={inputClass}
+              />
+            </Field>
+          </div>
+        )}
+
+        {stage === 'signOut' && (
+          <div className="space-y-4">
+            <Field label="Procedure Performed">
+              <input
+                value={form.procedureRecorded || ''}
+                onChange={(e) =>
+                  setForm((p) => ({
+                    ...p,
+                    procedureRecorded: e.target.value,
+                  }))
+                }
+                className={inputClass}
+              />
+            </Field>
+
+            <Field label="Equipment Issues">
+              <textarea
+                rows={3}
+                value={form.equipmentIssuesNoted || ''}
+                onChange={(e) =>
+                  setForm((p) => ({
+                    ...p,
+                    equipmentIssuesNoted: e.target.value,
+                  }))
+                }
+                className={inputClass}
+              />
+            </Field>
+
+            <Field label="Post-Operative Recovery Plan">
+              <textarea
+                rows={3}
+                value={form.postOpRecoveryPlan || ''}
+                onChange={(e) =>
+                  setForm((p) => ({
+                    ...p,
+                    postOpRecoveryPlan: e.target.value,
+                  }))
+                }
+                className={inputClass}
+              />
+            </Field>
+          </div>
+        )}
+
+        <div className="flex justify-end pt-3">
+          <button
+            disabled={loading}
+            onClick={() => onSave(stage)}
+            className="px-5 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold disabled:opacity-50"
+          >
+            {loading ? 'Saving...' : `Complete ${formatLabel(stage)}`}
+          </button>
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+
+function EquipmentTab({
+  equipment,
+  setEquipment,
+  consumables,
+  setConsumables,
+  onSave,
+  loading,
+}: {
+  equipment: EquipmentItem[];
+  setEquipment: React.Dispatch<React.SetStateAction<EquipmentItem[]>>;
+  consumables: ConsumableItem[];
+  setConsumables: React.Dispatch<React.SetStateAction<ConsumableItem[]>>;
+  onSave: () => void;
+  loading: boolean;
+}) {
+  const addEquipment = () =>
+    setEquipment((p) => [
+      ...p,
+      {
+        itemName: '',
+        sterileStatus: 'STERILE',
+        maintenanceOk: true,
+        notes: '',
+      },
+    ]);
+
+  const addConsumable = () =>
+    setConsumables((p) => [
+      ...p,
+      {
+        itemName: '',
+        quantityUsed: 1,
+        unitCost: 0,
+        lotNumber: '',
+      },
+    ]);
+
+  return (
+    <div className="space-y-5">
+      <SectionCard
+        title="Equipment & Instruments"
+        icon={<Hospital className="w-4 h-4" />}
+      >
+        <div className="space-y-3">
+          {equipment.map((item, index) => (
+            <div
+              key={index}
+              className="grid md:grid-cols-4 gap-3 p-3 rounded-2xl bg-slate-50/60 border border-slate-100"
+            >
+              <input
+                placeholder="Equipment name"
+                value={item.itemName}
+                onChange={(e) =>
+                  setEquipment((p) =>
+                    p.map((x, i) =>
+                      i === index
+                        ? { ...x, itemName: e.target.value }
+                        : x
+                    )
+                  )
+                }
+                className={inputClass}
+              />
+
+              <select
+                value={item.sterileStatus}
+                onChange={(e) =>
+                  setEquipment((p) =>
+                    p.map((x, i) =>
+                      i === index
+                        ? { ...x, sterileStatus: e.target.value }
+                        : x
+                    )
+                  )
+                }
+                className={inputClass}
+              >
+                <option value="STERILE">Sterile</option>
+                <option value="PENDING">Pending</option>
+                <option value="EXPIRED">Expired</option>
+              </select>
+
+              <label className="flex items-center gap-2 px-3">
+                <input
+                  type="checkbox"
+                  checked={item.maintenanceOk}
+                  onChange={(e) =>
+                    setEquipment((p) =>
+                      p.map((x, i) =>
+                        i === index
+                          ? {
+                              ...x,
+                              maintenanceOk: e.target.checked,
+                            }
+                          : x
+                      )
+                    )
+                  }
+                  className="accent-[#1b7b68]"
+                />
+                <span className="text-xs font-semibold">
+                  Maintenance OK
+                </span>
+              </label>
+
+              <input
+                placeholder="Notes"
+                value={item.notes || ''}
+                onChange={(e) =>
+                  setEquipment((p) =>
+                    p.map((x, i) =>
+                      i === index
+                        ? { ...x, notes: e.target.value }
+                        : x
+                    )
+                  )
+                }
+                className={inputClass}
+              />
+            </div>
+          ))}
+
+          <button
+            onClick={addEquipment}
+            className="flex items-center gap-2 text-xs font-bold text-[#1b7b68]"
+          >
+            <Plus className="w-4 h-4" />
+            Add Equipment
+          </button>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Consumables"
+        icon={<Plus className="w-4 h-4" />}
+      >
+        <div className="space-y-3">
+          {consumables.map((item, index) => (
+            <div
+              key={index}
+              className="grid md:grid-cols-4 gap-3 p-3 rounded-2xl bg-slate-50/60 border border-slate-100"
+            >
+              <input
+                placeholder="Item name"
+                value={item.itemName}
+                onChange={(e) =>
+                  setConsumables((p) =>
+                    p.map((x, i) =>
+                      i === index
+                        ? { ...x, itemName: e.target.value }
+                        : x
+                    )
+                  )
+                }
+                className={inputClass}
+              />
+
+              <input
+                type="number"
+                placeholder="Quantity"
+                value={item.quantityUsed}
+                onChange={(e) =>
+                  setConsumables((p) =>
+                    p.map((x, i) =>
+                      i === index
+                        ? {
+                            ...x,
+                            quantityUsed: Number(e.target.value),
+                          }
+                        : x
+                    )
+                  )
+                }
+                className={inputClass}
+              />
+
+              <input
+                type="number"
+                placeholder="Unit cost"
+                value={item.unitCost || ''}
+                onChange={(e) =>
+                  setConsumables((p) =>
+                    p.map((x, i) =>
+                      i === index
+                        ? {
+                            ...x,
+                            unitCost: Number(e.target.value),
+                          }
+                        : x
+                    )
+                  )
+                }
+                className={inputClass}
+              />
+
+              <input
+                placeholder="Lot number"
+                value={item.lotNumber || ''}
+                onChange={(e) =>
+                  setConsumables((p) =>
+                    p.map((x, i) =>
+                      i === index
+                        ? { ...x, lotNumber: e.target.value }
+                        : x
+                    )
+                  )
+                }
+                className={inputClass}
+              />
+            </div>
+          ))}
+
+          <button
+            onClick={addConsumable}
+            className="flex items-center gap-2 text-xs font-bold text-[#1b7b68]"
+          >
+            <Plus className="w-4 h-4" />
+            Add Consumable
+          </button>
+        </div>
+      </SectionCard>
+
+      <div className="flex justify-end">
+        <button
+          onClick={onSave}
+          disabled={loading}
+          className="px-5 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold disabled:opacity-50"
+        >
+          {loading ? 'Saving...' : 'Save Equipment & Consumables'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function IntraoperativeTab({
+  form,
+  setForm,
+  vitals,
+  vitalsForm,
+  setVitalsForm,
+  onAddVitals,
+  onSave,
+  loading,
+}: {
+  form: IntraopDocs;
+  setForm: React.Dispatch<React.SetStateAction<IntraopDocs>>;
+  vitals: VitalsLog[];
+  vitalsForm: Record<string, string>;
+  setVitalsForm: React.Dispatch<
+    React.SetStateAction<typeof vitalsForm>
+  >;
+  onAddVitals: () => void;
+  onSave: () => void;
+  loading: boolean;
+}) {
+  const update = (key: keyof IntraopDocs, value: any) =>
+    setForm((p) => ({
+      ...p,
+      [key]: value,
+    }));
+
+  return (
+    <div className="space-y-5">
+      <SectionCard
+        title="Intraoperative Documentation"
+        icon={<Activity className="w-4 h-4" />}
+      >
+        <div className="grid md:grid-cols-2 gap-4">
+          {[
+            ['operativeDiagnosis', 'Operative Diagnosis'],
+            ['postOperativeDiagnosis', 'Post-Operative Diagnosis'],
+            ['surgicalFindings', 'Surgical Findings'],
+            ['techniqueNotes', 'Operative Technique'],
+            ['bloodProductsAdministered', 'Blood Products'],
+            ['drainsInserted', 'Drains Inserted'],
+            ['implantsUsed', 'Implants Used'],
+            ['specimensCollected', 'Specimens Collected'],
+            ['complications', 'Complications'],
+          ].map(([key, label]) => (
+            <Field key={key} label={label}>
+              <textarea
+                rows={3}
+                value={(form as any)[key] || ''}
+                onChange={(e) => update(key as keyof IntraopDocs, e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+          ))}
+
+          <Field label="Estimated Blood Loss (mL)">
+            <input
+              type="number"
+              value={form.eblMl ?? ''}
+              onChange={(e) =>
+                update('eblMl', Number(e.target.value))
+              }
+              className={inputClass}
+            />
+          </Field>
+
+          <Field label="Fluids Administered (mL)">
+            <input
+              type="number"
+              value={form.fluidsAdministeredMl ?? ''}
+              onChange={(e) =>
+                update(
+                  'fluidsAdministeredMl',
+                  Number(e.target.value)
+                )
+              }
+              className={inputClass}
+            />
+          </Field>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Intraoperative Monitoring"
+        subtitle="Time-series vital signs"
+        icon={<Activity className="w-4 h-4" />}
+      >
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            ['bpSystolic', 'SBP'],
+            ['bpDiastolic', 'DBP'],
+            ['heartRate', 'HR'],
+            ['spO2', 'SpO₂'],
+            ['respRate', 'RR'],
+            ['tempCelsius', 'Temp °C'],
+            ['etCO2', 'EtCO₂'],
+          ].map(([key, label]) => (
+            <Field key={key} label={label}>
+              <input
+                type="number"
+                value={vitalsForm[key] || ''}
+                onChange={(e) =>
+                  setVitalsForm((p) => ({
+                    ...p,
+                    [key]: e.target.value,
+                  }))
+                }
+                className={inputClass}
+              />
+            </Field>
+          ))}
+
+          <Field label="ECG Rhythm">
+            <input
+              value={vitalsForm.ecgRhythm || ''}
+              onChange={(e) =>
+                setVitalsForm((p) => ({
+                  ...p,
+                  ecgRhythm: e.target.value,
+                }))
+              }
+              className={inputClass}
+            />
+          </Field>
+        </div>
+
+        <Field label="Monitoring Note">
+          <input
+            value={vitalsForm.notes || ''}
+            onChange={(e) =>
+              setVitalsForm((p) => ({
+                ...p,
+                notes: e.target.value,
+              }))
+            }
+            className={inputClass}
+          />
+        </Field>
+
+        <div className="flex justify-end">
+          <button
+            onClick={onAddVitals}
+            disabled={loading}
+            className="px-4 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold"
+          >
+            Add Monitoring Reading
+          </button>
+        </div>
+
+        <div className="overflow-x-auto mt-5">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-slate-50 text-[10px] uppercase text-slate-400">
+                <th className="p-3 text-left">Time</th>
+                <th className="p-3 text-left">BP</th>
+                <th className="p-3 text-left">HR</th>
+                <th className="p-3 text-left">SpO₂</th>
+                <th className="p-3 text-left">RR</th>
+                <th className="p-3 text-left">Temp</th>
+                <th className="p-3 text-left">EtCO₂</th>
+                <th className="p-3 text-left">ECG</th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-slate-100">
+              {vitals
+                .slice()
+                .reverse()
+                .map((vital, index) => (
+                  <tr key={index}>
+                    <td className="p-3">
+                      {new Date(vital.timestamp).toLocaleTimeString()}
+                    </td>
+                    <td className="p-3">
+                      {vital.bpSystolic ?? '--'}/
+                      {vital.bpDiastolic ?? '--'}
+                    </td>
+                    <td className="p-3">
+                      {vital.heartRate ?? '--'}
+                    </td>
+                    <td className="p-3">
+                      {vital.spO2 ?? '--'}%
+                    </td>
+                    <td className="p-3">
+                      {vital.respRate ?? '--'}
+                    </td>
+                    <td className="p-3">
+                      {vital.tempCelsius ?? '--'}
+                    </td>
+                    <td className="p-3">
+                      {vital.etCO2 ?? '--'}
+                    </td>
+                    <td className="p-3">
+                      {vital.ecgRhythm || '--'}
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex justify-end pt-4">
+          <button
+            onClick={onSave}
+            disabled={loading}
+            className="px-5 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold"
+          >
+            {loading ? 'Saving...' : 'Save Operative Documentation'}
+          </button>
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+
+function AnaesthesiaTab({
+  notes,
+  setNotes,
+  vitals,
+  anesthesiaType,
+}: {
+  notes: string;
+  setNotes: React.Dispatch<React.SetStateAction<string>>;
+  vitals: VitalsLog[];
+  anesthesiaType: AnesthesiaType;
+}) {
+  return (
+    <div className="space-y-5">
+      <SectionCard
+        title="Anaesthesia Management"
+        icon={<Activity className="w-4 h-4" />}
+      >
+        <div className="grid md:grid-cols-3 gap-4">
+          <DetailItem
+            label="Anaesthesia Type"
+            value={formatLabel(anesthesiaType)}
+          />
+
+          <DetailItem
+            label="Monitoring Readings"
+            value={`${vitals.length} recorded`}
+          />
+
+          <DetailItem
+            label="Latest Reading"
+            value={
+              vitals.length
+                ? new Date(
+                    vitals[vitals.length - 1].timestamp
+                  ).toLocaleTimeString()
+                : 'No readings'
+            }
+          />
+        </div>
+
+        <Field label="Anaesthesia Record / Notes">
+          <textarea
+            rows={8}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className={inputClass}
+            placeholder="Record anaesthetic drugs, airway management, monitoring events, complications, fluid balance and other anaesthesia notes..."
+          />
+        </Field>
+
+        <p className="text-[10px] text-slate-400">
+          Anaesthesia notes are saved when the surgical case is completed.
+        </p>
+      </SectionCard>
+
+      <SectionCard
+        title="Monitoring Timeline"
+        icon={<Activity className="w-4 h-4" />}
+      >
+        {vitals.length ? (
+          <div className="space-y-2">
+            {vitals
+              .slice()
+              .reverse()
+              .map((vital, index) => (
+                <div
+                  key={index}
+                  className="flex items-center gap-4 p-3 rounded-2xl bg-slate-50/60 border border-slate-100"
+                >
+                  <div className="w-9 h-9 rounded-xl bg-[#e8f5f3] text-[#1b7b68] flex items-center justify-center">
+                    <Clock3 className="w-4 h-4" />
+                  </div>
+
+                  <div className="text-xs">
+                    <p className="font-bold text-slate-700">
+                      {new Date(
+                        vital.timestamp
+                      ).toLocaleTimeString()}
+                    </p>
+
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      BP {vital.bpSystolic ?? '--'}/
+                      {vital.bpDiastolic ?? '--'} • HR{' '}
+                      {vital.heartRate ?? '--'} • SpO₂{' '}
+                      {vital.spO2 ?? '--'}% • RR{' '}
+                      {vital.respRate ?? '--'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+          </div>
+        ) : (
+          <EmptyState text="No intraoperative monitoring readings recorded." />
+        )}
+      </SectionCard>
+    </div>
+  );
+}
+
+function PostOpTab({
+  notes,
+  setNotes,
+  surgeryCase,
+  onComplete,
+  loading,
+}: {
+  notes: string;
+  setNotes: React.Dispatch<React.SetStateAction<string>>;
+  surgeryCase: SurgeryCase;
+  onComplete: () => void;
+  loading: boolean;
+}) {
+  return (
+    <SectionCard
+      title="Post-Operative Record"
+      subtitle="Recovery planning and final surgical documentation."
+      icon={<CheckCircle2 className="w-4 h-4" />}
+    >
+      <div className="grid md:grid-cols-3 gap-4">
+        <DetailItem
+          label="Procedure"
+          value={surgeryCase.procedureName}
+        />
+
+        <DetailItem
+          label="Actual Start"
+          value={
+            surgeryCase.actualStartTime
+              ? new Date(
+                  surgeryCase.actualStartTime
+                ).toLocaleString()
+              : 'Not started'
+          }
+        />
+
+        <DetailItem
+          label="Actual End"
+          value={
+            surgeryCase.actualEndTime
+              ? new Date(
+                  surgeryCase.actualEndTime
+                ).toLocaleString()
+              : 'Not completed'
+          }
+        />
+      </div>
+
+      <Field label="Post-Operative Notes">
+        <textarea
+          rows={10}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          className={inputClass}
+          placeholder="Record post-operative findings, recovery plan, drains, complications, instructions and follow-up..."
+        />
+      </Field>
+
+      {surgeryCase.status === SurgeryStatus.IN_PROGRESS && (
+        <div className="flex justify-end">
+          <button
+            disabled={loading}
+            onClick={onComplete}
+            className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold disabled:opacity-50"
+          >
+            {loading ? 'Completing...' : 'Complete Surgical Case'}
+          </button>
+        </div>
+      )}
 
       {surgeryCase.cancellationReason && (
         <div className="p-4 rounded-2xl bg-rose-50 border border-rose-100">
-          <div className="flex items-center gap-2 text-rose-700">
-            <AlertCircle className="w-4 h-4" />
-
-            <span className="text-xs font-bold">
-              Cancellation Reason
-            </span>
-          </div>
-
+          <p className="text-xs font-bold text-rose-700">
+            Cancellation Reason
+          </p>
           <p className="text-xs text-rose-600 mt-2">
             {surgeryCase.cancellationReason}
           </p>
         </div>
       )}
+    </SectionCard>
+  );
+}
+
+function FormSection({
+  title,
+  description,
+  children,
+  onSave,
+  loading,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+  onSave: () => void;
+  loading: boolean;
+}) {
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-sm font-extrabold text-slate-800">
+          {title}
+        </h2>
+        <p className="text-[11px] text-slate-400 mt-0.5">
+          {description}
+        </p>
+      </div>
+
+      <div className="space-y-4">{children}</div>
+
+      <div className="flex justify-end pt-3 border-t border-slate-100">
+        <button
+          disabled={loading}
+          onClick={onSave}
+          className="px-5 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold disabled:opacity-50"
+        >
+          {loading ? 'Saving...' : 'Save Changes'}
+        </button>
+      </div>
     </div>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+        {label}
+      </span>
+      {children}
+    </label>
   );
 }
 
@@ -1253,9 +2630,7 @@ function ChecklistStage({
 
       <p
         className={`text-[9px] font-bold uppercase mt-0.5 ${
-          completed
-            ? 'text-emerald-600'
-            : 'text-slate-400'
+          completed ? 'text-emerald-600' : 'text-slate-400'
         }`}
       >
         {completed ? 'Complete' : 'Pending'}
@@ -1264,50 +2639,16 @@ function ChecklistStage({
   );
 }
 
-function EmptyState({
-  icon,
-  text,
-}: {
-  icon: React.ReactNode;
-  text: string;
-}) {
+function EmptyState({ text }: { text: string }) {
   return (
     <div className="py-10 text-center">
       <div className="w-11 h-11 rounded-2xl bg-slate-100 text-slate-300 mx-auto flex items-center justify-center">
-        {icon}
+        <Users className="w-5 h-5" />
       </div>
 
       <p className="text-xs font-semibold text-slate-500 mt-3">
         {text}
       </p>
-    </div>
-  );
-}
-
-function PlaceholderTab({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="py-16 text-center">
-      <div className="w-12 h-12 rounded-2xl bg-[#e8f5f3] text-[#1b7b68] mx-auto flex items-center justify-center">
-        <Activity className="w-5 h-5" />
-      </div>
-
-      <h3 className="text-sm font-extrabold text-slate-800 mt-4">
-        {title}
-      </h3>
-
-      <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-        {description}
-      </p>
-
-      <span className="inline-flex mt-4 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
-        Coming next
-      </span>
     </div>
   );
 }
@@ -1319,48 +2660,7 @@ function formatLabel(value?: string) {
     .toLowerCase()
     .split('_')
     .map(
-      (word) =>
-        word.charAt(0).toUpperCase() + word.slice(1)
+      (word) => word.charAt(0).toUpperCase() + word.slice(1)
     )
     .join(' ');
-}
-
-function getTabTitle(tab: Tab) {
-  const titles: Record<Tab, string> = {
-    overview: 'Overview',
-    'pre-op': 'Pre-Operative Assessment',
-    consent: 'Digital Surgical Consent',
-    team: 'Surgical Team',
-    who: 'WHO Surgical Safety Checklist',
-    equipment: 'Equipment & Consumables',
-    intraoperative: 'Intraoperative Documentation',
-    anaesthesia: 'Anaesthesia & Monitoring',
-    'post-op': 'Post-Operative Record',
-  };
-
-  return titles[tab];
-}
-
-function getTabDescription(tab: Tab) {
-  const descriptions: Record<Tab, string> = {
-    overview: 'Clinical and operational summary.',
-    'pre-op':
-      'Complete the patient assessment and surgical readiness requirements.',
-    consent:
-      'Manage procedure, anaesthesia and transfusion consent.',
-    team:
-      'Manage the surgical team and credential verification.',
-    who:
-      'Complete the three stages of the WHO Surgical Safety Checklist.',
-    equipment:
-      'Manage equipment, instruments, consumables and theatre readiness.',
-    intraoperative:
-      'Document operative findings, procedure details and intraoperative events.',
-    anaesthesia:
-      'Record anaesthetic management and intraoperative monitoring.',
-    'post-op':
-      'Review recovery planning and final post-operative documentation.',
-  };
-
-  return descriptions[tab];
 }
