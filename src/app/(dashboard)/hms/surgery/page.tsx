@@ -191,6 +191,15 @@ function getStaffName(person?: Staff | null) {
     : 'Unnamed Staff';
 }
 
+function resolveStaffFromValue(
+  value: Staff | string | undefined,
+  directory: Record<string, Staff>
+): Staff | undefined {
+  if (!value) return undefined;
+  if (typeof value === 'object') return value;
+  return directory[value];
+}
+
 function formatLabel(value?: string) {
   if (!value) return 'N/A';
 
@@ -240,6 +249,7 @@ export default function SurgeryPage() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
 
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [staffDirectory, setStaffDirectory] = useState<Record<string, Staff>>({});
   const [staffSearch, setStaffSearch] = useState('');
   const [loadingStaff, setLoadingStaff] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
@@ -258,6 +268,38 @@ export default function SurgeryPage() {
       setPatients([]);
     } finally {
       setLoadingPatients(false);
+    }
+  }, []);
+
+  const fetchStaffDirectory = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/staff?isActive=true`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.message || 'Failed to load staff directory.');
+      }
+
+      const rows = Array.isArray(json?.data)
+        ? json.data
+        : Array.isArray(json)
+          ? json
+          : [];
+
+      const directory = rows.reduce((acc: Record<string, Staff>, person: Staff) => {
+        if (person?._id) acc[person._id] = person;
+        return acc;
+      }, {});
+
+      setStaffDirectory(directory);
+    } catch (error) {
+      console.error('Failed to load staff directory:', error);
+      setStaffDirectory({});
     }
   }, []);
 
@@ -297,6 +339,10 @@ export default function SurgeryPage() {
       setLoadingStaff(false);
     }
   }, []);
+
+  useEffect(() => {
+    fetchStaffDirectory();
+  }, [fetchStaffDirectory]);
 
   useEffect(() => {
     if (!isScheduleOpen) return;
@@ -668,13 +714,17 @@ export default function SurgeryPage() {
   };
 
   const getSurgeonName = (surgery: SurgeryCase) => {
-    if (typeof surgery.leadSurgeonId === 'string') {
+    const resolved = resolveStaffFromValue(
+      surgery.leadSurgeonId,
+      staffDirectory
+    );
+
+    if (!resolved) {
       return 'Assigned Surgeon';
     }
 
-    return `Dr. ${surgery.leadSurgeonId?.firstName || ''} ${
-      surgery.leadSurgeonId?.lastName || ''
-    }`.trim();
+    const fullName = `${resolved.firstName || ''} ${resolved.lastName || ''}`.trim();
+    return fullName || 'Assigned Surgeon';
   };
 
   return (

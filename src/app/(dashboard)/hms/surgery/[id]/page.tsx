@@ -273,6 +273,21 @@ const roleLabels: Record<string, string> = {
   [SurgicalRole.THEATRE_TECHNICIAN]: 'Theatre Technician',
 };
 
+const getStaffDisplayName = (person?: Staff | null) => {
+  if (!person) return 'Assigned Staff';
+  const fullName = `${person.firstName || ''} ${person.lastName || ''}`.trim();
+  return fullName || 'Assigned Staff';
+};
+
+const resolveStaffFromValue = (
+  value: Staff | string | undefined,
+  directory: Record<string, Staff>
+): Staff | undefined => {
+  if (!value) return undefined;
+  if (typeof value === 'object') return value;
+  return directory[value];
+};
+
 const inputClass =
   'w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/20 focus:border-[#1b7b68]';
 
@@ -426,10 +441,12 @@ export default function SurgeryCaseDetailsPage() {
     ? `${patient.firstName || 'Unknown'} ${patient.lastName || 'Patient'}`
     : 'Patient';
 
-  const surgeonName = leadSurgeon
-    ? `Dr. ${leadSurgeon.firstName || ''} ${
-        leadSurgeon.lastName || ''
-      }`.trim()
+  const resolvedLeadSurgeon =
+    resolveStaffFromValue(surgeryCase?.leadSurgeonId, staffDirectory) ||
+    leadSurgeon;
+
+  const surgeonName = resolvedLeadSurgeon
+    ? `${resolvedLeadSurgeon.firstName || ''} ${resolvedLeadSurgeon.lastName || ''}`.trim() || 'Assigned Surgeon'
     : 'Assigned Surgeon';
 
   const request = async (
