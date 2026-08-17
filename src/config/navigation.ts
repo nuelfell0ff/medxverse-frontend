@@ -12,6 +12,7 @@ import {
   Settings,
   UserCog, // Imported for Staff Management
   Stethoscope, // Added for Outpatient
+  Syringe, // Added for Surgery & OT
 } from 'lucide-react';
 import { AccountType } from '@/types/auth.types';
 
@@ -27,6 +28,7 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
     { label: 'Hospital Overview', href: '/hms', icon: Building2 },
     { label: 'Patients EMR', href: '/hms/patients', icon: Users, moduleKey: 'patients' },
     { label: 'Outpatient Clinic', href: '/hms/outpatients', icon: Stethoscope, moduleKey: 'outpatient' },
+    { label: 'Surgery & OT', href: '/hms/surgery', icon: Syringe, moduleKey: 'surgery' },
     { label: 'Appointments', href: '/hms/appointments', icon: Calendar, moduleKey: 'appointments' },
     { label: 'Staff Management', href: '/hms/staff', icon: UserCog, moduleKey: 'staff' },
     { label: 'Pharmacy', href: '/hms/pharmacy', icon: Pill, moduleKey: 'pharmacy' },
@@ -42,3 +44,4 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
     { label: 'Settings', href: '/hmo/settings', icon: Settings },
   ],
 };
+    
