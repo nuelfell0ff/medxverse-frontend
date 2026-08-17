@@ -176,6 +176,25 @@ const urgencyConfig: Record<
   },
 };
 
+function getStaffName(person?: Staff | null) {
+  return person
+    ? `${person.firstName || ''} ${person.lastName || ''}`.trim() ||
+        'Unnamed Staff'
+    : 'Unnamed Staff';
+}
+
+function formatLabel(value?: string) {
+  if (!value) return 'N/A';
+
+  return value
+    .toLowerCase()
+    .split('_')
+    .map(
+      (word) => word.charAt(0).toUpperCase() + word.slice(1)
+    )
+    .join(' ');
+}
+
 export default function SurgeryPage() {
   const [cases, setCases] = useState<SurgeryCase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1150,6 +1169,23 @@ export default function SurgeryPage() {
           setForm={setScheduleForm}
           onClose={() => setIsScheduleOpen(false)}
           onSubmit={handleScheduleSurgery}
+          patients={patients}
+          patientSearch={patientSearch}
+          setPatientSearch={setPatientSearch}
+          loadingPatients={loadingPatients}
+          selectedPatient={selectedPatient}
+          setSelectedPatient={setSelectedPatient}
+          setPatients={setPatients}
+          staff={staff}
+          staffSearch={staffSearch}
+          setStaffSearch={setStaffSearch}
+          loadingStaff={loadingStaff}
+          selectedStaff={selectedStaff}
+          setSelectedStaff={setSelectedStaff}
+          surgicalTeam={surgicalTeam}
+          addStaffToTeam={addStaffToTeam}
+          removeStaffFromTeam={removeStaffFromTeam}
+          updateTeamRole={updateTeamRole}
         />
       )}
     </div>

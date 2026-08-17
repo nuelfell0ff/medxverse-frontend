@@ -269,6 +269,18 @@ const roleLabels: Record<string, string> = {
 const inputClass =
   'w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/20 focus:border-[#1b7b68]';
 
+type VitalsFormState = Record<string, string> & {
+  bpSystolic: string;
+  bpDiastolic: string;
+  heartRate: string;
+  spO2: string;
+  respRate: string;
+  tempCelsius: string;
+  etCO2: string;
+  ecgRhythm: string;
+  notes: string;
+};
+
 export default function SurgeryCaseDetailsPage() {
   const router = useRouter();
   const params = useParams();
@@ -284,7 +296,7 @@ export default function SurgeryCaseDetailsPage() {
   const [preOpForm, setPreOpForm] = useState<PreOpAssessment>({});
   const [consentForm, setConsentForm] = useState<Consent>({});
   const [whoForm, setWhoForm] = useState<Record<string, any>>({});
-  const [vitalsForm, setVitalsForm] = useState({
+  const [vitalsForm, setVitalsForm] = useState<VitalsFormState>({
     bpSystolic: '',
     bpDiastolic: '',
     heartRate: '',
@@ -2080,9 +2092,9 @@ function IntraoperativeTab({
   form: IntraopDocs;
   setForm: React.Dispatch<React.SetStateAction<IntraopDocs>>;
   vitals: VitalsLog[];
-  vitalsForm: Record<string, string>;
+  vitalsForm: VitalsFormState;
   setVitalsForm: React.Dispatch<
-    React.SetStateAction<typeof vitalsForm>
+    React.SetStateAction<VitalsFormState>
   >;
   onAddVitals: () => void;
   onSave: () => void;
