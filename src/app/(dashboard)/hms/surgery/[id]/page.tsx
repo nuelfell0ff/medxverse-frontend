@@ -398,7 +398,7 @@ export default function SurgeryCaseDetailsPage() {
 
   const fetchStaff = useCallback(async () => {
     try {
-      const res = await StaffApiService.getStaff({ isActive: true });
+      const res = await StaffApiService.getStaff();
       setStaff(res.data || []);
     } catch (error) {
       console.error('Failed to load staff directory:', error);
@@ -1639,17 +1639,6 @@ function TeamTab({
   leadSurgeonId?: string;
   onVerifyMember: (userId?: string) => void;
 }) {
-  // Debug: log staff resolution info
-  if (typeof window !== 'undefined') {
-    console.log('=== SURGICAL TEAM DEBUG ===');
-    console.log('Team members:', team.map(m => ({ userId: m.userId, role: m.role })));
-    console.log('Available staff:', staff.map(s => ({ _id: s._id, name: `${s.firstName} ${s.lastName}` })));
-    team.forEach((member, i) => {
-      const resolved = resolveStaffMember(member.userId, staff);
-      console.log(`Team[${i}]:`, { userId: member.userId, resolved: resolved ? `${resolved.firstName} ${resolved.lastName}` : 'NOT FOUND' });
-    });
-  }
-
   return (
     <SectionCard
       title="Surgical Team"
