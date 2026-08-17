@@ -285,6 +285,22 @@ const getPersonName = (person?: Patient | Staff | null) =>
     ? `${person.firstName || ''} ${person.lastName || ''}`.trim() || 'Unnamed Person'
     : '';
 
+const resolveStaffMember = (
+  value: Staff | string | undefined,
+  staffList: Staff[]
+): Staff | undefined => {
+  if (!value) return undefined;
+
+  if (typeof value === 'object') {
+    const person = value as Staff;
+    return person?._id || person?.firstName || person?.lastName
+      ? person
+      : undefined;
+  }
+
+  return staffList.find((person) => String(person._id) === String(value));
+};
+
 const inputClass =
   'w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/20 focus:border-[#1b7b68]';
 
@@ -420,9 +436,7 @@ export default function SurgeryCaseDetailsPage() {
     : 'Patient';
 
   const resolvedLeadSurgeon =
-    (typeof surgeryCase?.leadSurgeonId === 'object'
-      ? surgeryCase.leadSurgeonId
-      : staff.find((person) => person._id === surgeryCase?.leadSurgeonId)) ||
+    resolveStaffMember(surgeryCase?.leadSurgeonId, staff) ||
     leadSurgeon;
 
   const surgeonName = resolvedLeadSurgeon
@@ -1600,10 +1614,7 @@ function TeamTab({
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {team.map((member, index) => {
-              const resolvedStaff =
-                typeof member.userId === 'object'
-                  ? member.userId
-                  : staff.find((person) => person._id === member.userId);
+              const resolvedStaff = resolveStaffMember(member.userId, staff);
 
               const name = getPersonName(resolvedStaff) || 'Assigned Staff';
 
