@@ -1,68 +1,116 @@
-"use client";
+'use client';
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState } from 'react';
 import {
-  Syringe,
   Calendar,
-  Clock,
   Users,
-  CheckCircle2,
-  Activity,
+  ClipboardCheck,
   FileText,
-  AlertTriangle,
+  Pill,
+  Wrench,
+  Package,
+  ShieldAlert,
+  Activity,
+  Syringe,
+  HeartPulse,
   Plus,
   Search,
-  Filter,
-  X,
-  Eye,
-  ChevronLeft,
-  ChevronRight,
-  ShieldAlert,
-  Pill,
-  Scissors,
-  HeartPulse,
+  CheckCircle2,
+  Clock,
+  AlertTriangle,
   UserCheck,
-  Thermometer,
-  ShieldCheck,
+  ChevronRight,
+  Eye,
+  Check,
+  X,
   Building2,
-} from "lucide-react";
+  Stethoscope,
+  FileCheck,
+  Thermometer,
+  Layers,
+} from 'lucide-react';
 
-// --- ENUMS & INTERFACES (Matching Backend) ---
+// Enums matching backend definitions
 export enum SurgeryStatus {
-  SCHEDULED = "SCHEDULED",
-  PRE_OP_PREPARATION = "PRE_OP_PREPARATION",
-  IN_PROGRESS = "IN_PROGRESS",
-  RECOVERY = "RECOVERY",
-  COMPLETED = "COMPLETED",
-  CANCELLED = "CANCELLED",
+  SCHEDULED = 'SCHEDULED',
+  PRE_OP_PREPARATION = 'PRE_OP_PREPARATION',
+  IN_PROGRESS = 'IN_PROGRESS',
+  RECOVERY = 'RECOVERY',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+  POSTPONED = 'POSTPONED',
 }
 
 export enum UrgencyLevel {
-  ELECTIVE = "ELECTIVE",
-  URGENT = "URGENT",
-  EMERGENCY = "EMERGENCY",
+  ELECTIVE = 'ELECTIVE',
+  URGENT = 'URGENT',
+  EMERGENCY = 'EMERGENCY',
 }
 
 export enum AnesthesiaType {
-  GENERAL = "GENERAL",
-  REGIONAL = "REGIONAL",
-  LOCAL = "LOCAL",
-  SPINAL = "SPINAL",
-  EPIDURAL = "EPIDURAL",
-  SEDATION = "SEDATION",
+  GENERAL = 'GENERAL',
+  REGIONAL = 'REGIONAL',
+  LOCAL = 'LOCAL',
+  SPINAL = 'SPINAL',
+  EPIDURAL = 'EPIDURAL',
+  SEDATION = 'SEDATION',
+  COMBINED = 'COMBINED',
 }
 
 export enum SurgicalRole {
-  PRIMARY_SURGEON = "PRIMARY_SURGEON",
-  ASSISTING_SURGEON = "ASSISTING_SURGEON",
-  ANAESTHETIST = "ANAESTHETIST",
-  SCRUB_NURSE = "SCRUB_NURSE",
-  CIRCULATING_NURSE = "CIRCULATING_NURSE",
-  THEATRE_TECHNICIAN = "THEATRE_TECHNICIAN",
+  PRIMARY_SURGEON = 'PRIMARY_SURGEON',
+  ASSISTING_SURGEON = 'ASSISTING_SURGEON',
+  ANAESTHETIST = 'ANAESTHETIST',
+  SCRUB_NURSE = 'SCRUB_NURSE',
+  CIRCULATING_NURSE = 'CIRCULATING_NURSE',
+  THEATRE_TECHNICIAN = 'THEATRE_TECHNICIAN',
+}
+
+export enum ASAClassification {
+  ASA_1 = 'ASA_1',
+  ASA_2 = 'ASA_2',
+  ASA_3 = 'ASA_3',
+  ASA_4 = 'ASA_4',
+  ASA_5 = 'ASA_5',
+  ASA_6 = 'ASA_6',
+  ASA_E = 'ASA_E',
+}
+
+export enum SterilizationStatus {
+  STERILE = 'STERILE',
+  PENDING = 'PENDING',
+  EXPIRED = 'EXPIRED',
+}
+
+// Interfaces matching backend models
+export interface ISurgicalTeamMember {
+  userId: string;
+  name: string;
+  role: SurgicalRole;
+  credentialVerified: boolean;
+  notes?: string;
+}
+
+export interface IIntraopVitalsLog {
+  timestamp: string;
+  bpSystolic: number;
+  bpDiastolic: number;
+  heartRate: number;
+  spO2: number;
+  respRate: number;
+  tempCelsius: number;
+  etCO2: number;
+  ecgRhythm: string;
+  notes?: string;
 }
 
 export interface ISurgeryCase {
   _id: string;
+  hospitalId: string;
+  patientName: string;
+  patientMrn: string;
+  patientAgeGender: string;
+  leadSurgeonName: string;
   theatreId: string;
   procedureName: string;
   icdCode?: string;
@@ -73,754 +121,774 @@ export interface ISurgeryCase {
   actualStartTime?: string;
   actualEndTime?: string;
   anesthesiaType: AnesthesiaType;
-  patient: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    mrn: string;
-    gender: string;
-    dateOfBirth: string;
-  };
-  leadSurgeon: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-  };
-  surgicalTeam: Array<{
-    userId: { _id: string; firstName: string; lastName: string };
-    role: SurgicalRole;
-    credentialVerified: boolean;
-  }>;
-  preOpAssessment?: {
-    asaClassification?: string;
+  surgicalTeam: ISurgicalTeamMember[];
+  preOpAssessment: {
+    asaClassification: ASAClassification;
+    mallampatiScore: string;
+    vteRiskScore: string;
+    infectionScreeningNotes: string;
+    pregnancyStatus: string;
+    preOpVitals: {
+      bpSystolic: number;
+      bpDiastolic: number;
+      heartRate: number;
+      tempCelsius: number;
+      spO2: number;
+    };
     clearedForSurgery: boolean;
     clearedAt?: string;
-    pregnancyStatus?: string;
-    vteRiskScore?: string;
+    clearedBy?: string;
   };
-  consent?: {
+  consent: {
     procedureConsent: boolean;
     anesthesiaConsent: boolean;
     bloodTransfusionConsent: boolean;
+    highRiskConsent: boolean;
     signedByPatient: boolean;
-    witnessName?: string;
+    witnessName: string;
+    signedAt: string;
   };
+  preOpMeds: {
+    antibioticProphylaxisGiven: boolean;
+    antibioticName?: string;
+    anticoagulantReconciled: boolean;
+    allergiesAlert: string[];
+  };
+  equipmentChecklist: {
+    itemName: string;
+    sterileStatus: SterilizationStatus;
+    maintenanceOk: boolean;
+    notes?: string;
+  }[];
+  consumablesUsed: {
+    itemName: string;
+    quantityUsed: number;
+    unitCost: number;
+    lotNumber: string;
+  }[];
   whoChecklist: {
-    signIn: { completed: boolean; completedAt?: string };
-    timeOut: { completed: boolean; completedAt?: string };
-    signOut: { completed: boolean; completedAt?: string };
+    signIn: {
+      completed: boolean;
+      patientIdentityConfirmed: boolean;
+      siteMarked: boolean;
+      consentVerified: boolean;
+      pulseOximeterOn: boolean;
+      allergyKnown: boolean;
+      airwayRisk: boolean;
+      bloodLossRiskOver500ml: boolean;
+    };
+    timeOut: {
+      completed: boolean;
+      teamIntroduced: boolean;
+      confirmPatientSiteProcedure: boolean;
+      antibioticProphylaxisGiven: boolean;
+      imagingDisplayed: boolean;
+      criticalConcernsSurgeon: string;
+    };
+    signOut: {
+      completed: boolean;
+      procedureRecorded: string;
+      countsCorrect: boolean;
+      specimenLabeled: boolean;
+      postOpRecoveryPlan: string;
+    };
   };
-  vitalsTimeline: Array<{
-    timestamp: string;
-    bpSystolic: number;
-    bpDiastolic: number;
-    heartRate: number;
-    spO2: number;
-    tempCelsius: number;
-    etCO2?: number;
-  }>;
-  intraopDocs?: {
+  intraopDocs: {
     incisionTime?: string;
     closureTime?: string;
     operativeDiagnosis?: string;
+    postOperativeDiagnosis?: string;
     surgicalFindings?: string;
+    techniqueNotes?: string;
     eblMl?: number;
+    fluidsAdministeredMl?: number;
+    bloodProductsAdministered?: string;
+    drainsInserted?: string;
+    implantsUsed?: string;
   };
+  vitalsTimeline: IIntraopVitalsLog[];
 }
 
-// --- MOCK DATA FOR VISUALIZATION ---
-const INITIAL_CASES: ISurgeryCase[] = [
+// Sample Mock Data adhering to backend contracts
+const MOCK_SURGERY_CASES: ISurgeryCase[] = [
   {
-    _id: "surg-101",
-    theatreId: "OT-1 (Main)",
-    procedureName: "Laparoscopic Cholecystectomy",
-    icdCode: "K80.20",
+    _id: 'SURG-1092',
+    hospitalId: 'HOSP-01',
+    patientName: 'Oluwaseun Adebayo',
+    patientMrn: 'MRN-88201',
+    patientAgeGender: '42Y / Male',
+    leadSurgeonName: 'Dr. Chidi Okezie',
+    theatreId: 'OT-1 (Main Surgical Suite)',
+    procedureName: 'Laparoscopic Cholecystectomy',
+    icdCode: 'K80.20',
     urgency: UrgencyLevel.ELECTIVE,
     status: SurgeryStatus.IN_PROGRESS,
-    scheduledStartTime: new Date(Date.now() - 3600000).toISOString(),
-    scheduledEndTime: new Date(Date.now() + 3600000).toISOString(),
-    actualStartTime: new Date(Date.now() - 3000000).toISOString(),
+    scheduledStartTime: '2026-08-17T08:30:00Z',
+    scheduledEndTime: '2026-08-17T11:00:00Z',
+    actualStartTime: '2026-08-17T08:40:00Z',
     anesthesiaType: AnesthesiaType.GENERAL,
-    patient: {
-      _id: "p-1",
-      firstName: "Eleanor",
-      lastName: "Vane",
-      mrn: "MRN-90218",
-      gender: "Female",
-      dateOfBirth: "1988-04-12",
-    },
-    leadSurgeon: { _id: "doc-1", firstName: "David", lastName: "Adeleke" },
     surgicalTeam: [
-      { userId: { _id: "doc-1", firstName: "David", lastName: "Adeleke" }, role: SurgicalRole.PRIMARY_SURGEON, credentialVerified: true },
-      { userId: { _id: "doc-2", firstName: "Sarah", lastName: "Jenkins" }, role: SurgicalRole.ANAESTHETIST, credentialVerified: true },
-      { userId: { _id: "nur-1", firstName: "Grace", lastName: "Okonkwo" }, role: SurgicalRole.SCRUB_NURSE, credentialVerified: true },
+      { userId: 'USR-1', name: 'Dr. Chidi Okezie', role: SurgicalRole.PRIMARY_SURGEON, credentialVerified: true },
+      { userId: 'USR-2', name: 'Dr. Amina Bello', role: SurgicalRole.ASSISTING_SURGEON, credentialVerified: true },
+      { userId: 'USR-3', name: 'Dr. Kemi Akintola', role: SurgicalRole.ANAESTHETIST, credentialVerified: true },
+      { userId: 'USR-4', name: 'Sr. Grace Danjuma', role: SurgicalRole.SCRUB_NURSE, credentialVerified: true },
+      { userId: 'USR-5', name: 'Nurse Paul Enenche', role: SurgicalRole.CIRCULATING_NURSE, credentialVerified: true },
+      { userId: 'USR-6', name: 'Tech Samuel Adams', role: SurgicalRole.THEATRE_TECHNICIAN, credentialVerified: true },
     ],
-    preOpAssessment: { asaClassification: "ASA_2", clearedForSurgery: true, clearedAt: new Date().toISOString() },
-    consent: { procedureConsent: true, anesthesiaConsent: true, bloodTransfusionConsent: true, signedByPatient: true, witnessName: "Nurse Grace" },
+    preOpAssessment: {
+      asaClassification: ASAClassification.ASA_2,
+      mallampatiScore: 'CLASS_I',
+      vteRiskScore: 'Moderate (Caprini 3)',
+      infectionScreeningNotes: 'COVID-19 Negative, MRSA Clearance Positive',
+      pregnancyStatus: 'NOT_APPLICABLE',
+      preOpVitals: { bpSystolic: 124, bpDiastolic: 82, heartRate: 74, tempCelsius: 36.6, spO2: 99 },
+      clearedForSurgery: true,
+      clearedAt: '2026-08-17T07:15:00Z',
+      clearedBy: 'Dr. Kemi Akintola',
+    },
+    consent: {
+      procedureConsent: true,
+      anesthesiaConsent: true,
+      bloodTransfusionConsent: true,
+      highRiskConsent: false,
+      signedByPatient: true,
+      witnessName: 'Nurse Grace Danjuma',
+      signedAt: '2026-08-16T18:30:00Z',
+    },
+    preOpMeds: {
+      antibioticProphylaxisGiven: true,
+      antibioticName: 'Cefazolin 2g IV (30m pre-incision)',
+      anticoagulantReconciled: true,
+      allergiesAlert: ['Penicillin (Mild Rash)'],
+    },
+    equipmentChecklist: [
+      { itemName: 'HD Laparoscopic Tower & Camera', sterileStatus: SterilizationStatus.STERILE, maintenanceOk: true },
+      { itemName: 'Harmonic Scalpel Generator', sterileStatus: SterilizationStatus.STERILE, maintenanceOk: true },
+      { itemName: 'Laparoscopic Major Tray #04', sterileStatus: SterilizationStatus.STERILE, maintenanceOk: true },
+      { itemName: 'CO2 Insufflator & Tubing', sterileStatus: SterilizationStatus.STERILE, maintenanceOk: true },
+    ],
+    consumablesUsed: [
+      { itemName: '10mm Trocar Set', quantityUsed: 2, unitCost: 15000, lotNumber: 'LOT-99201' },
+      { itemName: '5mm Trocar Set', quantityUsed: 2, unitCost: 12000, lotNumber: 'LOT-99202' },
+      { itemName: 'Polymeric Surgical Clips (Medium-Large)', quantityUsed: 6, unitCost: 4500, lotNumber: 'LOT-8831' },
+      { itemName: '3-0 Vicryl Sutures', quantityUsed: 3, unitCost: 2100, lotNumber: 'LOT-4412' },
+    ],
     whoChecklist: {
-      signIn: { completed: true, completedAt: new Date(Date.now() - 3600000).toISOString() },
-      timeOut: { completed: true, completedAt: new Date(Date.now() - 3000000).toISOString() },
-      signOut: { completed: false },
+      signIn: {
+        completed: true,
+        patientIdentityConfirmed: true,
+        siteMarked: true,
+        consentVerified: true,
+        pulseOximeterOn: true,
+        allergyKnown: true,
+        airwayRisk: false,
+        bloodLossRiskOver500ml: false,
+      },
+      timeOut: {
+        completed: true,
+        teamIntroduced: true,
+        confirmPatientSiteProcedure: true,
+        antibioticProphylaxisGiven: true,
+        imagingDisplayed: true,
+        criticalConcernsSurgeon: 'Adhesions expected from prior appendectomy.',
+      },
+      signOut: {
+        completed: false,
+        procedureRecorded: '',
+        countsCorrect: false,
+        specimenLabeled: false,
+        postOpRecoveryPlan: '',
+      },
+    },
+    intraopDocs: {
+      incisionTime: '2026-08-17T08:50:00Z',
+      operativeDiagnosis: 'Symptomatic Cholelithiasis',
+      surgicalFindings: 'Distended gallbladder with multiple cholesterol stones. Adhesions to omentum lysed cleanly.',
+      techniqueNotes: 'Four-port laparoscopic approach. Cystic duct and artery clipped and divided.',
+      eblMl: 45,
+      fluidsAdministeredMl: 800,
+      bloodProductsAdministered: 'None',
+      drainsInserted: 'None',
+      implantsUsed: 'None',
     },
     vitalsTimeline: [
-      { timestamp: new Date(Date.now() - 2400000).toISOString(), bpSystolic: 122, bpDiastolic: 78, heartRate: 72, spO2: 99, tempCelsius: 36.6, etCO2: 35 },
-      { timestamp: new Date(Date.now() - 1200000).toISOString(), bpSystolic: 118, bpDiastolic: 75, heartRate: 68, spO2: 100, tempCelsius: 36.5, etCO2: 36 },
+      { timestamp: '08:45', bpSystolic: 120, bpDiastolic: 78, heartRate: 72, spO2: 99, respRate: 12, tempCelsius: 36.5, etCO2: 35, ecgRhythm: 'NSR' },
+      { timestamp: '09:15', bpSystolic: 118, bpDiastolic: 75, heartRate: 68, spO2: 100, respRate: 14, tempCelsius: 36.4, etCO2: 36, ecgRhythm: 'NSR' },
+      { timestamp: '09:45', bpSystolic: 122, bpDiastolic: 80, heartRate: 74, spO2: 99, respRate: 14, tempCelsius: 36.6, etCO2: 37, ecgRhythm: 'NSR' },
+      { timestamp: '10:15', bpSystolic: 115, bpDiastolic: 72, heartRate: 70, spO2: 100, respRate: 13, tempCelsius: 36.6, etCO2: 35, ecgRhythm: 'NSR' },
     ],
-    intraopDocs: { incisionTime: new Date(Date.now() - 3000000).toISOString(), operativeDiagnosis: "Acute Cholecystitis", eblMl: 50 },
   },
   {
-    _id: "surg-102",
-    theatreId: "OT-2 (Trauma)",
-    procedureName: "Emergency Appendectomy",
-    icdCode: "K35.80",
+    _id: 'SURG-1093',
+    hospitalId: 'HOSP-01',
+    patientName: 'Blessing Emeka',
+    patientMrn: 'MRN-90112',
+    patientAgeGender: '29Y / Female',
+    leadSurgeonName: 'Dr. Fatima Umar',
+    theatreId: 'OT-2 (OB/GYN Theatre)',
+    procedureName: 'Emergency Lower Segment Cesarean Section (LSCS)',
     urgency: UrgencyLevel.EMERGENCY,
     status: SurgeryStatus.PRE_OP_PREPARATION,
-    scheduledStartTime: new Date().toISOString(),
-    scheduledEndTime: new Date(Date.now() + 5400000).toISOString(),
-    anesthesiaType: AnesthesiaType.GENERAL,
-    patient: {
-      _id: "p-2",
-      firstName: "Amina",
-      lastName: "Bello",
-      mrn: "MRN-77312",
-      gender: "Female",
-      dateOfBirth: "1999-11-23",
-    },
-    leadSurgeon: { _id: "doc-3", firstName: "Marcus", lastName: "Thorne" },
+    scheduledStartTime: '2026-08-17T11:30:00Z',
+    scheduledEndTime: '2026-08-17T13:00:00Z',
+    anesthesiaType: AnesthesiaType.SPINAL,
     surgicalTeam: [
-      { userId: { _id: "doc-3", firstName: "Marcus", lastName: "Thorne" }, role: SurgicalRole.PRIMARY_SURGEON, credentialVerified: true },
+      { userId: 'USR-7', name: 'Dr. Fatima Umar', role: SurgicalRole.PRIMARY_SURGEON, credentialVerified: true },
+      { userId: 'USR-8', name: 'Dr. Yomi Alabi', role: SurgicalRole.ANAESTHETIST, credentialVerified: true },
+      { userId: 'USR-9', name: 'Sr. Maryam Sani', role: SurgicalRole.SCRUB_NURSE, credentialVerified: true },
     ],
-    preOpAssessment: { asaClassification: "ASA_1", clearedForSurgery: true },
-    consent: { procedureConsent: true, anesthesiaConsent: true, bloodTransfusionConsent: false, signedByPatient: true },
-    whoChecklist: {
-      signIn: { completed: true, completedAt: new Date().toISOString() },
-      timeOut: { completed: false },
-      signOut: { completed: false },
+    preOpAssessment: {
+      asaClassification: ASAClassification.ASA_1,
+      mallampatiScore: 'CLASS_II',
+      vteRiskScore: 'Low',
+      infectionScreeningNotes: 'Clear',
+      pregnancyStatus: 'POSITIVE',
+      preOpVitals: { bpSystolic: 138, bpDiastolic: 88, heartRate: 92, tempCelsius: 37.0, spO2: 98 },
+      clearedForSurgery: true,
+      clearedAt: '2026-08-17T10:50:00Z',
+      clearedBy: 'Dr. Yomi Alabi',
     },
+    consent: {
+      procedureConsent: true,
+      anesthesiaConsent: true,
+      bloodTransfusionConsent: true,
+      highRiskConsent: true,
+      signedByPatient: true,
+      witnessName: 'Nurse Maryam Sani',
+      signedAt: '2026-08-17T10:45:00Z',
+    },
+    preOpMeds: {
+      antibioticProphylaxisGiven: true,
+      antibioticName: 'Ampicillin-Sulbactam 1.5g IV',
+      anticoagulantReconciled: true,
+      allergiesAlert: [],
+    },
+    equipmentChecklist: [
+      { itemName: 'OB/GYN Surgical Pack', sterileStatus: SterilizationStatus.STERILE, maintenanceOk: true },
+      { itemName: 'Infant Resuscitation Warmer', sterileStatus: SterilizationStatus.STERILE, maintenanceOk: true },
+    ],
+    consumablesUsed: [],
+    whoChecklist: {
+      signIn: {
+        completed: true,
+        patientIdentityConfirmed: true,
+        siteMarked: true,
+        consentVerified: true,
+        pulseOximeterOn: true,
+        allergyKnown: true,
+        airwayRisk: false,
+        bloodLossRiskOver500ml: true,
+      },
+      timeOut: { completed: false, teamIntroduced: false, confirmPatientSiteProcedure: false, antibioticProphylaxisGiven: false, imagingDisplayed: false, criticalConcernsSurgeon: '' },
+      signOut: { completed: false, procedureRecorded: '', countsCorrect: false, specimenLabeled: false, postOpRecoveryPlan: '' },
+    },
+    intraopDocs: {},
     vitalsTimeline: [],
   },
 ];
 
-export default function SurgeryPage() {
-  const [cases, setCases] = useState<ISurgeryCase[]>(INITIAL_CASES);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [search, setSearch] = useState<string>("");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [selectedCase, setSelectedCase] = useState<ISurgeryCase | null>(null);
+export default function SurgeryManagementPage() {
+  const [cases] = useState<ISurgeryCase[]>(MOCK_SURGERY_CASES);
+  const [selectedCaseId, setSelectedCaseId] = useState<string>('SURG-1092');
+  const [activeTab, setActiveTab] = useState<
+    'schedule' | 'team' | 'preop' | 'consent' | 'equipment' | 'who' | 'intraop' | 'vitals'
+  >('schedule');
 
-  // Modals state
-  const [isScheduleOpen, setIsScheduleOpen] = useState<boolean>(false);
-  const [isPreOpOpen, setIsPreOpOpen] = useState<boolean>(false);
-  const [isWHOChecklistOpen, setIsWHOChecklistOpen] = useState<boolean>(false);
-  const [isVitalsModalOpen, setIsVitalsModalOpen] = useState<boolean>(false);
-  const [activeDrawerTab, setActiveDrawerTab] = useState<"overview" | "team" | "preop" | "whochecklist" | "intraop">("overview");
-
-  // Scheduling Form
-  const [scheduleForm, setScheduleForm] = useState({
-    patientName: "",
-    mrn: "",
-    procedureName: "",
-    theatreId: "OT-1 (Main)",
-    urgency: UrgencyLevel.ELECTIVE,
-    anesthesiaType: AnesthesiaType.GENERAL,
-    scheduledStartTime: "",
-    scheduledEndTime: "",
-  });
-
-  // Intraop Vitals Form
-  const [vitalsForm, setVitalsForm] = useState({
-    bpSystolic: 120,
-    bpDiastolic: 80,
-    heartRate: 75,
-    spO2: 98,
-    tempCelsius: 36.8,
-    etCO2: 35,
-  });
-
-  const filteredCases = cases.filter((c) => {
-    const matchesSearch =
-      c.patient.firstName.toLowerCase().includes(search.toLowerCase()) ||
-      c.patient.lastName.toLowerCase().includes(search.toLowerCase()) ||
-      c.patient.mrn.toLowerCase().includes(search.toLowerCase()) ||
-      c.procedureName.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "ALL" || c.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
-
-  // Handlers
-  const handleScheduleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newCase: ISurgeryCase = {
-      _id: `surg-${Date.now()}`,
-      theatreId: scheduleForm.theatreId,
-      procedureName: scheduleForm.procedureName,
-      urgency: scheduleForm.urgency,
-      status: SurgeryStatus.SCHEDULED,
-      scheduledStartTime: scheduleForm.scheduledStartTime || new Date().toISOString(),
-      scheduledEndTime: scheduleForm.scheduledEndTime || new Date(Date.now() + 7200000).toISOString(),
-      anesthesiaType: scheduleForm.anesthesiaType,
-      patient: {
-        _id: `p-${Date.now()}`,
-        firstName: scheduleForm.patientName.split(" ")[0] || "Patient",
-        lastName: scheduleForm.patientName.split(" ")[1] || "Record",
-        mrn: scheduleForm.mrn || "MRN-PENDING",
-        gender: "Unspecified",
-        dateOfBirth: "1990-01-01",
-      },
-      leadSurgeon: { _id: "doc-1", firstName: "David", lastName: "Adeleke" },
-      surgicalTeam: [],
-      whoChecklist: { signIn: { completed: false }, timeOut: { completed: false }, signOut: { completed: false } },
-      vitalsTimeline: [],
-    };
-    setCases([newCase, ...cases]);
-    setIsScheduleOpen(false);
-  };
-
-  const handleAddVitals = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedCase) return;
-
-    const newLog = {
-      timestamp: new Date().toISOString(),
-      ...vitalsForm,
-    };
-
-    const updated = cases.map((c) => {
-      if (c._id === selectedCase._id) {
-        return { ...c, vitalsTimeline: [...c.vitalsTimeline, newLog] };
-      }
-      return c;
-    });
-
-    setCases(updated);
-    setSelectedCase({ ...selectedCase, vitalsTimeline: [...selectedCase.vitalsTimeline, newLog] });
-    setIsVitalsModalOpen(false);
-  };
-
-  const handleToggleWHOStep = (stage: "signIn" | "timeOut" | "signOut") => {
-    if (!selectedCase) return;
-    const currentStage = selectedCase.whoChecklist[stage];
-    const isCompleted = !currentStage.completed;
-
-    const updatedChecklist = {
-      ...selectedCase.whoChecklist,
-      [stage]: { completed: isCompleted, completedAt: isCompleted ? new Date().toISOString() : undefined },
-    };
-
-    const updatedCase = { ...selectedCase, whoChecklist: updatedChecklist };
-    setCases(cases.map((c) => (c._id === selectedCase._id ? updatedCase : c)));
-    setSelectedCase(updatedCase);
-  };
-
-  const getStatusBadge = (status: SurgeryStatus) => {
-    switch (status) {
-      case SurgeryStatus.IN_PROGRESS:
-        return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 animate-pulse">In Progress</span>;
-      case SurgeryStatus.PRE_OP_PREPARATION:
-        return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Pre-Op Prep</span>;
-      case SurgeryStatus.SCHEDULED:
-        return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">Scheduled</span>;
-      case SurgeryStatus.COMPLETED:
-        return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">Completed</span>;
-      default:
-        return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">{status}</span>;
-    }
-  };
-
-  const getUrgencyBadge = (urgency: UrgencyLevel) => {
-    if (urgency === UrgencyLevel.EMERGENCY) {
-      return <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-600 border border-red-200">EMERGENCY</span>;
-    }
-    if (urgency === UrgencyLevel.URGENT) {
-      return <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-600 border border-amber-200">URGENT</span>;
-    }
-    return <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600">ELECTIVE</span>;
-  };
+  const selectedCase = cases.find((c) => c._id === selectedCaseId) || cases[0];
 
   return (
-    <div className="p-6 max-w-[1600px] mx-auto space-y-6 text-slate-800">
-      {/* --- PAGE HEADER --- */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-6 space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Syringe className="w-7 h-7 text-[#1b7b68]" />
-            Operating Theatre Management
-          </h1>
-          <p className="text-sm text-slate-500">Central Theatre Scheduling, Surgical Safety & Intraoperative Tracking</p>
+          <div className="flex items-center gap-2">
+            <Syringe className="w-8 h-8 text-emerald-400" />
+            <h1 className="text-2xl font-bold tracking-tight text-white">
+              MedxVerse Operating Theatre Management
+            </h1>
+          </div>
+          <p className="text-sm text-slate-400 mt-1">
+            Real-time scheduling, surgical team workflows, WHO safety checklists & intraoperative logs
+          </p>
         </div>
-        <button
-          onClick={() => setIsScheduleOpen(true)}
-          className="bg-[#1b7b68] hover:bg-[#156354] text-white px-5 py-2.5 rounded-2xl text-xs font-semibold shadow-sm transition-all duration-200 flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Schedule Surgery
-        </button>
-      </div>
-
-      {/* --- METRICS / KPI GRID --- */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm flex items-center gap-4">
-          <div className="p-3.5 bg-[#e8f5f3] rounded-2xl text-[#1b7b68]">
-            <Calendar className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-xs font-medium text-slate-500">Scheduled Today</p>
-            <p className="text-2xl font-bold text-slate-900">{cases.length}</p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm flex items-center gap-4">
-          <div className="p-3.5 bg-emerald-50 rounded-2xl text-emerald-600">
-            <Activity className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-xs font-medium text-slate-500">Active Procedures</p>
-            <p className="text-2xl font-bold text-slate-900">{cases.filter((c) => c.status === SurgeryStatus.IN_PROGRESS).length}</p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm flex items-center gap-4">
-          <div className="p-3.5 bg-blue-50 rounded-2xl text-blue-600">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-xs font-medium text-slate-500">Pre-Op Cleared</p>
-            <p className="text-2xl font-bold text-slate-900">{cases.filter((c) => c.preOpAssessment?.clearedForSurgery).length}</p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm flex items-center gap-4">
-          <div className="p-3.5 bg-red-50 rounded-2xl text-red-600">
-            <ShieldAlert className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-xs font-medium text-slate-500">Emergency Cases</p>
-            <p className="text-2xl font-bold text-slate-900">{cases.filter((c) => c.urgency === UrgencyLevel.EMERGENCY).length}</p>
-          </div>
+        <div className="flex items-center gap-3">
+          <button className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm rounded-lg transition-colors">
+            <Plus className="w-4 h-4" /> Book Surgery Case
+          </button>
         </div>
       </div>
 
-      {/* --- TOOLBAR & FILTERS --- */}
-      <div className="bg-white rounded-3xl border border-slate-100 p-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="relative w-full md:w-96">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search patient, MRN, procedure..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/20 focus:border-[#1b7b68]"
-          />
+      {/* High Level Theatre Metrics */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-400">Active Operating Suites</span>
+            <Building2 className="w-4 h-4 text-emerald-400" />
+          </div>
+          <p className="text-2xl font-bold text-white mt-2">4 / 6</p>
+          <span className="text-[11px] text-emerald-400">OT-1 & OT-2 Currently In Use</span>
         </div>
-
-        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
-          <Filter className="w-4 h-4 text-slate-400" />
-          {["ALL", "SCHEDULED", "PRE_OP_PREPARATION", "IN_PROGRESS", "COMPLETED"].map((st) => (
-            <button
-              key={st}
-              onClick={() => setStatusFilter(st)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                statusFilter === st
-                  ? "bg-[#1b7b68] text-white shadow-sm"
-                  : "bg-slate-50 text-slate-600 hover:bg-slate-100"
-              }`}
-            >
-              {st.replace(/_/g, " ")}
-            </button>
-          ))}
+        <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-400">Today's Schedule</span>
+            <Calendar className="w-4 h-4 text-blue-400" />
+          </div>
+          <p className="text-2xl font-bold text-white mt-2">8 Cases</p>
+          <span className="text-[11px] text-slate-400">5 Elective, 3 Emergency</span>
         </div>
-      </div>
-
-      {/* --- MAIN DATA TABLE --- */}
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase tracking-wider font-semibold">
-              <tr>
-                <th className="p-4">Theatre & Time</th>
-                <th className="p-4">Patient Details</th>
-                <th className="p-4">Procedure & Urgency</th>
-                <th className="p-4">Surgeon & Team</th>
-                <th className="p-4">WHO Safety</th>
-                <th className="p-4">Status</th>
-                <th className="p-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredCases.map((c) => (
-                <tr key={c._id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="p-4">
-                    <div className="font-semibold text-slate-900 flex items-center gap-1.5">
-                      <Building2 className="w-3.5 h-3.5 text-[#1b7b68]" />
-                      {c.theatreId}
-                    </div>
-                    <div className="text-slate-500 flex items-center gap-1 mt-0.5">
-                      <Clock className="w-3 h-3" />
-                      {new Date(c.scheduledStartTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </div>
-                  </td>
-
-                  <td className="p-4">
-                    <div className="font-semibold text-slate-900">
-                      {c.patient.firstName} {c.patient.lastName}
-                    </div>
-                    <div className="text-slate-400 font-mono text-[11px]">{c.patient.mrn}</div>
-                  </td>
-
-                  <td className="p-4">
-                    <div className="font-medium text-slate-800">{c.procedureName}</div>
-                    <div className="mt-1 flex items-center gap-2">
-                      {getUrgencyBadge(c.urgency)}
-                      <span className="text-[11px] text-slate-500">{c.anesthesiaType}</span>
-                    </div>
-                  </td>
-
-                  <td className="p-4">
-                    <div className="text-slate-900 font-medium">Dr. {c.leadSurgeon.lastName}</div>
-                    <div className="text-slate-500 text-[11px]">{c.surgicalTeam.length} Members Assigned</div>
-                  </td>
-
-                  <td className="p-4">
-                    <div className="flex items-center gap-1">
-                      <span className={`w-2.5 h-2.5 rounded-full ${c.whoChecklist.signIn.completed ? "bg-emerald-500" : "bg-slate-200"}`} title="Sign In" />
-                      <span className={`w-2.5 h-2.5 rounded-full ${c.whoChecklist.timeOut.completed ? "bg-emerald-500" : "bg-slate-200"}`} title="Time Out" />
-                      <span className={`w-2.5 h-2.5 rounded-full ${c.whoChecklist.signOut.completed ? "bg-emerald-500" : "bg-slate-200"}`} title="Sign Out" />
-                    </div>
-                  </td>
-
-                  <td className="p-4">{getStatusBadge(c.status)}</td>
-
-                  <td className="p-4 text-right space-x-2">
-                    <button
-                      onClick={() => {
-                        setSelectedCase(c);
-                        setActiveDrawerTab("overview");
-                      }}
-                      className="p-2 text-slate-600 hover:text-[#1b7b68] hover:bg-[#e8f5f3] rounded-xl transition-all"
-                      title="View Details"
-                    >
-                      <Eye className="w-4 h-4" />
-                      </button>
-                    {c.status === SurgeryStatus.IN_PROGRESS && (
-                      <button
-                        onClick={() => {
-                          setSelectedCase(c);
-                          setIsVitalsModalOpen(true);
-                        }}
-                        className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"
-                        title="Log Intraop Vitals"
-                      >
-                        <HeartPulse className="w-4 h-4" />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-400">In Progress</span>
+            <Activity className="w-4 h-4 text-amber-400" />
+          </div>
+          <p className="text-2xl font-bold text-white mt-2">1 Active</p>
+          <span className="text-[11px] text-amber-400">Laparoscopic Cholecystectomy</span>
+        </div>
+        <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-400">Theatre Utilization Rate</span>
+            <Clock className="w-4 h-4 text-indigo-400" />
+          </div>
+          <p className="text-2xl font-bold text-white mt-2">84%</p>
+          <span className="text-[11px] text-emerald-400">+6% vs weekly average</span>
         </div>
       </div>
 
-      {/* --- SLIDE-OVER DRAWER (Case Detail & Features) --- */}
-      {selectedCase && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex justify-end">
-          <div className="w-full max-w-2xl bg-white h-full shadow-2xl flex flex-col justify-between overflow-hidden">
-            {/* Drawer Header */}
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <div>
-                <span className="text-xs font-mono text-[#1b7b68] font-bold">{selectedCase.theatreId}</span>
-                <h2 className="text-lg font-bold text-slate-900">{selectedCase.procedureName}</h2>
-                <p className="text-xs text-slate-500">
-                  Patient: {selectedCase.patient.firstName} {selectedCase.patient.lastName} ({selectedCase.patient.mrn})
-                </p>
-              </div>
-              <button onClick={() => setSelectedCase(null)} className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* Main Grid: Surgery Case Selector & Module Workspace */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        {/* Left Column: Cases Schedule Sidebar */}
+        <div className="lg:col-span-4 bg-slate-800/40 border border-slate-700/60 rounded-xl p-4 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-700/60 pb-3">
+            <h2 className="font-semibold text-sm text-slate-200 flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-emerald-400" /> Today's OT Roster
+            </h2>
+            <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">
+              {cases.length} Total
+            </span>
+          </div>
 
-            {/* Navigation Tabs */}
-            <div className="flex border-b border-slate-100 bg-white px-6 gap-4 text-xs font-semibold text-slate-500">
-              {[
-                { key: "overview", label: "Overview" },
-                { key: "team", label: "Surgical Team" },
-                { key: "preop", label: "Pre-Op & Consent" },
-                { key: "whochecklist", label: "WHO Safety" },
-                { key: "intraop", label: "Intraop & Vitals" },
-              ].map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveDrawerTab(tab.key as any)}
-                  className={`py-3 border-b-2 transition-all ${
-                    activeDrawerTab === tab.key ? "border-[#1b7b68] text-[#1b7b68]" : "border-transparent hover:text-slate-800"
+          <div className="space-y-3">
+            {cases.map((c) => {
+              const isSelected = c._id === selectedCaseId;
+              return (
+                <div
+                  key={c._id}
+                  onClick={() => setSelectedCaseId(c._id)}
+                  className={`p-3.5 rounded-lg border cursor-pointer transition-all ${
+                    isSelected
+                      ? 'bg-slate-800 border-emerald-500 shadow-lg'
+                      : 'bg-slate-800/40 border-slate-700/50 hover:bg-slate-800/80'
                   }`}
                 >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-xs font-mono font-medium text-emerald-400">{c._id}</span>
+                    <span
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase ${
+                        c.urgency === UrgencyLevel.EMERGENCY
+                          ? 'bg-rose-950 text-rose-400 border border-rose-800'
+                          : 'bg-blue-950 text-blue-400 border border-blue-800'
+                      }`}
+                    >
+                      {c.urgency}
+                    </span>
+                  </div>
+
+                  <h3 className="text-sm font-semibold text-white mt-1.5">{c.procedureName}</h3>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    {c.patientName} ({c.patientAgeGender})
+                  </p>
+
+                  <div className="mt-3 flex items-center justify-between text-xs text-slate-400 border-t border-slate-700/40 pt-2">
+                    <span className="flex items-center gap-1">
+                      <Building2 className="w-3.5 h-3.5 text-slate-400" /> {c.theatreId.split(' ')[0]}
+                    </span>
+                    <span
+                      className={`font-medium ${
+                        c.status === SurgeryStatus.IN_PROGRESS
+                          ? 'text-amber-400 animate-pulse'
+                          : c.status === SurgeryStatus.PRE_OP_PREPARATION
+                          ? 'text-blue-400'
+                          : 'text-slate-400'
+                      }`}
+                    >
+                      {c.status.replace('_', ' ')}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Right Column: Case Clinical Workspace */}
+        <div className="lg:col-span-8 bg-slate-800/40 border border-slate-700/60 rounded-xl p-5 space-y-6">
+          
+          {/* Selected Case Header Summary */}
+          <div className="bg-slate-800 border border-slate-700/80 rounded-xl p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">
+                  {selectedCase._id}
+                </span>
+                <span className="text-xs text-slate-400">{selectedCase.theatreId}</span>
+              </div>
+              <h2 className="text-lg font-bold text-white mt-1">{selectedCase.procedureName}</h2>
+      <p className="text-xs text-slate-300 mt-0.5">
+                Patient: <span className="font-semibold text-slate-100">{selectedCase.patientName}</span> ({selectedCase.patientMrn}) • Surgeon: {selectedCase.leadSurgeonName}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {selectedCase.status === SurgeryStatus.PRE_OP_PREPARATION && (
+                <button className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold rounded-lg">
+                  Start Surgery (Incision)
+                </button>
+              )}
+              {selectedCase.status === SurgeryStatus.IN_PROGRESS && (
+                <button className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Complete Case
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Module Tab Navigation */}
+          <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-700/60 pb-2 scrollbar-none">
+            {[
+              { id: 'schedule', label: '1. Schedule', icon: Calendar },
+              { id: 'team', label: '2. Team', icon: Users },
+              { id: 'preop', label: '3. Pre-Op', icon: Stethoscope },
+              { id: 'consent', label: '4. Consent', icon: FileCheck },
+              { id: 'equipment', label: '6-7. Inventory & Equip', icon: Wrench },
+              { id: 'who', label: '8. WHO Checklist', icon: ClipboardCheck },
+              { id: 'intraop', label: '9-10. Intraop & Anaesth', icon: Syringe },
+              { id: 'vitals', label: '11. Vitals Timeline', icon: HeartPulse },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
+                    isActive
+                      ? 'bg-emerald-600 text-white shadow'
+                      : 'bg-slate-800/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
                   {tab.label}
                 </button>
-              ))}
+              );
+            })}
+          </div>
+
+          {/* TAB 1: SCHEDULE & ROOM MANAGEMENT */}
+          {activeTab === 'schedule' && (
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-emerald-400" /> Theatre Scheduling Details
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 bg-slate-800/60 p-4 rounded-xl border border-slate-700/60 text-xs">
+                <div>
+                  <span className="text-slate-400 block">Assigned Suite</span>
+                  <span className="font-semibold text-white mt-1 block">{selectedCase.theatreId}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Scheduled Start</span>
+                  <span className="font-semibold text-white mt-1 block">
+                    {new Date(selectedCase.scheduledStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Estimated Duration</span>
+                  <span className="font-semibold text-white mt-1 block">2 Hours 30 Mins</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Urgency Classification</span>
+                  <span className="font-semibold text-emerald-400 mt-1 block">{selectedCase.urgency}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Conflict Status</span>
+                  <span className="font-semibold text-emerald-400 mt-1 block flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> No Overlap Detected
+                  </span>
+                </div>
+              </div>
             </div>
+          )}
 
-            {/* Tab Body */}
-            <div className="p-6 flex-1 overflow-y-auto space-y-6">
-              {activeDrawerTab === "overview" && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 rounded-2xl bg-slate-50">
-                      <p className="text-xs text-slate-400 font-medium">Status</p>
-                      <div className="mt-1">{getStatusBadge(selectedCase.status)}</div>
+          {/* TAB 2: SURGICAL TEAM MANAGEMENT */}
+          {activeTab === 'team' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                  <Users className="w-4 h-4 text-emerald-400" /> Assigned Operating Personnel
+                </h3>
+                <span className="text-xs text-emerald-400 flex items-center gap-1">
+                  <UserCheck className="w-3.5 h-3.5" /> All Credentials Verified
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {selectedCase.surgicalTeam.map((member, i) => (
+                  <div key={i} className="bg-slate-800/80 p-3 rounded-lg border border-slate-700/60 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold text-white">{member.name}</p>
+                      <p className="text-[11px] text-emerald-400 font-mono mt-0.5">{member.role.replace('_', ' ')}</p>
                     </div>
-                    <div className="p-4 rounded-2xl bg-slate-50">
-                      <p className="text-xs text-slate-400 font-medium">Anesthesia Type</p>
-                      <p className="text-sm font-semibold text-slate-800 mt-1">{selectedCase.anesthesiaType}</p>
-                    </div>
+                    <span className="bg-emerald-950 text-emerald-400 text-[10px] px-2 py-0.5 rounded border border-emerald-800 flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Privileged
+                    </span>
                   </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-                  <div className="p-4 rounded-2xl border border-slate-100 space-y-2">
-                    <h4 className="text-xs font-bold text-slate-700 uppercase">Timing Metrics</h4>
-                    <div className="flex justify-between text-xs py-1 border-b border-slate-50">
-                      <span className="text-slate-500">Scheduled Start</span>
-                      <span className="font-semibold">{new Date(selectedCase.scheduledStartTime).toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between text-xs py-1">
-                      <span className="text-slate-500">Actual Incision Time</span>
-                      <span className="font-semibold">{selectedCase.intraopDocs?.incisionTime ? new Date(selectedCase.intraopDocs.incisionTime).toLocaleTimeString() : "N/A"}</span>
-                    </div>
+          {/* TAB 3: PRE-OPERATIVE ASSESSMENT */}
+          {activeTab === 'preop' && (
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                <Stethoscope className="w-4 h-4 text-emerald-400" /> Clinical Assessment & Vitals
+              </h3>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-800/60 p-4 rounded-xl border border-slate-700/60 text-xs">
+                <div>
+                  <span className="text-slate-400 block">ASA Classification</span>
+                  <span className="font-bold text-emerald-400 mt-1 block">{selectedCase.preOpAssessment.asaClassification}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Mallampati Airway</span>
+                  <span className="font-semibold text-white mt-1 block">{selectedCase.preOpAssessment.mallampatiScore}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">VTE Risk Score</span>
+                  <span className="font-semibold text-white mt-1 block">{selectedCase.preOpAssessment.vteRiskScore}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Infection Screen</span>
+                  <span className="font-semibold text-emerald-400 mt-1 block">{selectedCase.preOpAssessment.infectionScreeningNotes}</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-800/60 p-4 rounded-xl border border-slate-700/60">
+                <h4 className="text-xs font-semibold text-slate-300 mb-2">Pre-Op Vital Signs</h4>
+                <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                  <div className="bg-slate-900/60 p-2 rounded">
+                    <span className="text-slate-400 text-[10px] block">BP</span>
+                    <span className="font-mono text-white font-bold">{selectedCase.preOpAssessment.preOpVitals.bpSystolic}/{selectedCase.preOpAssessment.preOpVitals.bpDiastolic}</span>
+                  </div>
+                  <div className="bg-slate-900/60 p-2 rounded">
+                    <span className="text-slate-400 text-[10px] block">HR</span>
+                    <span className="font-mono text-white font-bold">{selectedCase.preOpAssessment.preOpVitals.heartRate} bpm</span>
+                  </div>
+                  <div className="bg-slate-900/60 p-2 rounded">
+                    <span className="text-slate-400 text-[10px] block">SpO₂</span>
+                    <span className="font-mono text-white font-bold">{selectedCase.preOpAssessment.preOpVitals.spO2}%</span>
+                  </div>
+                  <div className="bg-slate-900/60 p-2 rounded">
+                    <span className="text-slate-400 text-[10px] block">Temp</span>
+                    <span className="font-mono text-white font-bold">{selectedCase.preOpAssessment.preOpVitals.tempCelsius}°C</span>
                   </div>
                 </div>
-              )}
+              </div>
+            </div>
+          )}
+          {/* TAB 4: DIGITAL SURGICAL CONSENT */}
+          {activeTab === 'consent' && (
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                <FileCheck className="w-4 h-4 text-emerald-400" /> Informed Consent Records
+              </h3>
 
-              {activeDrawerTab === "whochecklist" && (
-                <div className="space-y-4">
-                  <p className="text-xs text-slate-500">Digital WHO Surgical Safety Checklist Workflow:</p>
-                  {[
-                    { key: "signIn", title: "1. SIGN IN (Before Anesthesia)", desc: "Patient identity, site, consent & anesthesia safety verified." },
-                    { key: "timeOut", title: "2. TIME OUT (Before Skin Incision)", desc: "Full team introductions, site confirmation & antibiotic prophylaxis." },
-                    { key: "signOut", title: "3. SIGN OUT (Before Patient Leaves OT)", desc: "Instrument counts, specimen labeling & recovery plan." },
-                  ].map((step) => {
-                    const isDone = selectedCase.whoChecklist[step.key as "signIn" | "timeOut" | "signOut"].completed;
-                    return (
-                      <div key={step.key} className="p-4 rounded-2xl border border-slate-100 flex items-center justify-between">
-                        <div>
-                          <p className="text-xs font-bold text-slate-800">{step.title}</p>
-                          <p className="text-[11px] text-slate-500">{step.desc}</p>
-                        </div>
-                        <button
-                          onClick={() => handleToggleWHOStep(step.key as any)}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                            isDone ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                          }`}
-                        >
-                          {isDone ? "Completed ✓" : "Mark Done"}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {activeDrawerTab === "intraop" && (
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <h4 className="text-xs font-bold text-slate-700 uppercase">Intraoperative Vitals Monitoring</h4>
-                    {selectedCase.status === SurgeryStatus.IN_PROGRESS && (
-                      <button
-                        onClick={() => setIsVitalsModalOpen(true)}
-                        className="bg-[#1b7b68] text-white px-3 py-1.5 rounded-xl text-xs font-semibold"
-                      >
-                        + Log Vitals
-                      </button>
+              <div className="space-y-2 text-xs">
+                {[
+                  { label: 'Surgical Procedure Consent', status: selectedCase.consent.procedureConsent },
+                  { label: 'Anaesthesia Administration Consent', status: selectedCase.consent.anesthesiaConsent },
+                  { label: 'Blood Transfusion Authorization', status: selectedCase.consent.bloodTransfusionConsent },
+                  { label: 'High-Risk Procedure Disclosure', status: selectedCase.consent.highRiskConsent },
+                ].map((item, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-3 bg-slate-800/60 rounded-lg border border-slate-700/60">
+                    <span className="text-slate-200 font-medium">{item.label}</span>
+                    {item.status ? (
+                      <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-4 h-4" /> Executed & Signed
+                      </span>
+                    ) : (
+                      <span className="text-slate-500 italic">Not Required</span>
                     )}
                   </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-                  <div className="space-y-2">
-                    {selectedCase.vitalsTimeline.map((log, idx) => (
-                      <div key={idx} className="p-3 bg-slate-50 rounded-2xl text-xs flex justify-between items-center">
-                        <span className="font-mono text-slate-400">{new Date(log.timestamp).toLocaleTimeString()}</span>
-                        <div className="flex gap-3 font-semibold">
-                          <span className="text-slate-700">BP: {log.bpSystolic}/{log.bpDiastolic}</span>
-                          <span className="text-emerald-700">HR: {log.heartRate} bpm</span>
-                          <span className="text-blue-700">SpO2: {log.spO2}%</span>
-                        </div>
+          {/* TAB 5: EQUIPMENT & CONSUMABLES */}
+          {activeTab === 'equipment' && (
+            <div className="space-y-5">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
+                  <Wrench className="w-4 h-4 text-emerald-400" /> Sterilization & Equipment Checklist
+                </h3>
+                <div className="space-y-2">
+                  {selectedCase.equipmentChecklist.map((eq, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-3 bg-slate-800/60 rounded-lg border border-slate-700/60 text-xs">
+                      <span className="text-white font-medium">{eq.itemName}</span>
+                      <span className="px-2 py-0.5 bg-emerald-950 text-emerald-400 border border-emerald-800 rounded font-mono font-semibold">
+                        {eq.sterileStatus}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
+                  <Package className="w-4 h-4 text-emerald-400" /> Consumables & Stock Deduction
+                </h3>
+                <div className="space-y-2">
+                  {selectedCase.consumablesUsed.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-3 bg-slate-800/60 rounded-lg border border-slate-700/60 text-xs">
+                      <div>
+                        <p className="text-white font-medium">{item.itemName}</p>
+                        <p className="text-slate-400 text-[10px]">Lot: {item.lotNumber}</p>
                       </div>
+                      <div className="text-right">
+                        <p className="text-emerald-400 font-mono font-bold">{item.quantityUsed} Units</p>
+                        <p className="text-slate-400 text-[10px]">₦{(item.quantityUsed * item.unitCost).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 8: WHO SURGICAL SAFETY CHECKLIST */}
+          {activeTab === 'who' && (
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                <ClipboardCheck className="w-4 h-4 text-emerald-400" /> WHO 3-Stage Surgical Safety Checklist
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                {/* SIGN IN */}
+                <div className="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700/80 space-y-2">
+                  <div className="flex items-center justify-between border-b border-slate-700 pb-2">
+                    <span className="font-bold text-emerald-400">1. SIGN IN</span>
+                    <span className="text-[10px] bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded">Before Anaesthesia</span>
+                  </div>
+                  <ul className="space-y-1.5 text-slate-300">
+                    <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-400" /> Patient identity confirmed</li>
+                    <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-400" /> Site marked</li>
+                    <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-400" /> Pulse oximeter functioning</li>
+                  </ul>
+                </div>
+
+                {/* TIME OUT */}
+                <div className="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700/80 space-y-2">
+                  <div className="flex items-center justify-between border-b border-slate-700 pb-2">
+                    <span className="font-bold text-amber-400">2. TIME OUT</span>
+                    <span className="text-[10px] bg-amber-950 text-amber-400 px-1.5 py-0.5 rounded">Before Incision</span>
+                  </div>
+                  <ul className="space-y-1.5 text-slate-300">
+                    <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-400" /> Team introduced</li>
+                    <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-400" /> Antibiotic given &lt;60m</li>
+                    <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-400" /> Imaging displayed</li>
+                  </ul>
+                </div>
+
+                {/* SIGN OUT */}
+                <div className="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700/80 space-y-2">
+                  <div className="flex items-center justify-between border-b border-slate-700 pb-2">
+                    <span className="font-bold text-slate-400">3. SIGN OUT</span>
+                    <span className="text-[10px] bg-slate-900 text-slate-400 px-1.5 py-0.5 rounded">Before Leaving OT</span>
+                  </div>
+                  <ul className="space-y-1.5 text-slate-400">
+                    <li className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> Sponge/needle counts</li>
+                    <li className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> Specimen labeling</li>
+                    <li className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> Recovery plan</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 9 & 10: INTRAOPERATIVE & ANAESTHESIA */}
+          {activeTab === 'intraop' && (
+            <div className="space-y-4 text-xs">
+              <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                <Syringe className="w-4 h-4 text-emerald-400" /> Intraoperative Record & Anaesthesia Summary
+              </h3>
+
+              <div className="bg-slate-800/60 p-4 rounded-xl border border-slate-700/60 space-y-3">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div>
+                    <span className="text-slate-400 block">Incision Time</span>
+                    <span className="font-mono text-white font-bold">{selectedCase.intraopDocs.incisionTime ? new Date(selectedCase.intraopDocs.incisionTime).toLocaleTimeString() : 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Estimated Blood Loss (EBL)</span>
+                    <span className="font-mono text-emerald-400 font-bold">{selectedCase.intraopDocs.eblMl || 0} mL</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Fluids Administered</span>
+                    <span className="font-mono text-white font-bold">{selectedCase.intraopDocs.fluidsAdministeredMl || 0} mL</span>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-700/60 pt-3">
+                  <span className="text-slate-400 block mb-1">Surgical Findings</span>
+                  <p className="text-slate-200 bg-slate-900/60 p-2.5 rounded border border-slate-800">{selectedCase.intraopDocs.surgicalFindings || 'No notes logged yet.'}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 11: INTRAOPERATIVE MONITORING TIMELINE */}
+          {activeTab === 'vitals' && (
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                <HeartPulse className="w-4 h-4 text-emerald-400" /> Intraoperative Vitals Timeline
+              </h3>
+
+              <div className="overflow-x-auto bg-slate-800/60 rounded-xl border border-slate-700/60">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead className="bg-slate-900/80 text-slate-400 uppercase text-[10px]">
+                    <tr>
+                      <th className="p-3">Time</th>
+                      <th className="p-3">BP (mmHg)</th>
+                      <th className="p-3">HR (bpm)</th>
+                      <th className="p-3">SpO₂ (%)</th>
+                      <th className="p-3">RR</th>
+                      <th className="p-3">Temp (°C)</th>
+                      <th className="p-3">EtCO₂</th>
+                      <th className="p-3">ECG</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700/50 text-slate-200">
+                    {selectedCase.vitalsTimeline.map((v, idx) => (
+                      <tr key={idx} className="hover:bg-slate-800/80">
+                        <td className="p-3 font-bold text-emerald-400">{v.timestamp}</td>
+                        <td className="p-3">{v.bpSystolic}/{v.bpDiastolic}</td>
+                        <td className="p-3">{v.heartRate}</td>
+                        <td className="p-3">{v.spO2}%</td>
+                        <td className="p-3">{v.respRate}</td>
+                        <td className="p-3">{v.tempCelsius}°C</td>
+                        <td className="p-3">{v.etCO2}</td>
+                        <td className="p-3"><span className="bg-slate-900 text-emerald-400 px-1.5 py-0.5 rounded text-[10px]">{v.ecgRhythm}</span></td>
+                      </tr>
                     ))}
-                    {selectedCase.vitalsTimeline.length === 0 && (
-                      <p className="text-xs text-slate-400 italic">No intraoperative vitals recorded yet.</p>
-                    )}
-                  </div>
-                </div>
-              )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          )}
+
         </div>
-      )}
-      {/* --- MODAL: SCHEDULE SURGERY --- */}
-      {isScheduleOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-xl space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-slate-900">Schedule Operating Theatre Case</h3>
-              <button onClick={() => setIsScheduleOpen(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleScheduleSubmit} className="space-y-3 text-xs">
-              <div>
-                <label className="block text-slate-600 font-medium mb-1">Patient Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Eleanor Vane"
-                  value={scheduleForm.patientName}
-                  onChange={(e) => setScheduleForm({ ...scheduleForm, patientName: e.target.value })}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-600 font-medium mb-1">MRN</label>
-                  <input
-                    type="text"
-                    placeholder="MRN-80921"
-                    value={scheduleForm.mrn}
-                    onChange={(e) => setScheduleForm({ ...scheduleForm, mrn: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-600 font-medium mb-1">Theatre Room</label>
-                  <select
-                    value={scheduleForm.theatreId}
-                    onChange={(e) => setScheduleForm({ ...scheduleForm, theatreId: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl"
-                  >
-                    <option value="OT-1 (Main)">OT-1 (Main)</option>
-                    <option value="OT-2 (Trauma)">OT-2 (Trauma)</option>
-                    <option value="OT-3 (Cardiac)">OT-3 (Cardiac)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-600 font-medium mb-1">Procedure Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Total Hip Arthroplasty"
-                  value={scheduleForm.procedureName}
-                  onChange={(e) => setScheduleForm({ ...scheduleForm, procedureName: e.target.value })}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-600 font-medium mb-1">Urgency</label>
-                  <select
-                    value={scheduleForm.urgency}
-                    onChange={(e) => setScheduleForm({ ...scheduleForm, urgency: e.target.value as UrgencyLevel })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl"
-                  >
-                    <option value={UrgencyLevel.ELECTIVE}>Elective</option>
-                    <option value={UrgencyLevel.URGENT}>Urgent</option>
-                    <option value={UrgencyLevel.EMERGENCY}>Emergency</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-600 font-medium mb-1">Anesthesia Type</label>
-                  <select
-                    value={scheduleForm.anesthesiaType}
-                    onChange={(e) => setScheduleForm({ ...scheduleForm, anesthesiaType: e.target.value as AnesthesiaType })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl"
-                  >
-                    <option value={AnesthesiaType.GENERAL}>General</option>
-                    <option value={AnesthesiaType.REGIONAL}>Regional</option>
-                    <option value={AnesthesiaType.LOCAL}>Local</option>
-                    <option value={AnesthesiaType.SPINAL}>Spinal</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="pt-3 flex justify-end gap-2">
-                <button type="button" onClick={() => setIsScheduleOpen(false)} className="px-4 py-2 rounded-2xl bg-slate-100 text-slate-600">
-                  Cancel
-                </button>
-                <button type="submit" className="px-4 py-2 rounded-2xl bg-[#1b7b68] text-white font-semibold">
-                  Confirm Booking
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODAL: INTRAOP VITALS LOG --- */}
-      {isVitalsModalOpen && selectedCase && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-xl space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-slate-900">Log Intraoperative Vitals</h3>
-              <button onClick={() => setIsVitalsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddVitals} className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-600 mb-1">BP Systolic</label>
-                  <input
-                    type="number"
-                    value={vitalsForm.bpSystolic}
-                    onChange={(e) => setVitalsForm({ ...vitalsForm, bpSystolic: Number(e.target.value) })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-600 mb-1">BP Diastolic</label>
-                  <input
-                    type="number"
-                    value={vitalsForm.bpDiastolic}
-                    onChange={(e) => setVitalsForm({ ...vitalsForm, bpDiastolic: Number(e.target.value) })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-600 mb-1">Heart Rate (bpm)</label>
-                  <input
-                    type="number"
-                    value={vitalsForm.heartRate}
-                    onChange={(e) => setVitalsForm({ ...vitalsForm, heartRate: Number(e.target.value) })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-600 mb-1">SpO2 (%)</label>
-                  <input
-                    type="number"
-                    value={vitalsForm.spO2}
-                    onChange={(e) => setVitalsForm({ ...vitalsForm, spO2: Number(e.target.value) })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-3 flex justify-end gap-2">
-                <button type="button" onClick={() => setIsVitalsModalOpen(false)} className="px-4 py-2 rounded-2xl bg-slate-100 text-slate-600">
-                  Cancel
-                </button>
-                <button type="submit" className="px-4 py-2 rounded-2xl bg-[#1b7b68] text-white font-semibold">
-                  Record Log
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
-}
+                      }
