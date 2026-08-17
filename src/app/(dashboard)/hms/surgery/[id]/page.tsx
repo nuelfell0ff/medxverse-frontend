@@ -435,11 +435,14 @@ export default function SurgeryCaseDetailsPage() {
     : 'Patient';
 
   const resolvedLeadSurgeon =
-    resolveStaffMember(surgeryCase?.leadSurgeonId, staff) ||
-    leadSurgeon;
+    (typeof surgeryCase?.leadSurgeonId === 'object'
+      ? (surgeryCase.leadSurgeonId as Staff)
+      : staff.find(
+          (person) => String(person._id) === String(surgeryCase?.leadSurgeonId)
+        )) || leadSurgeon;
 
   const surgeonName = resolvedLeadSurgeon
-    ? getPersonName(resolvedLeadSurgeon) || 'Assigned Surgeon'
+    ? `${resolvedLeadSurgeon.firstName || ''} ${resolvedLeadSurgeon.lastName || ''}`.trim() || 'Assigned Surgeon'
     : 'Assigned Surgeon';
 
   const request = async (
@@ -701,48 +704,6 @@ export default function SurgeryCaseDetailsPage() {
       setPostOpNotes(updated.postOpNotes || '');
     } catch (error: any) {
       setActionError(error.message);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const verifyTeamMember = async (userId?: string) => {
-    if (!surgeryCase || !userId) return;
-
-    setActionLoading(true);
-    setActionError(null);
-
-    try {
-      const updatedTeam = (surgeryCase.surgicalTeam || []).map((member) => {
-        const memberId =
-          typeof member.userId === 'string'
-            ? member.userId
-            : member.userId?._id;
-
-        if (memberId === userId) {
-          return {
-            ...member,
-            credentialVerified: true,
-          };
-        }
-
-        return member;
-      });
-
-      const updated = await request(
-        `/surgery/${surgeryCase._id}`,
-        {
-          method: 'PATCH',
-          body: JSON.stringify({
-            ...surgeryCase,
-            surgicalTeam: updatedTeam,
-          }),
-        }
-      );
-
-      setSurgeryCase(updated);
-    } catch (error: any) {
-      setActionError(error.message || 'Unable to verify team member.');
     } finally {
       setActionLoading(false);
     }
@@ -1110,7 +1071,6 @@ export default function SurgeryCaseDetailsPage() {
                     ? surgeryCase.leadSurgeonId
                     : surgeryCase.leadSurgeonId?._id
                 }
-                onVerifyMember={verifyTeamMember}
               />
             )}
 
@@ -1632,12 +1592,10 @@ function TeamTab({
   team,
   staff,
   leadSurgeonId,
-  onVerifyMember,
 }: {
   team: SurgicalTeamMember[];
   staff: Staff[];
   leadSurgeonId?: string;
-  onVerifyMember: (userId?: string) => void;
 }) {
   return (
     <SectionCard
@@ -1658,9 +1616,16 @@ function TeamTab({
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {team.map((member, index) => {
-              const resolvedStaff = resolveStaffMember(member.userId, staff);
+              const person =
+                typeof member.userId === 'object'
+                  ? (member.userId as Staff)
+                  : staff.find(
+                      (item) => String(item._id) === String(member.userId)
+                    );
 
-              const name = getPersonName(resolvedStaff) || 'Assigned Staff';
+              const name = person
+                ? `${person.firstName || ''} ${person.lastName || ''}`.trim() || 'Assigned Staff'
+                : 'Assigned Staff';
 
               const isLead =
                 member.role === SurgicalRole.PRIMARY_SURGEON ||
@@ -1696,39 +1661,21 @@ function TeamTab({
 
                     <p className="text-[10px] text-slate-400 mt-1">
                       {roleLabels[member.role] || formatLabel(member.role)}
-                      {resolvedStaff?.department ? ` • ${resolvedStaff.department}` : ''}
+                      {person?.department ? ` • ${person.department}` : ''}
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span
-                      className={`text-[9px] font-bold px-2 py-1 rounded-lg ${
-                        member.credentialVerified
-                          ? 'bg-emerald-50 text-emerald-600'
-                          : 'bg-amber-50 text-amber-600'
-                      }`}
-                    >
-                      {member.credentialVerified
-                        ? 'Verified'
-                        : 'Unverified'}
-                    </span>
-
-                    {!member.credentialVerified && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onVerifyMember(
-                            typeof member.userId === 'string'
-                              ? member.userId
-                              : member.userId?._id
-                          )
-                        }
-                        className="px-2 py-1 rounded-lg bg-[#1b7b68] text-[9px] font-bold text-white hover:bg-[#146253]"
-                      >
-                        Mark Verified
-                      </button>
-                    )}
-                  </div>
+                  <span
+                    className={`shrink-0 text-[9px] font-bold px-2 py-1 rounded-lg ${
+                      member.credentialVerified
+                        ? 'bg-emerald-50 text-emerald-600'
+                        : 'bg-amber-50 text-amber-600'
+                    }`}
+                  >
+                    {member.credentialVerified
+                      ? 'Verified'
+                      : 'Unverified'}
+                  </span>
                 </div>
               );
             })}
