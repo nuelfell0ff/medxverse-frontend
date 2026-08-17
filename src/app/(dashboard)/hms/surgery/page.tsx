@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Activity,
   AlertCircle,
@@ -17,7 +18,6 @@ import {
   Search,
   ShieldAlert,
   Stethoscope,
-  Users,
   X,
 } from 'lucide-react';
 
@@ -160,6 +160,8 @@ const urgencyConfig: Record<
 };
 
 export default function SurgeryPage() {
+  const router = useRouter();
+
   const [cases, setCases] = useState<SurgeryCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -173,7 +175,6 @@ export default function SurgeryPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCases, setTotalCases] = useState(0);
 
-  const [selectedCase, setSelectedCase] = useState<SurgeryCase | null>(null);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
 
   const [scheduleForm, setScheduleForm] = useState({
@@ -194,7 +195,6 @@ export default function SurgeryPage() {
 
     try {
       const token = localStorage.getItem('token');
-
       const params = new URLSearchParams();
 
       params.set('page', String(page));
@@ -236,7 +236,7 @@ export default function SurgeryPage() {
       setTotalCases(responseData.total || 0);
       setTotalPages(responseData.totalPages || 1);
     } catch (error: any) {
-      console.error('Failed to fetch surgical cases:', error);
+      console.error(error);
       setCases([]);
       setActionError(
         error?.message || 'Unable to load surgical cases.'
@@ -264,15 +264,13 @@ export default function SurgeryPage() {
           ? surgery.leadSurgeonId
           : undefined;
 
-      const patientName = `${patient?.firstName || ''} ${
-        patient?.lastName || ''
-      }`.toLowerCase();
+      const patientName =
+        `${patient?.firstName || ''} ${patient?.lastName || ''}`.toLowerCase();
 
       const mrn = patient?.mrn?.toLowerCase() || '';
 
-      const surgeonName = `${surgeon?.firstName || ''} ${
-        surgeon?.lastName || ''
-      }`.toLowerCase();
+      const surgeonName =
+        `${surgeon?.firstName || ''} ${surgeon?.lastName || ''}`.toLowerCase();
 
       const procedure = surgery.procedureName?.toLowerCase() || '';
       const theatre = surgery.theatreId?.toLowerCase() || '';
@@ -292,35 +290,31 @@ export default function SurgeryPage() {
     });
   }, [cases, searchTerm, urgencyFilter]);
 
-  const stats = useMemo(() => {
-    return {
+  const stats = useMemo(
+    () => ({
       scheduled: cases.filter(
         (item) => item.status === SurgeryStatus.SCHEDULED
       ).length,
-
       preOp: cases.filter(
         (item) => item.status === SurgeryStatus.PRE_OP_PREPARATION
       ).length,
-
       inProgress: cases.filter(
         (item) => item.status === SurgeryStatus.IN_PROGRESS
       ).length,
-
       completed: cases.filter(
         (item) => item.status === SurgeryStatus.COMPLETED
       ).length,
-
       emergency: cases.filter(
         (item) => item.urgency === UrgencyLevel.EMERGENCY
       ).length,
-    };
-  }, [cases]);
+    }),
+    [cases]
+  );
 
   const handleScheduleSurgery = async (
     e: React.FormEvent<HTMLFormElement>
   ) => {
     e.preventDefault();
-
     setActionError(null);
 
     try {
@@ -375,8 +369,6 @@ export default function SurgeryPage() {
 
       fetchCases();
     } catch (error: any) {
-      console.error('Failed to schedule surgery:', error);
-
       setActionError(
         error?.message || 'Failed to schedule surgical case.'
       );
@@ -403,9 +395,7 @@ export default function SurgeryPage() {
   };
 
   const getPatientName = (surgery: SurgeryCase) => {
-    if (typeof surgery.patientId === 'string') {
-      return 'Patient';
-    }
+    if (typeof surgery.patientId === 'string') return 'Patient';
 
     return `${surgery.patientId?.firstName || 'Unknown'} ${
       surgery.patientId?.lastName || 'Patient'
@@ -470,9 +460,7 @@ export default function SurgeryPage() {
             title="Refresh surgical cases"
           >
             <RefreshCw
-              className={`w-4 h-4 ${
-                loading ? 'animate-spin' : ''
-              }`}
+              className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
             />
           </button>
 
@@ -481,7 +469,7 @@ export default function SurgeryPage() {
             className="flex items-center gap-2 px-4 py-2.5 bg-[#1b7b68] hover:bg-[#146253] text-white text-xs font-bold rounded-2xl shadow-md shadow-[#1b7b68]/20 transition-all active:scale-95"
           >
             <Plus className="w-4 h-4" />
-            <span>Schedule Surgery</span>
+            Schedule Surgery
           </button>
         </div>
       </div>
@@ -550,8 +538,7 @@ export default function SurgeryPage() {
                 );
 
                 const activeCase = theatreCases.find(
-                  (item) =>
-                    item.status === SurgeryStatus.IN_PROGRESS
+                  (item) => item.status === SurgeryStatus.IN_PROGRESS
                 );
 
                 return (
@@ -640,7 +627,7 @@ export default function SurgeryPage() {
                 setPage(1);
               }}
               placeholder="Search patient, MRN, procedure, surgeon..."
-              className="w-full pl-11 pr-4 py-2.5 text-xs rounded-2xl border border-slate-200/80 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/20 focus:border-[#1b7b68] transition-all"
+              className="w-full pl-11 pr-4 py-2.5 text-xs rounded-2xl border border-slate-200/80 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/20 focus:border-[#1b7b68]"
             />
           </div>
 
@@ -656,24 +643,12 @@ export default function SurgeryPage() {
               className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-600 focus:outline-none focus:border-[#1b7b68]"
             >
               <option value="ALL">All Status</option>
-              <option value={SurgeryStatus.SCHEDULED}>
-                Scheduled
-              </option>
-              <option value={SurgeryStatus.PRE_OP_PREPARATION}>
-                Pre-Op
-              </option>
-              <option value={SurgeryStatus.IN_PROGRESS}>
-                In Progress
-              </option>
-              <option value={SurgeryStatus.RECOVERY}>
-                Recovery
-              </option>
-              <option value={SurgeryStatus.COMPLETED}>
-                Completed
-              </option>
-              <option value={SurgeryStatus.CANCELLED}>
-                Cancelled
-              </option>
+              <option value={SurgeryStatus.SCHEDULED}>Scheduled</option>
+              <option value={SurgeryStatus.PRE_OP_PREPARATION}>Pre-Op</option>
+              <option value={SurgeryStatus.IN_PROGRESS}>In Progress</option>
+              <option value={SurgeryStatus.RECOVERY}>Recovery</option>
+              <option value={SurgeryStatus.COMPLETED}>Completed</option>
+              <option value={SurgeryStatus.CANCELLED}>Cancelled</option>
             </select>
 
             <select
@@ -685,13 +660,9 @@ export default function SurgeryPage() {
               className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-600 focus:outline-none focus:border-[#1b7b68]"
             >
               <option value="ALL">All Priority</option>
-              <option value={UrgencyLevel.ELECTIVE}>
-                Elective
-              </option>
+              <option value={UrgencyLevel.ELECTIVE}>Elective</option>
               <option value={UrgencyLevel.URGENT}>Urgent</option>
-              <option value={UrgencyLevel.EMERGENCY}>
-                Emergency
-              </option>
+              <option value={UrgencyLevel.EMERGENCY}>Emergency</option>
             </select>
 
             <input
@@ -727,18 +698,13 @@ export default function SurgeryPage() {
               ) : filteredCases.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-16 text-center">
-                    <div className="max-w-xs mx-auto space-y-2">
-                      <Hospital className="w-8 h-8 text-slate-300 mx-auto" />
-
-                      <p className="text-sm font-semibold text-slate-600">
-                        No surgical cases found
-                      </p>
-
-                      <p className="text-xs text-slate-400">
-                        Try adjusting your filters or schedule a new
-                        surgical procedure.
-                      </p>
-                    </div>
+                    <Hospital className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p className="text-sm font-semibold text-slate-600 mt-2">
+                      No surgical cases found
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Try adjusting your filters or schedule a new surgical procedure.
+                    </p>
                   </td>
                 </tr>
               ) : (
@@ -762,7 +728,7 @@ export default function SurgeryPage() {
                   return (
                     <tr
                       key={surgery._id}
-                      className="hover:bg-[#e8f5f3]/20 transition-all duration-150 group"
+                      className="hover:bg-[#e8f5f3]/20 transition-all group"
                     >
                       <td className="py-4 px-6">
                         <div className="flex items-center gap-3">
@@ -773,10 +739,9 @@ export default function SurgeryPage() {
                           />
 
                           <div>
-                            <div className="font-bold text-slate-800 text-sm group-hover:text-[#1b7b68] transition-colors">
+                            <div className="font-bold text-slate-800 text-sm group-hover:text-[#1b7b68]">
                               {patientName}
                             </div>
-
                             <div className="text-[11px] font-mono text-slate-400">
                               MRN: {patientMrn}
                             </div>
@@ -801,7 +766,6 @@ export default function SurgeryPage() {
                           <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
                             <Hospital className="w-4 h-4" />
                           </div>
-
                           <span className="font-bold text-slate-700">
                             {surgery.theatreId}
                           </span>
@@ -820,8 +784,7 @@ export default function SurgeryPage() {
                             </p>
 
                             <p className="text-[10px] text-slate-400">
-                              {surgery.surgicalTeam?.length || 0}{' '}
-                              team members
+                              {surgery.surgicalTeam?.length || 0} team members
                             </p>
                           </div>
                         </div>
@@ -842,11 +805,9 @@ export default function SurgeryPage() {
                         <span
                           className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${urgency.className}`}
                         >
-                          {surgery.urgency ===
-                            UrgencyLevel.EMERGENCY && (
+                          {surgery.urgency === UrgencyLevel.EMERGENCY && (
                             <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
                           )}
-
                           {urgency.label}
                         </span>
                       </td>
@@ -855,18 +816,18 @@ export default function SurgeryPage() {
                         <span
                           className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${status.className}`}
                         >
-                          {surgery.status ===
-                            SurgeryStatus.IN_PROGRESS && (
+                          {surgery.status === SurgeryStatus.IN_PROGRESS && (
                             <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
                           )}
-
                           {status.label}
                         </span>
                       </td>
 
                       <td className="py-4 px-6 text-right">
                         <button
-                          onClick={() => setSelectedCase(surgery)}
+                          onClick={() =>
+                            router.push(`/hms/surgery/${surgery._id}`)
+                          }
                           className="flex items-center gap-1 px-3 py-1.5 ml-auto bg-[#1b7b68]/10 hover:bg-[#1b7b68] text-[#1b7b68] hover:text-white rounded-xl text-xs font-bold transition-all"
                         >
                           <Eye className="w-3.5 h-3.5" />
@@ -883,21 +844,15 @@ export default function SurgeryPage() {
 
         <div className="px-5 py-3.5 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
           <span>
-            Showing page{' '}
-            <strong className="text-slate-800">{page}</strong>{' '}
-            of{' '}
-            <strong className="text-slate-800">
-              {totalPages}
-            </strong>
+            Showing page <strong className="text-slate-800">{page}</strong> of{' '}
+            <strong className="text-slate-800">{totalPages}</strong>
           </span>
 
           <div className="flex items-center gap-2">
             <button
               disabled={page <= 1}
-              onClick={() =>
-                setPage((current) => Math.max(current - 1, 1))
-              }
-              className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              onClick={() => setPage((current) => Math.max(current - 1, 1))}
+              className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 transition-all"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -905,29 +860,15 @@ export default function SurgeryPage() {
             <button
               disabled={page >= totalPages}
               onClick={() =>
-                setPage((current) =>
-                  Math.min(current + 1, totalPages)
-                )
+                setPage((current) => Math.min(current + 1, totalPages))
               }
-              className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 transition-all"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         </div>
       </div>
-
-      {selectedCase && (
-        <SurgeryDetailsModal
-          surgery={selectedCase}
-          onClose={() => setSelectedCase(null)}
-          formatTime={formatTime}
-          formatDate={formatDate}
-          getPatientName={getPatientName}
-          getPatientMrn={getPatientMrn}
-          getSurgeonName={getSurgeonName}
-        />
-      )}
 
       {isScheduleOpen && (
         <ScheduleSurgeryModal
@@ -961,10 +902,7 @@ function MetricCard({
       </div>
 
       <div>
-        <p className="text-xs text-slate-400 font-medium">
-          {label}
-        </p>
-
+        <p className="text-xs text-slate-400 font-medium">{label}</p>
         <p className="text-xl font-extrabold text-slate-800 tracking-tight">
           {value}
         </p>
@@ -977,321 +915,24 @@ function TableSkeleton() {
   return (
     <>
       {Array.from({ length: 6 }).map((_, index) => (
-        <tr
-          key={index}
-          className="animate-pulse border-b border-slate-100"
-        >
+        <tr key={index} className="animate-pulse border-b border-slate-100">
           <td className="py-4 px-6">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-slate-200" />
-
               <div>
                 <div className="h-4 bg-slate-200 rounded-lg w-28 mb-1.5" />
                 <div className="h-3 bg-slate-100 rounded-lg w-20" />
               </div>
             </div>
           </td>
-
-          <td className="py-4 px-6">
-            <div className="h-4 bg-slate-200 rounded-lg w-40" />
-          </td>
-
-          <td className="py-4 px-6">
-            <div className="h-8 bg-slate-100 rounded-xl w-24" />
-          </td>
-
-          <td className="py-4 px-6">
-            <div className="h-4 bg-slate-200 rounded-lg w-28" />
-          </td>
-
-          <td className="py-4 px-6">
-            <div className="h-4 bg-slate-200 rounded-lg w-32 mb-1" />
-            <div className="h-3 bg-slate-100 rounded-lg w-20" />
-          </td>
-
-          <td className="py-4 px-6">
-            <div className="h-6 bg-slate-200 rounded-full w-20" />
-          </td>
-
-          <td className="py-4 px-6">
-            <div className="h-6 bg-slate-200 rounded-full w-24" />
-          </td>
-
-          <td className="py-4 px-6">
-            <div className="h-8 bg-slate-200 rounded-xl w-16 ml-auto" />
-          </td>
+          {Array.from({ length: 7 }).map((_, i) => (
+            <td key={i} className="py-4 px-6">
+              <div className="h-4 bg-slate-200 rounded-lg w-24" />
+            </td>
+          ))}
         </tr>
       ))}
     </>
-  );
-}
-
-function SurgeryDetailsModal({
-  surgery,
-  onClose,
-  formatTime,
-  formatDate,
-  getPatientName,
-  getPatientMrn,
-  getSurgeonName,
-}: {
-  surgery: SurgeryCase;
-  onClose: () => void;
-  formatTime: (value?: string) => string;
-  formatDate: (value?: string) => string;
-  getPatientName: (surgery: SurgeryCase) => string;
-  getPatientMrn: (surgery: SurgeryCase) => string;
-  getSurgeonName: (surgery: SurgeryCase) => string;
-}) {
-  const status =
-    statusConfig[surgery.status] ||
-    statusConfig[SurgeryStatus.SCHEDULED];
-
-  const urgency =
-    urgencyConfig[surgery.urgency] ||
-    urgencyConfig[UrgencyLevel.ELECTIVE];
-
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-3xl w-full shadow-2xl my-8 overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-extrabold text-slate-800">
-                Surgical Case
-              </h2>
-
-              <span
-                className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${status.className}`}
-              >
-                {status.label}
-              </span>
-            </div>
-
-            <p className="text-xs text-slate-400 mt-1">
-              Case ID: {surgery._id}
-            </p>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl bg-slate-50 text-slate-500 hover:bg-slate-100 transition-all"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <InfoCard
-              label="Patient"
-              value={getPatientName(surgery)}
-              secondary={getPatientMrn(surgery)}
-            />
-
-            <InfoCard
-              label="Procedure"
-              value={surgery.procedureName}
-              secondary={
-                surgery.icdCode
-                  ? `ICD: ${surgery.icdCode}`
-                  : 'No ICD code'
-              }
-            />
-
-            <InfoCard
-              label="Lead Surgeon"
-              value={getSurgeonName(surgery)}
-              secondary="Lead surgeon"
-            />
-
-            <InfoCard
-              label="Theatre"
-              value={surgery.theatreId}
-              secondary={`${formatDate(
-                surgery.scheduledStartTime
-              )} • ${formatTime(
-                surgery.scheduledStartTime
-              )} - ${formatTime(surgery.scheduledEndTime)}`}
-            />
-
-            <InfoCard
-              label="Anaesthesia"
-              value={surgery.anesthesiaType}
-              secondary="Planned anaesthesia"
-            />
-
-            <InfoCard
-              label="Priority"
-              value={urgency.label}
-              secondary="Surgical urgency"
-            />
-          </div>
-
-          <div>
-            <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-400 mb-3">
-              Surgical Team
-            </h3>
-
-            <div className="border border-slate-100 rounded-2xl overflow-hidden">
-              {surgery.surgicalTeam &&
-              surgery.surgicalTeam.length > 0 ? (
-                surgery.surgicalTeam.map((member, index) => {
-                  const staff =
-                    typeof member.userId === 'object'
-                      ? member.userId
-                      : undefined;
-
-                  const name =
-                    typeof member.userId === 'string'
-                      ? 'Assigned Staff'
-                      : `${staff?.firstName || ''} ${
-                          staff?.lastName || ''
-                        }`.trim();
-
-                  return (
-                    <div
-                      key={`${member.role}-${index}`}
-                      className="px-4 py-3 border-b last:border-b-0 border-slate-100 flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-[#e8f5f3] text-[#1b7b68] flex items-center justify-center">
-                          <Users className="w-4 h-4" />
-                        </div>
-
-                        <div>
-                          <p className="text-xs font-bold text-slate-700">
-                            {name || 'Assigned Staff'}
-                          </p>
-
-                          <p className="text-[10px] text-slate-400">
-                            {member.role.replaceAll('_', ' ')}
-                          </p>
-                        </div>
-                      </div>
-
-                      {member.credentialVerified && (
-                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-                          Verified
-                        </span>
-                      )}
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="p-5 text-xs text-slate-400 text-center">
-                  No additional surgical team members assigned.
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-400 mb-3">
-              Surgical Readiness
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <ReadinessItem
-                label="Pre-Op Assessment"
-                completed={
-                  surgery.preOpAssessment?.clearedForSurgery === true
-                }
-              />
-
-              <ReadinessItem
-                label="WHO Sign In"
-                completed={
-                  surgery.whoChecklist?.signIn?.completed === true
-                }
-              />
-
-              <ReadinessItem
-                label="WHO Time Out"
-                completed={
-                  surgery.whoChecklist?.timeOut?.completed === true
-                }
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function InfoCard({
-  label,
-  value,
-  secondary,
-}: {
-  label: string;
-  value: string;
-  secondary?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-4">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-        {label}
-      </p>
-
-      <p className="text-sm font-extrabold text-slate-800 mt-1">
-        {value}
-      </p>
-
-      {secondary && (
-        <p className="text-[10px] text-slate-400 mt-1">
-          {secondary}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function ReadinessItem({
-  label,
-  completed,
-}: {
-  label: string;
-  completed: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-2xl border p-4 ${
-        completed
-          ? 'bg-emerald-50 border-emerald-100'
-          : 'bg-amber-50 border-amber-100'
-      }`}
-    >
-      <div className="flex items-center gap-2">
-        {completed ? (
-          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-        ) : (
-          <Clock3 className="w-4 h-4 text-amber-600" />
-        )}
-
-        <span
-          className={`text-xs font-bold ${
-            completed ? 'text-emerald-700' : 'text-amber-700'
-          }`}
-        >
-          {completed ? 'Complete' : 'Pending'}
-        </span>
-      </div>
-
-      <p className="text-[10px] font-medium text-slate-500 mt-2">
-        {label}
-      </p>
-    </div>
   );
 }
 
@@ -1312,9 +953,7 @@ function ScheduleSurgeryModal({
     scheduledEndTime: string;
     anesthesiaType: AnesthesiaType;
   };
-  setForm: React.Dispatch<
-    React.SetStateAction<typeof form>
-  >;
+  setForm: React.Dispatch<React.SetStateAction<typeof form>>;
   onClose: () => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
 }) {
@@ -1331,7 +970,6 @@ function ScheduleSurgeryModal({
               <h2 className="text-lg font-extrabold text-slate-800">
                 Schedule Surgery
               </h2>
-
               <p className="text-[11px] text-slate-400">
                 Create a new operating theatre booking.
               </p>
@@ -1434,13 +1072,9 @@ function ScheduleSurgeryModal({
                 }
                 className={inputClass}
               >
-                <option value={UrgencyLevel.ELECTIVE}>
-                  Elective
-                </option>
+                <option value={UrgencyLevel.ELECTIVE}>Elective</option>
                 <option value={UrgencyLevel.URGENT}>Urgent</option>
-                <option value={UrgencyLevel.EMERGENCY}>
-                  Emergency
-                </option>
+                <option value={UrgencyLevel.EMERGENCY}>Emergency</option>
               </select>
             </FormField>
 
@@ -1485,23 +1119,11 @@ function ScheduleSurgeryModal({
                 }
                 className={inputClass}
               >
-                <option value={AnesthesiaType.GENERAL}>
-                  General
-                </option>
-                <option value={AnesthesiaType.REGIONAL}>
-                  Regional
-                </option>
-                <option value={AnesthesiaType.LOCAL}>Local</option>
-                <option value={AnesthesiaType.SPINAL}>Spinal</option>
-                <option value={AnesthesiaType.EPIDURAL}>
-                  Epidural
-                </option>
-                <option value={AnesthesiaType.SEDATION}>
-                  Sedation
-                </option>
-                <option value={AnesthesiaType.COMBINED}>
-                  Combined
-                </option>
+                {Object.values(AnesthesiaType).map((type) => (
+                  <option key={type} value={type}>
+                    {formatLabel(type)}
+                  </option>
+                ))}
               </select>
             </FormField>
           </div>
@@ -1517,7 +1139,7 @@ function ScheduleSurgeryModal({
 
             <button
               type="submit"
-              className="px-5 py-2.5 rounded-xl bg-[#1b7b68] hover:bg-[#146253] text-white text-xs font-bold shadow-sm transition-all"
+              className="px-5 py-2.5 rounded-xl bg-[#1b7b68] hover:bg-[#146253] text-white text-xs font-bold"
             >
               Schedule Surgery
             </button>
@@ -1540,10 +1162,19 @@ function FormField({
       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
         {label}
       </span>
-
       {children}
     </label>
   );
+}
+
+function formatLabel(value?: string) {
+  if (!value) return 'N/A';
+
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 }
 
 const inputClass =
