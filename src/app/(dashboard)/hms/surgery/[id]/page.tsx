@@ -295,6 +295,7 @@ export default function SurgeryCaseDetailsPage() {
   const caseId = Array.isArray(params?.id) ? params.id[0] : params?.id;
 
   const [surgeryCase, setSurgeryCase] = useState<SurgeryCase | null>(null);
+  const [staffDirectory, setStaffDirectory] = useState<Record<string, Staff>>({});
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
@@ -368,9 +369,39 @@ export default function SurgeryCaseDetailsPage() {
     }
   }, [caseId]);
 
+  const fetchStaffDirectory = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+
+      const res = await fetch(`${API_BASE_URL}/staff?isActive=true`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.message || 'Failed to load staff directory.');
+      }
+
+      const data = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
+      const directory = data.reduce((acc: Record<string, Staff>, person: Staff) => {
+        if (person?._id) acc[person._id] = person;
+        return acc;
+      }, {});
+
+      setStaffDirectory(directory);
+    } catch (error) {
+      console.error('Failed to load staff directory:', error);
+      setStaffDirectory({});
+    }
+  }, []);
+
   useEffect(() => {
     fetchCase();
-  }, [fetchCase]);
+    fetchStaffDirectory();
+  }, [fetchCase, fetchStaffDirectory]);
 
   const patient = useMemo(() => {
     if (!surgeryCase || typeof surgeryCase.patientId === 'string') {
@@ -1021,6 +1052,7 @@ export default function SurgeryCaseDetailsPage() {
             {activeTab === 'team' && (
               <TeamTab
                 team={surgeryCase.surgicalTeam || []}
+                staffDirectory={staffDirectory}
                 leadSurgeonId={
                   typeof surgeryCase.leadSurgeonId === 'string'
                     ? surgeryCase.leadSurgeonId
@@ -1545,9 +1577,11 @@ function ConsentTab({
 
 function TeamTab({
   team,
+  staffDirectory,
   leadSurgeonId,
 }: {
   team: SurgicalTeamMember[];
+  staffDirectory: Record<string, Staff>;
   leadSurgeonId?: string;
 }) {
   return (
@@ -1569,13 +1603,15 @@ function TeamTab({
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {team.map((member, index) => {
-              const staff =
+              const resolvedStaff =
                 typeof member.userId === 'object'
                   ? member.userId
-                  : undefined;
+                  : typeof member.userId === 'string'
+                    ? staffDirectory[member.userId]
+                    : undefined;
 
-              const name = staff
-                ? `${staff.firstName || ''} ${staff.lastName || ''}`.trim()
+              const name = resolvedStaff
+                ? `${resolvedStaff.firstName || ''} ${resolvedStaff.lastName || ''}`.trim()
                 : 'Assigned Staff';
 
               const isLead =
@@ -1612,7 +1648,7 @@ function TeamTab({
 
                     <p className="text-[10px] text-slate-400 mt-1">
                       {roleLabels[member.role] || formatLabel(member.role)}
-                      {staff?.department ? ` • ${staff.department}` : ''}
+                      {resolvedStaff?.department ? ` • ${resolvedStaff.department}` : ''}
                     </p>
                   </div>
 
