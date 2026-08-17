@@ -20,9 +20,16 @@ import {
   X,
 } from 'lucide-react';
 
-const API_BASE_URL =
+const DEFAULT_HOST = 'https://medxverse-backend.onrender.com';
+const RAW_API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_BASE_URL ||
-  'https://medxverse-backend.onrender.com';
+  process.env.NEXT_PUBLIC_API_URL ||
+  DEFAULT_HOST
+).trim().replace(/\/+$/, '');
+
+const API_BASE_URL = RAW_API_BASE_URL.endsWith('/api/v1')
+  ? RAW_API_BASE_URL
+  : `${RAW_API_BASE_URL}/api/v1`;
 
 enum SurgeryStatus {
   SCHEDULED = 'SCHEDULED',
@@ -324,7 +331,7 @@ export default function SurgeryCaseDetailsPage() {
       const token = localStorage.getItem('token');
 
       const res = await fetch(
-        `${API_BASE_URL}/api/v1/surgery/${caseId}`,
+        `${API_BASE_URL}/surgery/${caseId}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -400,7 +407,7 @@ export default function SurgeryCaseDetailsPage() {
   ) => {
     const token = localStorage.getItem('token');
 
-    const res = await fetch(`${API_BASE_URL}${url}`, {
+    const res = await fetch(`${API_BASE_URL}${url.startsWith('/') ? url : `/${url}`}`, {
       ...options,
       headers: {
         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
@@ -426,7 +433,7 @@ export default function SurgeryCaseDetailsPage() {
 
     try {
       const updated = await request(
-        `/api/v1/surgery/${surgeryCase._id}/pre-op`,
+        `/surgery/${surgeryCase._id}/pre-op`,
         {
           method: 'PATCH',
           body: JSON.stringify(preOpForm),
@@ -450,7 +457,7 @@ export default function SurgeryCaseDetailsPage() {
 
     try {
       const updated = await request(
-        `/api/v1/surgery/${surgeryCase._id}/consent`,
+        `/surgery/${surgeryCase._id}/consent`,
         {
           method: 'PATCH',
           body: JSON.stringify(consentForm),
@@ -476,7 +483,7 @@ export default function SurgeryCaseDetailsPage() {
 
     try {
       const updated = await request(
-        `/api/v1/surgery/${surgeryCase._id}/who-checklist`,
+        `/surgery/${surgeryCase._id}/who-checklist`,
         {
           method: 'PATCH',
           body: JSON.stringify({
@@ -514,7 +521,7 @@ export default function SurgeryCaseDetailsPage() {
       );
 
       const updated = await request(
-        `/api/v1/surgery/${surgeryCase._id}/vitals`,
+        `/surgery/${surgeryCase._id}/vitals`,
         {
           method: 'POST',
           body: JSON.stringify(payload),
@@ -549,7 +556,7 @@ export default function SurgeryCaseDetailsPage() {
 
     try {
       const updated = await request(
-        `/api/v1/surgery/${surgeryCase._id}/intraop-docs`,
+        `/surgery/${surgeryCase._id}/intraop-docs`,
         {
           method: 'PATCH',
           body: JSON.stringify({
@@ -579,7 +586,7 @@ export default function SurgeryCaseDetailsPage() {
 
     try {
       const updated = await request(
-        `/api/v1/surgery/${surgeryCase._id}/start`,
+        `/surgery/${surgeryCase._id}/start`,
         {
           method: 'PATCH',
         }
@@ -607,7 +614,7 @@ export default function SurgeryCaseDetailsPage() {
 
     try {
       const updated = await request(
-        `/api/v1/surgery/${surgeryCase._id}/cancel`,
+        `/surgery/${surgeryCase._id}/cancel`,
         {
           method: 'PATCH',
           body: JSON.stringify({
@@ -632,7 +639,7 @@ export default function SurgeryCaseDetailsPage() {
 
     try {
       const updated = await request(
-        `/api/v1/surgery/${surgeryCase._id}/complete`,
+        `/surgery/${surgeryCase._id}/complete`,
         {
           method: 'PATCH',
           body: JSON.stringify({

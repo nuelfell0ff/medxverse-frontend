@@ -455,7 +455,7 @@ export default function SurgeryPage() {
       }
 
       const res = await fetch(
-        `${API_BASE_URL}/api/v1/surgery?${params.toString()}`,
+        `${API_BASE_URL}/surgery?${params.toString()}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -601,7 +601,7 @@ export default function SurgeryPage() {
         anesthesiaType: scheduleForm.anesthesiaType,
       };
 
-      const res = await fetch(`${API_BASE_URL}/api/v1/surgery`, {
+      const res = await fetch(`${API_BASE_URL}/surgery`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
