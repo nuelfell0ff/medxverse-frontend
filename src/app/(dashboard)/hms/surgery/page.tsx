@@ -345,6 +345,10 @@ export default function SurgeryPage() {
   }, [fetchStaffDirectory]);
 
   useEffect(() => {
+    fetchStaffDirectory();
+  }, [fetchStaffDirectory]);
+
+  useEffect(() => {
     if (!isScheduleOpen) return;
 
     const timer = setTimeout(() => {
