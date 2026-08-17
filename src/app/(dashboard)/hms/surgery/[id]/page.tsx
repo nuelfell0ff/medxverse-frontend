@@ -125,6 +125,22 @@ interface ConsumableItem {
   lotNumber?: string;
 }
 
+/**
+ * Form state is intentionally separate from VitalsLog.
+ * Inputs are strings; the API receives numeric values after conversion.
+ */
+interface VitalsForm {
+  bpSystolic: string;
+  bpDiastolic: string;
+  heartRate: string;
+  spO2: string;
+  respRate: string;
+  tempCelsius: string;
+  etCO2: string;
+  ecgRhythm: string;
+  notes: string;
+}
+
 interface VitalsLog {
   timestamp: string;
   bpSystolic?: number;
@@ -202,6 +218,18 @@ type Tab =
   | 'intraoperative'
   | 'anaesthesia'
   | 'post-op';
+
+const EMPTY_VITALS_FORM: VitalsForm = {
+  bpSystolic: '',
+  bpDiastolic: '',
+  heartRate: '',
+  spO2: '',
+  respRate: '',
+  tempCelsius: '',
+  etCO2: '',
+  ecgRhythm: '',
+  notes: '',
+};
 
 const statusConfig: Record<
   SurgeryStatus,
@@ -282,17 +310,10 @@ export default function SurgeryCaseDetailsPage() {
   const [preOpForm, setPreOpForm] = useState<PreOpAssessment>({});
   const [consentForm, setConsentForm] = useState<Consent>({});
   const [whoForm, setWhoForm] = useState<Record<string, any>>({});
-  const [vitalsForm, setVitalsForm] = useState({
-    bpSystolic: '',
-    bpDiastolic: '',
-    heartRate: '',
-    spO2: '',
-    respRate: '',
-    tempCelsius: '',
-    etCO2: '',
-    ecgRhythm: '',
-    notes: '',
-  });
+
+  // FIXED: explicitly typed state
+  const [vitalsForm, setVitalsForm] =
+    useState<VitalsForm>(EMPTY_VITALS_FORM);
 
   const [intraopForm, setIntraopForm] = useState<IntraopDocs>({});
   const [equipment, setEquipment] = useState<EquipmentItem[]>([]);
@@ -371,7 +392,9 @@ export default function SurgeryCaseDetailsPage() {
   }, [surgeryCase]);
 
   const patientName = patient
-    ? `${patient.firstName || 'Unknown'} ${patient.lastName || 'Patient'}`
+    ? `${patient.firstName || 'Unknown'} ${
+        patient.lastName || 'Patient'
+      }`
     : 'Patient';
 
   const surgeonName = leadSurgeon
@@ -389,7 +412,9 @@ export default function SurgeryCaseDetailsPage() {
     const res = await fetch(`${API_BASE_URL}${url}`, {
       ...options,
       headers: {
-        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.body
+          ? { 'Content-Type': 'application/json' }
+          : {}),
         Authorization: `Bearer ${token}`,
         ...(options.headers || {}),
       },
@@ -508,18 +533,7 @@ export default function SurgeryCaseDetailsPage() {
       );
 
       setSurgeryCase(updated);
-
-      setVitalsForm({
-        bpSystolic: '',
-        bpDiastolic: '',
-        heartRate: '',
-        spO2: '',
-        respRate: '',
-        tempCelsius: '',
-        etCO2: '',
-        ecgRhythm: '',
-        notes: '',
-      });
+      setVitalsForm({ ...EMPTY_VITALS_FORM });
     } catch (error: any) {
       setActionError(error.message);
     } finally {
@@ -671,9 +685,11 @@ export default function SurgeryCaseDetailsPage() {
 
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-10 text-center">
             <AlertCircle className="w-10 h-10 text-rose-400 mx-auto mb-3" />
+
             <h2 className="text-sm font-extrabold text-slate-800">
               Surgical case not found
             </h2>
+
             <p className="text-xs text-slate-400 mt-1">
               {actionError || 'Unable to load this surgical case.'}
             </p>
@@ -722,8 +738,7 @@ export default function SurgeryCaseDetailsPage() {
     },
     {
       label: 'Equipment checklist',
-      complete:
-        !!surgeryCase.equipmentChecklist?.length,
+      complete: !!surgeryCase.equipmentChecklist?.length,
     },
   ];
 
@@ -746,8 +761,13 @@ export default function SurgeryCaseDetailsPage() {
       : '--';
 
   const getDuration = () => {
-    const start = new Date(surgeryCase.scheduledStartTime).getTime();
-    const end = new Date(surgeryCase.scheduledEndTime).getTime();
+    const start = new Date(
+      surgeryCase.scheduledStartTime
+    ).getTime();
+
+    const end = new Date(
+      surgeryCase.scheduledEndTime
+    ).getTime();
 
     const minutes = Math.round((end - start) / 60000);
 
@@ -767,7 +787,9 @@ export default function SurgeryCaseDetailsPage() {
         {actionError && (
           <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-3">
             <AlertCircle className="w-4 h-4 shrink-0" />
+
             <span>{actionError}</span>
+
             <button
               onClick={() => setActionError(null)}
               className="ml-auto p-1 rounded-lg hover:bg-rose-100"
@@ -855,7 +877,8 @@ export default function SurgeryCaseDetailsPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              {surgeryCase.status !== SurgeryStatus.IN_PROGRESS &&
+              {surgeryCase.status !==
+                SurgeryStatus.IN_PROGRESS &&
                 surgeryCase.status !== SurgeryStatus.COMPLETED &&
                 surgeryCase.status !== SurgeryStatus.CANCELLED && (
                   <button
@@ -1078,7 +1101,10 @@ function OverviewTab({
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-sm font-extrabold">Case Overview</h2>
+        <h2 className="text-sm font-extrabold">
+          Case Overview
+        </h2>
+
         <p className="text-[11px] text-slate-400 mt-0.5">
           Clinical and operational summary for this surgical case.
         </p>
@@ -1091,15 +1117,18 @@ function OverviewTab({
         >
           <div className="grid grid-cols-2 gap-4">
             <DetailItem label="Patient" value={patientName} />
+
             <DetailItem
               label="MRN"
               value={patient?.mrn || 'N/A'}
               mono
             />
+
             <DetailItem
               label="Gender"
               value={patient?.gender || 'N/A'}
             />
+
             <DetailItem
               label="Date of Birth"
               value={
@@ -1122,22 +1151,29 @@ function OverviewTab({
               label="Procedure"
               value={surgeryCase.procedureName}
             />
+
             <DetailItem
               label="ICD Code"
               value={surgeryCase.icdCode || 'N/A'}
             />
+
             <DetailItem
               label="Lead Surgeon"
               value={surgeonName}
             />
+
             <DetailItem
               label="Anaesthesia"
-              value={formatLabel(surgeryCase.anesthesiaType)}
+              value={formatLabel(
+                surgeryCase.anesthesiaType
+              )}
             />
+
             <DetailItem
               label="Theatre"
               value={surgeryCase.theatreId}
             />
+
             <DetailItem
               label="Urgency"
               value={formatLabel(surgeryCase.urgency)}
@@ -1204,12 +1240,14 @@ function OverviewTab({
                 surgeryCase.whoChecklist?.signIn?.completed
               }
             />
+
             <ChecklistStage
               label="Time Out"
               completed={
                 surgeryCase.whoChecklist?.timeOut?.completed
               }
             />
+
             <ChecklistStage
               label="Sign Out"
               completed={
@@ -1254,13 +1292,20 @@ function PreOpTab({
             className={inputClass}
           >
             <option value="">Select ASA</option>
-            {['ASA_1', 'ASA_2', 'ASA_3', 'ASA_4', 'ASA_5', 'ASA_6', 'ASA_E'].map(
-              (x) => (
-                <option key={x} value={x}>
-                  {formatLabel(x)}
-                </option>
-              )
-            )}
+
+            {[
+              'ASA_1',
+              'ASA_2',
+              'ASA_3',
+              'ASA_4',
+              'ASA_5',
+              'ASA_6',
+              'ASA_E',
+            ].map((x) => (
+              <option key={x} value={x}>
+                {formatLabel(x)}
+              </option>
+            ))}
           </select>
         </Field>
 
@@ -1307,7 +1352,9 @@ function PreOpTab({
             }
             className={inputClass}
           >
-            <option value="NOT_APPLICABLE">Not Applicable</option>
+            <option value="NOT_APPLICABLE">
+              Not Applicable
+            </option>
             <option value="NEGATIVE">Negative</option>
             <option value="POSITIVE">Positive</option>
           </select>
@@ -1426,6 +1473,7 @@ function PreOpTab({
           }
           className="accent-[#1b7b68]"
         />
+
         <span className="text-xs font-bold text-emerald-700">
           Patient cleared for surgery
         </span>
@@ -1459,13 +1507,18 @@ function ConsentTab({
       loading={loading}
     >
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {[
-          ['procedureConsent', 'Procedure Consent'],
-          ['anesthesiaConsent', 'Anaesthesia Consent'],
-          ['bloodTransfusionConsent', 'Blood Transfusion Consent'],
-          ['highRiskConsent', 'High-Risk Procedure Consent'],
-          ['signedByPatient', 'Signed By Patient'],
-        ].map(([key, label]) => (
+        {(
+          [
+            ['procedureConsent', 'Procedure Consent'],
+            ['anesthesiaConsent', 'Anaesthesia Consent'],
+            [
+              'bloodTransfusionConsent',
+              'Blood Transfusion Consent',
+            ],
+            ['highRiskConsent', 'High-Risk Procedure Consent'],
+            ['signedByPatient', 'Signed By Patient'],
+          ] as [keyof Consent, string][]
+        ).map(([key, label]) => (
           <label
             key={key}
             className="flex items-center justify-between p-4 rounded-2xl border border-slate-100 bg-slate-50/50"
@@ -1476,8 +1529,8 @@ function ConsentTab({
 
             <input
               type="checkbox"
-              checked={Boolean(form[key as keyof Consent])}
-              onChange={() => toggle(key as keyof Consent)}
+              checked={Boolean(form[key])}
+              onChange={() => toggle(key)}
               className="w-4 h-4 accent-[#1b7b68]"
             />
           </label>
@@ -1519,7 +1572,9 @@ function TeamTab({ team }: { team: SurgicalTeamMember[] }) {
   return (
     <SectionCard
       title="Surgical Team"
-      subtitle={`${team.length} team member${team.length === 1 ? '' : 's'} assigned`}
+      subtitle={`${team.length} team member${
+        team.length === 1 ? '' : 's'
+      } assigned`}
       icon={<Users className="w-4 h-4" />}
     >
       {team.length ? (
@@ -1531,7 +1586,9 @@ function TeamTab({ team }: { team: SurgicalTeamMember[] }) {
                 : undefined;
 
             const name = staff
-              ? `${staff.firstName || ''} ${staff.lastName || ''}`.trim()
+              ? `${staff.firstName || ''} ${
+                  staff.lastName || ''
+                }`.trim()
               : 'Assigned Staff';
 
             return (
@@ -1585,8 +1642,12 @@ function WHOTab({
 }: {
   checklist?: SurgeryCase['whoChecklist'];
   form: Record<string, any>;
-  setForm: React.Dispatch<React.SetStateAction<Record<string, any>>>;
-  onSave: (stage: 'signIn' | 'timeOut' | 'signOut') => void;
+  setForm: React.Dispatch<
+    React.SetStateAction<Record<string, any>>
+  >;
+  onSave: (
+    stage: 'signIn' | 'timeOut' | 'signOut'
+  ) => void;
   loading: boolean;
 }) {
   const [stage, setStage] =
@@ -1620,25 +1681,29 @@ function WHOTab({
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap gap-2">
-        {(['signIn', 'timeOut', 'signOut'] as const).map((item) => (
-          <button
-            key={item}
-            onClick={() => setStage(item)}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold ${
-              stage === item
-                ? 'bg-[#1b7b68] text-white'
-                : 'bg-slate-100 text-slate-500'
-            }`}
-          >
-            {formatLabel(item)}
-          </button>
-        ))}
+        {(['signIn', 'timeOut', 'signOut'] as const).map(
+          (item) => (
+            <button
+              key={item}
+              onClick={() => setStage(item)}
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold ${
+                stage === item
+                  ? 'bg-[#1b7b68] text-white'
+                  : 'bg-slate-100 text-slate-500'
+              }`}
+            >
+              {formatLabel(item)}
+            </button>
+          )
+        )}
       </div>
 
       <SectionCard
         title={`${formatLabel(stage)} Checklist`}
         subtitle={
-          current ? 'This stage has been completed.' : 'Complete all applicable checks.'
+          current
+            ? 'This stage has been completed.'
+            : 'Complete all applicable checks.'
         }
         icon={<ShieldAlert className="w-4 h-4" />}
       >
@@ -1702,11 +1767,14 @@ function WHOTab({
             <Field label="Anaesthetist's Critical Concerns">
               <textarea
                 rows={3}
-                value={form.criticalConcernsAnaesthetist || ''}
+                value={
+                  form.criticalConcernsAnaesthetist || ''
+                }
                 onChange={(e) =>
                   setForm((p) => ({
                     ...p,
-                    criticalConcernsAnaesthetist: e.target.value,
+                    criticalConcernsAnaesthetist:
+                      e.target.value,
                   }))
                 }
                 className={inputClass}
@@ -1720,7 +1788,8 @@ function WHOTab({
                 onChange={(e) =>
                   setForm((p) => ({
                     ...p,
-                    criticalConcernsNursing: e.target.value,
+                    criticalConcernsNursing:
+                      e.target.value,
                   }))
                 }
                 className={inputClass}
@@ -1780,7 +1849,9 @@ function WHOTab({
             onClick={() => onSave(stage)}
             className="px-5 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold disabled:opacity-50"
           >
-            {loading ? 'Saving...' : `Complete ${formatLabel(stage)}`}
+            {loading
+              ? 'Saving...'
+              : `Complete ${formatLabel(stage)}`}
           </button>
         </div>
       </SectionCard>
@@ -1797,9 +1868,13 @@ function EquipmentTab({
   loading,
 }: {
   equipment: EquipmentItem[];
-  setEquipment: React.Dispatch<React.SetStateAction<EquipmentItem[]>>;
+  setEquipment: React.Dispatch<
+    React.SetStateAction<EquipmentItem[]>
+  >;
   consumables: ConsumableItem[];
-  setConsumables: React.Dispatch<React.SetStateAction<ConsumableItem[]>>;
+  setConsumables: React.Dispatch<
+    React.SetStateAction<ConsumableItem[]>
+  >;
   onSave: () => void;
   loading: boolean;
 }) {
@@ -1844,7 +1919,10 @@ function EquipmentTab({
                   setEquipment((p) =>
                     p.map((x, i) =>
                       i === index
-                        ? { ...x, itemName: e.target.value }
+                        ? {
+                            ...x,
+                            itemName: e.target.value,
+                          }
                         : x
                     )
                   )
@@ -1858,7 +1936,10 @@ function EquipmentTab({
                   setEquipment((p) =>
                     p.map((x, i) =>
                       i === index
-                        ? { ...x, sterileStatus: e.target.value }
+                        ? {
+                            ...x,
+                            sterileStatus: e.target.value,
+                          }
                         : x
                     )
                   )
@@ -1880,7 +1961,8 @@ function EquipmentTab({
                         i === index
                           ? {
                               ...x,
-                              maintenanceOk: e.target.checked,
+                              maintenanceOk:
+                                e.target.checked,
                             }
                           : x
                       )
@@ -1888,6 +1970,7 @@ function EquipmentTab({
                   }
                   className="accent-[#1b7b68]"
                 />
+
                 <span className="text-xs font-semibold">
                   Maintenance OK
                 </span>
@@ -1900,7 +1983,10 @@ function EquipmentTab({
                   setEquipment((p) =>
                     p.map((x, i) =>
                       i === index
-                        ? { ...x, notes: e.target.value }
+                        ? {
+                            ...x,
+                            notes: e.target.value,
+                          }
                         : x
                     )
                   )
@@ -1937,7 +2023,10 @@ function EquipmentTab({
                   setConsumables((p) =>
                     p.map((x, i) =>
                       i === index
-                        ? { ...x, itemName: e.target.value }
+                        ? {
+                            ...x,
+                            itemName: e.target.value,
+                          }
                         : x
                     )
                   )
@@ -1955,7 +2044,9 @@ function EquipmentTab({
                       i === index
                         ? {
                             ...x,
-                            quantityUsed: Number(e.target.value),
+                            quantityUsed: Number(
+                              e.target.value
+                            ),
                           }
                         : x
                     )
@@ -1974,7 +2065,9 @@ function EquipmentTab({
                       i === index
                         ? {
                             ...x,
-                            unitCost: Number(e.target.value),
+                            unitCost: Number(
+                              e.target.value
+                            ),
                           }
                         : x
                     )
@@ -1990,7 +2083,10 @@ function EquipmentTab({
                   setConsumables((p) =>
                     p.map((x, i) =>
                       i === index
-                        ? { ...x, lotNumber: e.target.value }
+                        ? {
+                            ...x,
+                            lotNumber: e.target.value,
+                          }
                         : x
                     )
                   )
@@ -2016,7 +2112,9 @@ function EquipmentTab({
           disabled={loading}
           className="px-5 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold disabled:opacity-50"
         >
-          {loading ? 'Saving...' : 'Save Equipment & Consumables'}
+          {loading
+            ? 'Saving...'
+            : 'Save Equipment & Consumables'}
         </button>
       </div>
     </div>
@@ -2036,19 +2134,55 @@ function IntraoperativeTab({
   form: IntraopDocs;
   setForm: React.Dispatch<React.SetStateAction<IntraopDocs>>;
   vitals: VitalsLog[];
-  vitalsForm: Record<string, string>;
+
+  // FIXED: exact shared type
+  vitalsForm: VitalsForm;
+
+  // FIXED: exact setter type
   setVitalsForm: React.Dispatch<
-    React.SetStateAction<typeof vitalsForm>
+    React.SetStateAction<VitalsForm>
   >;
+
   onAddVitals: () => void;
   onSave: () => void;
   loading: boolean;
 }) {
-  const update = (key: keyof IntraopDocs, value: any) =>
+  const update = (
+    key: keyof IntraopDocs,
+    value: string | number
+  ) =>
     setForm((p) => ({
       ...p,
       [key]: value,
     }));
+
+  const vitalFields: [keyof VitalsForm, string][] = [
+    ['bpSystolic', 'SBP'],
+    ['bpDiastolic', 'DBP'],
+    ['heartRate', 'HR'],
+    ['spO2', 'SpO₂'],
+    ['respRate', 'RR'],
+    ['tempCelsius', 'Temp °C'],
+    ['etCO2', 'EtCO₂'],
+  ];
+
+  const documentationFields: [
+    keyof IntraopDocs,
+    string
+  ][] = [
+    ['operativeDiagnosis', 'Operative Diagnosis'],
+    [
+      'postOperativeDiagnosis',
+      'Post-Operative Diagnosis',
+    ],
+    ['surgicalFindings', 'Surgical Findings'],
+    ['techniqueNotes', 'Operative Technique'],
+    ['bloodProductsAdministered', 'Blood Products'],
+    ['drainsInserted', 'Drains Inserted'],
+    ['implantsUsed', 'Implants Used'],
+    ['specimensCollected', 'Specimens Collected'],
+    ['complications', 'Complications'],
+  ];
 
   return (
     <div className="space-y-5">
@@ -2057,22 +2191,18 @@ function IntraoperativeTab({
         icon={<Activity className="w-4 h-4" />}
       >
         <div className="grid md:grid-cols-2 gap-4">
-          {[
-            ['operativeDiagnosis', 'Operative Diagnosis'],
-            ['postOperativeDiagnosis', 'Post-Operative Diagnosis'],
-            ['surgicalFindings', 'Surgical Findings'],
-            ['techniqueNotes', 'Operative Technique'],
-            ['bloodProductsAdministered', 'Blood Products'],
-            ['drainsInserted', 'Drains Inserted'],
-            ['implantsUsed', 'Implants Used'],
-            ['specimensCollected', 'Specimens Collected'],
-            ['complications', 'Complications'],
-          ].map(([key, label]) => (
+          {documentationFields.map(([key, label]) => (
             <Field key={key} label={label}>
               <textarea
                 rows={3}
-                value={(form as any)[key] || ''}
-                onChange={(e) => update(key as keyof IntraopDocs, e.target.value)}
+                value={
+                  typeof form[key] === 'string'
+                    ? form[key]
+                    : ''
+                }
+                onChange={(e) =>
+                  update(key, e.target.value)
+                }
                 className={inputClass}
               />
             </Field>
@@ -2111,22 +2241,17 @@ function IntraoperativeTab({
         icon={<Activity className="w-4 h-4" />}
       >
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            ['bpSystolic', 'SBP'],
-            ['bpDiastolic', 'DBP'],
-            ['heartRate', 'HR'],
-            ['spO2', 'SpO₂'],
-            ['respRate', 'RR'],
-            ['tempCelsius', 'Temp °C'],
-            ['etCO2', 'EtCO₂'],
-          ].map(([key, label]) => (
+          {vitalFields.map(([key, label]) => (
             <Field key={key} label={label}>
               <input
                 type="number"
-                value={vitalsForm[key] || ''}
+                step={
+                  key === 'tempCelsius' ? '0.1' : undefined
+                }
+                value={vitalsForm[key]}
                 onChange={(e) =>
-                  setVitalsForm((p) => ({
-                    ...p,
+                  setVitalsForm((prev) => ({
+                    ...prev,
                     [key]: e.target.value,
                   }))
                 }
@@ -2137,10 +2262,10 @@ function IntraoperativeTab({
 
           <Field label="ECG Rhythm">
             <input
-              value={vitalsForm.ecgRhythm || ''}
+              value={vitalsForm.ecgRhythm}
               onChange={(e) =>
-                setVitalsForm((p) => ({
-                  ...p,
+                setVitalsForm((prev) => ({
+                  ...prev,
                   ecgRhythm: e.target.value,
                 }))
               }
@@ -2151,10 +2276,10 @@ function IntraoperativeTab({
 
         <Field label="Monitoring Note">
           <input
-            value={vitalsForm.notes || ''}
+            value={vitalsForm.notes}
             onChange={(e) =>
-              setVitalsForm((p) => ({
-                ...p,
+              setVitalsForm((prev) => ({
+                ...prev,
                 notes: e.target.value,
               }))
             }
@@ -2166,9 +2291,11 @@ function IntraoperativeTab({
           <button
             onClick={onAddVitals}
             disabled={loading}
-            className="px-4 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold"
+            className="px-4 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold disabled:opacity-50"
           >
-            Add Monitoring Reading
+            {loading
+              ? 'Adding...'
+              : 'Add Monitoring Reading'}
           </button>
         </div>
 
@@ -2194,27 +2321,36 @@ function IntraoperativeTab({
                 .map((vital, index) => (
                   <tr key={index}>
                     <td className="p-3">
-                      {new Date(vital.timestamp).toLocaleTimeString()}
+                      {new Date(
+                        vital.timestamp
+                      ).toLocaleTimeString()}
                     </td>
+
                     <td className="p-3">
                       {vital.bpSystolic ?? '--'}/
                       {vital.bpDiastolic ?? '--'}
                     </td>
+
                     <td className="p-3">
                       {vital.heartRate ?? '--'}
                     </td>
+
                     <td className="p-3">
                       {vital.spO2 ?? '--'}%
                     </td>
+
                     <td className="p-3">
                       {vital.respRate ?? '--'}
                     </td>
+
                     <td className="p-3">
                       {vital.tempCelsius ?? '--'}
                     </td>
+
                     <td className="p-3">
                       {vital.etCO2 ?? '--'}
                     </td>
+
                     <td className="p-3">
                       {vital.ecgRhythm || '--'}
                     </td>
@@ -2222,15 +2358,21 @@ function IntraoperativeTab({
                 ))}
             </tbody>
           </table>
+
+          {!vitals.length && (
+            <EmptyState text="No monitoring readings recorded yet." />
+          )}
         </div>
 
         <div className="flex justify-end pt-4">
           <button
             onClick={onSave}
             disabled={loading}
-            className="px-5 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold"
+            className="px-5 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold disabled:opacity-50"
           >
-            {loading ? 'Saving...' : 'Save Operative Documentation'}
+            {loading
+              ? 'Saving...'
+              : 'Save Operative Documentation'}
           </button>
         </div>
       </SectionCard>
@@ -2289,7 +2431,8 @@ function AnaesthesiaTab({
         </Field>
 
         <p className="text-[10px] text-slate-400">
-          Anaesthesia notes are saved when the surgical case is completed.
+          Anaesthesia notes are saved when the surgical case
+          is completed.
         </p>
       </SectionCard>
 
@@ -2402,7 +2545,9 @@ function PostOpTab({
             onClick={onComplete}
             className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold disabled:opacity-50"
           >
-            {loading ? 'Completing...' : 'Complete Surgical Case'}
+            {loading
+              ? 'Completing...'
+              : 'Complete Surgical Case'}
           </button>
         </div>
       )}
@@ -2412,6 +2557,7 @@ function PostOpTab({
           <p className="text-xs font-bold text-rose-700">
             Cancellation Reason
           </p>
+
           <p className="text-xs text-rose-600 mt-2">
             {surgeryCase.cancellationReason}
           </p>
@@ -2440,6 +2586,7 @@ function FormSection({
         <h2 className="text-sm font-extrabold text-slate-800">
           {title}
         </h2>
+
         <p className="text-[11px] text-slate-400 mt-0.5">
           {description}
         </p>
@@ -2472,6 +2619,7 @@ function Field({
       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
         {label}
       </span>
+
       {children}
     </label>
   );
@@ -2630,7 +2778,9 @@ function ChecklistStage({
 
       <p
         className={`text-[9px] font-bold uppercase mt-0.5 ${
-          completed ? 'text-emerald-600' : 'text-slate-400'
+          completed
+            ? 'text-emerald-600'
+            : 'text-slate-400'
         }`}
       >
         {completed ? 'Complete' : 'Pending'}
@@ -2660,7 +2810,8 @@ function formatLabel(value?: string) {
     .toLowerCase()
     .split('_')
     .map(
-      (word) => word.charAt(0).toUpperCase() + word.slice(1)
+      (word) =>
+        word.charAt(0).toUpperCase() + word.slice(1)
     )
     .join(' ');
 }
