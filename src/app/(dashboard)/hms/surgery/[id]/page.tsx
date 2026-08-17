@@ -707,31 +707,46 @@ export default function SurgeryCaseDetailsPage() {
     }
   };
 
-  const verifyTeamMember = (userId?: string) => {
+  const verifyTeamMember = async (userId?: string) => {
     if (!surgeryCase || !userId) return;
 
-    setSurgeryCase((current) => {
-      if (!current) return current;
+    setActionLoading(true);
+    setActionError(null);
 
-      return {
-        ...current,
-        surgicalTeam: (current.surgicalTeam || []).map((member) => {
-          const memberId =
-            typeof member.userId === 'string'
-              ? member.userId
-              : member.userId?._id;
+    try {
+      const updatedTeam = (surgeryCase.surgicalTeam || []).map((member) => {
+        const memberId =
+          typeof member.userId === 'string'
+            ? member.userId
+            : member.userId?._id;
 
-          if (memberId === userId) {
-            return {
-              ...member,
-              credentialVerified: true,
-            };
-          }
+        if (memberId === userId) {
+          return {
+            ...member,
+            credentialVerified: true,
+          };
+        }
 
-          return member;
-        }),
-      };
-    });
+        return member;
+      });
+
+      const updated = await request(
+        `/surgery/${surgeryCase._id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            ...surgeryCase,
+            surgicalTeam: updatedTeam,
+          }),
+        }
+      );
+
+      setSurgeryCase(updated);
+    } catch (error: any) {
+      setActionError(error.message || 'Unable to verify team member.');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   if (loading) {
