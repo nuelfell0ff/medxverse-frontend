@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { PatientApiService } from '@/services/patient.service';
 import {
   Activity,
   AlertCircle,
@@ -18,6 +18,7 @@ import {
   Search,
   ShieldAlert,
   Stethoscope,
+  Users,
   X,
 } from 'lucide-react';
 
@@ -51,6 +52,15 @@ enum AnesthesiaType {
   COMBINED = 'COMBINED',
 }
 
+enum SurgicalRole {
+  PRIMARY_SURGEON = 'PRIMARY_SURGEON',
+  ASSISTING_SURGEON = 'ASSISTING_SURGEON',
+  ANAESTHETIST = 'ANAESTHETIST',
+  SCRUB_NURSE = 'SCRUB_NURSE',
+  CIRCULATING_NURSE = 'CIRCULATING_NURSE',
+  THEATRE_TECHNICIAN = 'THEATRE_TECHNICIAN',
+}
+
 interface Patient {
   _id?: string;
   firstName?: string;
@@ -65,6 +75,8 @@ interface Staff {
   firstName?: string;
   lastName?: string;
   role?: string;
+  department?: string;
+  isActive?: boolean;
 }
 
 interface SurgicalTeamMember {
@@ -72,6 +84,11 @@ interface SurgicalTeamMember {
   role: string;
   credentialVerified?: boolean;
   notes?: string;
+}
+
+interface SurgicalTeamDraft {
+  userId: string;
+  role: SurgicalRole | string;
 }
 
 interface SurgeryCase {
@@ -160,8 +177,6 @@ const urgencyConfig: Record<
 };
 
 export default function SurgeryPage() {
-  const router = useRouter();
-
   const [cases, setCases] = useState<SurgeryCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -175,6 +190,7 @@ export default function SurgeryPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCases, setTotalCases] = useState(0);
 
+  const [selectedCase, setSelectedCase] = useState<SurgeryCase | null>(null);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
 
   const [scheduleForm, setScheduleForm] = useState({
@@ -189,12 +205,207 @@ export default function SurgeryPage() {
     anesthesiaType: AnesthesiaType.GENERAL,
   });
 
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [patientSearch, setPatientSearch] = useState('');
+  const [loadingPatients, setLoadingPatients] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [staffSearch, setStaffSearch] = useState('');
+  const [loadingStaff, setLoadingStaff] = useState(false);
+  const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
+  const [surgicalTeam, setSurgicalTeam] = useState<SurgicalTeamDraft[]>([]);
+
+  const fetchPatients = useCallback(async (queryTerm: string = '') => {
+    try {
+      setLoadingPatients(true);
+      const res = await PatientApiService.getPatients({
+        search: queryTerm,
+        limit: 10,
+      });
+      setPatients(res.patients || []);
+    } catch (error) {
+      console.error('Failed to search patients:', error);
+      setPatients([]);
+    } finally {
+      setLoadingPatients(false);
+    }
+  }, []);
+
+  const fetchStaff = useCallback(async (queryTerm: string = '') => {
+    try {
+      setLoadingStaff(true);
+
+      const params = new URLSearchParams();
+      params.set('isActive', 'true');
+      if (queryTerm.trim()) params.set('search', queryTerm.trim());
+
+      const token = localStorage.getItem('token');
+
+      const res = await fetch(
+        `${API_BASE_URL}/staff?${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const json = await res.json().catch(() => ({}));
+
+      const data = json?.data || json;
+      setStaff(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to search staff:', error);
+      setStaff([]);
+    } finally {
+      setLoadingStaff(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isScheduleOpen) return;
+
+    const timer = setTimeout(() => {
+      fetchPatients(patientSearch);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [patientSearch, isScheduleOpen, fetchPatients]);
+
+  useEffect(() => {
+    if (!isScheduleOpen) return;
+
+    const timer = setTimeout(() => {
+      fetchStaff(staffSearch);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [staffSearch, isScheduleOpen, fetchStaff]);
+
+  const resetScheduleForm = () => {
+    setScheduleForm({
+      patientId: '',
+      leadSurgeonId: '',
+      theatreId: '',
+      procedureName: '',
+      icdCode: '',
+      urgency: UrgencyLevel.ELECTIVE,
+      scheduledStartTime: '',
+      scheduledEndTime: '',
+      anesthesiaType: AnesthesiaType.GENERAL,
+    });
+    setPatients([]);
+    setPatientSearch('');
+    setSelectedPatient(null);
+    setStaff([]);
+    setStaffSearch('');
+    setSelectedStaff(null);
+    setSurgicalTeam([]);
+    setActionError(null);
+  };
+
+  const addStaffToTeam = () => {
+    if (!selectedStaff?._id) return;
+
+    if (surgicalTeam.some((member) => member.userId === selectedStaff._id)) {
+      return;
+    }
+
+    const role =
+      surgicalTeam.length === 0
+        ? SurgicalRole.PRIMARY_SURGEON
+        : SurgicalRole.ASSISTING_SURGEON;
+
+    setSurgicalTeam((current) => [
+      ...current,
+      {
+        userId: selectedStaff._id!,
+        role,
+      },
+    ]);
+
+    if (role === SurgicalRole.PRIMARY_SURGEON) {
+      setScheduleForm((prev) => ({
+        ...prev,
+        leadSurgeonId: selectedStaff._id!,
+      }));
+    }
+
+    setSelectedStaff(null);
+    setStaffSearch('');
+  };
+
+  const removeStaffFromTeam = (userId: string) => {
+    setSurgicalTeam((current) => {
+      const remaining = current.filter((member) => member.userId !== userId);
+
+      const primary = remaining.find(
+        (member) => member.role === SurgicalRole.PRIMARY_SURGEON
+      );
+
+      if (primary) {
+        setScheduleForm((prev) => ({
+          ...prev,
+          leadSurgeonId: primary.userId,
+        }));
+      } else {
+        setScheduleForm((prev) => ({
+          ...prev,
+          leadSurgeonId: '',
+        }));
+      }
+
+      return remaining;
+    });
+  };
+
+  const updateTeamRole = (userId: string, role: SurgicalRole) => {
+    setSurgicalTeam((current) => {
+      let next = current;
+
+      if (role === SurgicalRole.PRIMARY_SURGEON) {
+        next = current.map((member) => {
+          if (member.userId === userId) {
+            return {
+              ...member,
+              role: SurgicalRole.PRIMARY_SURGEON,
+            };
+          }
+
+          return member.role === SurgicalRole.PRIMARY_SURGEON
+            ? {
+                ...member,
+                role: SurgicalRole.ASSISTING_SURGEON,
+              }
+            : member;
+        });
+      } else {
+        next = current.map((member) =>
+          member.userId === userId ? { ...member, role } : member
+        );
+      }
+
+      const primary = next.find(
+        (member) => member.role === SurgicalRole.PRIMARY_SURGEON
+      );
+
+      setScheduleForm((prev) => ({
+        ...prev,
+        leadSurgeonId: primary?.userId || '',
+      }));
+
+      return next;
+    });
+  };
+
   const fetchCases = useCallback(async () => {
     setLoading(true);
     setActionError(null);
 
     try {
       const token = localStorage.getItem('token');
+
       const params = new URLSearchParams();
 
       params.set('page', String(page));
@@ -236,7 +447,7 @@ export default function SurgeryPage() {
       setTotalCases(responseData.total || 0);
       setTotalPages(responseData.totalPages || 1);
     } catch (error: any) {
-      console.error(error);
+      console.error('Failed to fetch surgical cases:', error);
       setCases([]);
       setActionError(
         error?.message || 'Unable to load surgical cases.'
@@ -264,13 +475,15 @@ export default function SurgeryPage() {
           ? surgery.leadSurgeonId
           : undefined;
 
-      const patientName =
-        `${patient?.firstName || ''} ${patient?.lastName || ''}`.toLowerCase();
+      const patientName = `${patient?.firstName || ''} ${
+        patient?.lastName || ''
+      }`.toLowerCase();
 
       const mrn = patient?.mrn?.toLowerCase() || '';
 
-      const surgeonName =
-        `${surgeon?.firstName || ''} ${surgeon?.lastName || ''}`.toLowerCase();
+      const surgeonName = `${surgeon?.firstName || ''} ${
+        surgeon?.lastName || ''
+      }`.toLowerCase();
 
       const procedure = surgery.procedureName?.toLowerCase() || '';
       const theatre = surgery.theatreId?.toLowerCase() || '';
@@ -290,39 +503,56 @@ export default function SurgeryPage() {
     });
   }, [cases, searchTerm, urgencyFilter]);
 
-  const stats = useMemo(
-    () => ({
+  const stats = useMemo(() => {
+    return {
       scheduled: cases.filter(
         (item) => item.status === SurgeryStatus.SCHEDULED
       ).length,
+
       preOp: cases.filter(
         (item) => item.status === SurgeryStatus.PRE_OP_PREPARATION
       ).length,
+
       inProgress: cases.filter(
         (item) => item.status === SurgeryStatus.IN_PROGRESS
       ).length,
+
       completed: cases.filter(
         (item) => item.status === SurgeryStatus.COMPLETED
       ).length,
+
       emergency: cases.filter(
         (item) => item.urgency === UrgencyLevel.EMERGENCY
       ).length,
-    }),
-    [cases]
-  );
+    };
+  }, [cases]);
 
   const handleScheduleSurgery = async (
     e: React.FormEvent<HTMLFormElement>
   ) => {
     e.preventDefault();
+
     setActionError(null);
 
     try {
       const token = localStorage.getItem('token');
 
+      if (!scheduleForm.patientId) {
+        throw new Error('Please select a patient.');
+      }
+
+      if (!scheduleForm.leadSurgeonId) {
+        throw new Error('Please add a primary surgeon to the surgical team.');
+      }
+
+      if (!surgicalTeam.length) {
+        throw new Error('Please add at least one staff member to the surgical team.');
+      }
+
       const payload = {
         patientId: scheduleForm.patientId,
         leadSurgeonId: scheduleForm.leadSurgeonId,
+        surgicalTeam,
         theatreId: scheduleForm.theatreId,
         procedureName: scheduleForm.procedureName,
         icdCode: scheduleForm.icdCode || undefined,
@@ -354,21 +584,11 @@ export default function SurgeryPage() {
       }
 
       setIsScheduleOpen(false);
-
-      setScheduleForm({
-        patientId: '',
-        leadSurgeonId: '',
-        theatreId: '',
-        procedureName: '',
-        icdCode: '',
-        urgency: UrgencyLevel.ELECTIVE,
-        scheduledStartTime: '',
-        scheduledEndTime: '',
-        anesthesiaType: AnesthesiaType.GENERAL,
-      });
-
+      resetScheduleForm();
       fetchCases();
     } catch (error: any) {
+      console.error('Failed to schedule surgery:', error);
+
       setActionError(
         error?.message || 'Failed to schedule surgical case.'
       );
@@ -395,7 +615,9 @@ export default function SurgeryPage() {
   };
 
   const getPatientName = (surgery: SurgeryCase) => {
-    if (typeof surgery.patientId === 'string') return 'Patient';
+    if (typeof surgery.patientId === 'string') {
+      return 'Patient';
+    }
 
     return `${surgery.patientId?.firstName || 'Unknown'} ${
       surgery.patientId?.lastName || 'Patient'
@@ -460,16 +682,21 @@ export default function SurgeryPage() {
             title="Refresh surgical cases"
           >
             <RefreshCw
-              className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
+              className={`w-4 h-4 ${
+                loading ? 'animate-spin' : ''
+              }`}
             />
           </button>
 
           <button
-            onClick={() => setIsScheduleOpen(true)}
+            onClick={() => {
+              setActionError(null);
+              setIsScheduleOpen(true);
+            }}
             className="flex items-center gap-2 px-4 py-2.5 bg-[#1b7b68] hover:bg-[#146253] text-white text-xs font-bold rounded-2xl shadow-md shadow-[#1b7b68]/20 transition-all active:scale-95"
           >
             <Plus className="w-4 h-4" />
-            Schedule Surgery
+            <span>Schedule Surgery</span>
           </button>
         </div>
       </div>
@@ -538,7 +765,8 @@ export default function SurgeryPage() {
                 );
 
                 const activeCase = theatreCases.find(
-                  (item) => item.status === SurgeryStatus.IN_PROGRESS
+                  (item) =>
+                    item.status === SurgeryStatus.IN_PROGRESS
                 );
 
                 return (
@@ -627,7 +855,7 @@ export default function SurgeryPage() {
                 setPage(1);
               }}
               placeholder="Search patient, MRN, procedure, surgeon..."
-              className="w-full pl-11 pr-4 py-2.5 text-xs rounded-2xl border border-slate-200/80 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/20 focus:border-[#1b7b68]"
+              className="w-full pl-11 pr-4 py-2.5 text-xs rounded-2xl border border-slate-200/80 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/20 focus:border-[#1b7b68] transition-all"
             />
           </div>
 
@@ -643,12 +871,24 @@ export default function SurgeryPage() {
               className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-600 focus:outline-none focus:border-[#1b7b68]"
             >
               <option value="ALL">All Status</option>
-              <option value={SurgeryStatus.SCHEDULED}>Scheduled</option>
-              <option value={SurgeryStatus.PRE_OP_PREPARATION}>Pre-Op</option>
-              <option value={SurgeryStatus.IN_PROGRESS}>In Progress</option>
-              <option value={SurgeryStatus.RECOVERY}>Recovery</option>
-              <option value={SurgeryStatus.COMPLETED}>Completed</option>
-              <option value={SurgeryStatus.CANCELLED}>Cancelled</option>
+              <option value={SurgeryStatus.SCHEDULED}>
+                Scheduled
+              </option>
+              <option value={SurgeryStatus.PRE_OP_PREPARATION}>
+                Pre-Op
+              </option>
+              <option value={SurgeryStatus.IN_PROGRESS}>
+                In Progress
+              </option>
+              <option value={SurgeryStatus.RECOVERY}>
+                Recovery
+              </option>
+              <option value={SurgeryStatus.COMPLETED}>
+                Completed
+              </option>
+              <option value={SurgeryStatus.CANCELLED}>
+                Cancelled
+              </option>
             </select>
 
             <select
@@ -660,9 +900,13 @@ export default function SurgeryPage() {
               className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-600 focus:outline-none focus:border-[#1b7b68]"
             >
               <option value="ALL">All Priority</option>
-              <option value={UrgencyLevel.ELECTIVE}>Elective</option>
+              <option value={UrgencyLevel.ELECTIVE}>
+                Elective
+              </option>
               <option value={UrgencyLevel.URGENT}>Urgent</option>
-              <option value={UrgencyLevel.EMERGENCY}>Emergency</option>
+              <option value={UrgencyLevel.EMERGENCY}>
+                Emergency
+              </option>
             </select>
 
             <input
@@ -698,13 +942,18 @@ export default function SurgeryPage() {
               ) : filteredCases.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-16 text-center">
-                    <Hospital className="w-8 h-8 text-slate-300 mx-auto" />
-                    <p className="text-sm font-semibold text-slate-600 mt-2">
-                      No surgical cases found
-                    </p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Try adjusting your filters or schedule a new surgical procedure.
-                    </p>
+                    <div className="max-w-xs mx-auto space-y-2">
+                      <Hospital className="w-8 h-8 text-slate-300 mx-auto" />
+
+                      <p className="text-sm font-semibold text-slate-600">
+                        No surgical cases found
+                      </p>
+
+                      <p className="text-xs text-slate-400">
+                        Try adjusting your filters or schedule a new
+                        surgical procedure.
+                      </p>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -728,7 +977,7 @@ export default function SurgeryPage() {
                   return (
                     <tr
                       key={surgery._id}
-                      className="hover:bg-[#e8f5f3]/20 transition-all group"
+                      className="hover:bg-[#e8f5f3]/20 transition-all duration-150 group"
                     >
                       <td className="py-4 px-6">
                         <div className="flex items-center gap-3">
@@ -739,9 +988,10 @@ export default function SurgeryPage() {
                           />
 
                           <div>
-                            <div className="font-bold text-slate-800 text-sm group-hover:text-[#1b7b68]">
+                            <div className="font-bold text-slate-800 text-sm group-hover:text-[#1b7b68] transition-colors">
                               {patientName}
                             </div>
+
                             <div className="text-[11px] font-mono text-slate-400">
                               MRN: {patientMrn}
                             </div>
@@ -766,6 +1016,7 @@ export default function SurgeryPage() {
                           <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
                             <Hospital className="w-4 h-4" />
                           </div>
+
                           <span className="font-bold text-slate-700">
                             {surgery.theatreId}
                           </span>
@@ -784,7 +1035,8 @@ export default function SurgeryPage() {
                             </p>
 
                             <p className="text-[10px] text-slate-400">
-                              {surgery.surgicalTeam?.length || 0} team members
+                              {surgery.surgicalTeam?.length || 0}{' '}
+                              team members
                             </p>
                           </div>
                         </div>
@@ -805,9 +1057,11 @@ export default function SurgeryPage() {
                         <span
                           className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${urgency.className}`}
                         >
-                          {surgery.urgency === UrgencyLevel.EMERGENCY && (
+                          {surgery.urgency ===
+                            UrgencyLevel.EMERGENCY && (
                             <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
                           )}
+
                           {urgency.label}
                         </span>
                       </td>
@@ -816,18 +1070,18 @@ export default function SurgeryPage() {
                         <span
                           className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${status.className}`}
                         >
-                          {surgery.status === SurgeryStatus.IN_PROGRESS && (
+                          {surgery.status ===
+                            SurgeryStatus.IN_PROGRESS && (
                             <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
                           )}
+
                           {status.label}
                         </span>
                       </td>
 
                       <td className="py-4 px-6 text-right">
                         <button
-                          onClick={() =>
-                            router.push(`/hms/surgery/${surgery._id}`)
-                          }
+                          onClick={() => setSelectedCase(surgery)}
                           className="flex items-center gap-1 px-3 py-1.5 ml-auto bg-[#1b7b68]/10 hover:bg-[#1b7b68] text-[#1b7b68] hover:text-white rounded-xl text-xs font-bold transition-all"
                         >
                           <Eye className="w-3.5 h-3.5" />
@@ -844,15 +1098,21 @@ export default function SurgeryPage() {
 
         <div className="px-5 py-3.5 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
           <span>
-            Showing page <strong className="text-slate-800">{page}</strong> of{' '}
-            <strong className="text-slate-800">{totalPages}</strong>
+            Showing page{' '}
+            <strong className="text-slate-800">{page}</strong>{' '}
+            of{' '}
+            <strong className="text-slate-800">
+              {totalPages}
+            </strong>
           </span>
 
           <div className="flex items-center gap-2">
             <button
               disabled={page <= 1}
-              onClick={() => setPage((current) => Math.max(current - 1, 1))}
-              className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 transition-all"
+              onClick={() =>
+                setPage((current) => Math.max(current - 1, 1))
+              }
+              className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -860,15 +1120,29 @@ export default function SurgeryPage() {
             <button
               disabled={page >= totalPages}
               onClick={() =>
-                setPage((current) => Math.min(current + 1, totalPages))
+                setPage((current) =>
+                  Math.min(current + 1, totalPages)
+                )
               }
-              className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 transition-all"
+              className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         </div>
       </div>
+
+      {selectedCase && (
+        <SurgeryDetailsModal
+          surgery={selectedCase}
+          onClose={() => setSelectedCase(null)}
+          formatTime={formatTime}
+          formatDate={formatDate}
+          getPatientName={getPatientName}
+          getPatientMrn={getPatientMrn}
+          getSurgeonName={getSurgeonName}
+        />
+      )}
 
       {isScheduleOpen && (
         <ScheduleSurgeryModal
@@ -902,7 +1176,10 @@ function MetricCard({
       </div>
 
       <div>
-        <p className="text-xs text-slate-400 font-medium">{label}</p>
+        <p className="text-xs text-slate-400 font-medium">
+          {label}
+        </p>
+
         <p className="text-xl font-extrabold text-slate-800 tracking-tight">
           {value}
         </p>
@@ -915,24 +1192,321 @@ function TableSkeleton() {
   return (
     <>
       {Array.from({ length: 6 }).map((_, index) => (
-        <tr key={index} className="animate-pulse border-b border-slate-100">
+        <tr
+          key={index}
+          className="animate-pulse border-b border-slate-100"
+        >
           <td className="py-4 px-6">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-slate-200" />
+
               <div>
                 <div className="h-4 bg-slate-200 rounded-lg w-28 mb-1.5" />
                 <div className="h-3 bg-slate-100 rounded-lg w-20" />
               </div>
             </div>
           </td>
-          {Array.from({ length: 7 }).map((_, i) => (
-            <td key={i} className="py-4 px-6">
-              <div className="h-4 bg-slate-200 rounded-lg w-24" />
-            </td>
-          ))}
+
+          <td className="py-4 px-6">
+            <div className="h-4 bg-slate-200 rounded-lg w-40" />
+          </td>
+
+          <td className="py-4 px-6">
+            <div className="h-8 bg-slate-100 rounded-xl w-24" />
+          </td>
+
+          <td className="py-4 px-6">
+            <div className="h-4 bg-slate-200 rounded-lg w-28" />
+          </td>
+
+          <td className="py-4 px-6">
+            <div className="h-4 bg-slate-200 rounded-lg w-32 mb-1" />
+            <div className="h-3 bg-slate-100 rounded-lg w-20" />
+          </td>
+
+          <td className="py-4 px-6">
+            <div className="h-6 bg-slate-200 rounded-full w-20" />
+          </td>
+
+          <td className="py-4 px-6">
+            <div className="h-6 bg-slate-200 rounded-full w-24" />
+          </td>
+
+          <td className="py-4 px-6">
+            <div className="h-8 bg-slate-200 rounded-xl w-16 ml-auto" />
+          </td>
         </tr>
       ))}
     </>
+  );
+}
+
+function SurgeryDetailsModal({
+  surgery,
+  onClose,
+  formatTime,
+  formatDate,
+  getPatientName,
+  getPatientMrn,
+  getSurgeonName,
+}: {
+  surgery: SurgeryCase;
+  onClose: () => void;
+  formatTime: (value?: string) => string;
+  formatDate: (value?: string) => string;
+  getPatientName: (surgery: SurgeryCase) => string;
+  getPatientMrn: (surgery: SurgeryCase) => string;
+  getSurgeonName: (surgery: SurgeryCase) => string;
+}) {
+  const status =
+    statusConfig[surgery.status] ||
+    statusConfig[SurgeryStatus.SCHEDULED];
+
+  const urgency =
+    urgencyConfig[surgery.urgency] ||
+    urgencyConfig[UrgencyLevel.ELECTIVE];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-white rounded-3xl max-w-3xl w-full shadow-2xl my-8 overflow-hidden">
+        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-extrabold text-slate-800">
+                Surgical Case
+              </h2>
+
+              <span
+                className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${status.className}`}
+              >
+                {status.label}
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-400 mt-1">
+              Case ID: {surgery._id}
+            </p>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl bg-slate-50 text-slate-500 hover:bg-slate-100 transition-all"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <InfoCard
+              label="Patient"
+              value={getPatientName(surgery)}
+              secondary={getPatientMrn(surgery)}
+            />
+
+            <InfoCard
+              label="Procedure"
+              value={surgery.procedureName}
+              secondary={
+                surgery.icdCode
+                  ? `ICD: ${surgery.icdCode}`
+                  : 'No ICD code'
+              }
+            />
+
+            <InfoCard
+              label="Lead Surgeon"
+              value={getSurgeonName(surgery)}
+              secondary="Lead surgeon"
+            />
+
+            <InfoCard
+              label="Theatre"
+              value={surgery.theatreId}
+              secondary={`${formatDate(
+                surgery.scheduledStartTime
+              )} • ${formatTime(
+                surgery.scheduledStartTime
+              )} - ${formatTime(surgery.scheduledEndTime)}`}
+            />
+
+            <InfoCard
+              label="Anaesthesia"
+              value={surgery.anesthesiaType}
+              secondary="Planned anaesthesia"
+            />
+
+            <InfoCard
+              label="Priority"
+              value={urgency.label}
+              secondary="Surgical urgency"
+            />
+          </div>
+
+          <div>
+            <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-400 mb-3">
+              Surgical Team
+            </h3>
+
+            <div className="border border-slate-100 rounded-2xl overflow-hidden">
+              {surgery.surgicalTeam &&
+              surgery.surgicalTeam.length > 0 ? (
+                surgery.surgicalTeam.map((member, index) => {
+                  const staff =
+                    typeof member.userId === 'object'
+                      ? member.userId
+                      : undefined;
+
+                  const name =
+                    typeof member.userId === 'string'
+                      ? 'Assigned Staff'
+                      : `${staff?.firstName || ''} ${
+                          staff?.lastName || ''
+                        }`.trim();
+
+                  return (
+                    <div
+                      key={`${member.role}-${index}`}
+                      className="px-4 py-3 border-b last:border-b-0 border-slate-100 flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-[#e8f5f3] text-[#1b7b68] flex items-center justify-center">
+                          <Users className="w-4 h-4" />
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-bold text-slate-700">
+                            {name || 'Assigned Staff'}
+                          </p>
+
+                          <p className="text-[10px] text-slate-400">
+                            {member.role.replaceAll('_', ' ')}
+                          </p>
+                        </div>
+                      </div>
+
+                      {member.credentialVerified && (
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
+                          Verified
+                        </span>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="p-5 text-xs text-slate-400 text-center">
+                  No additional surgical team members assigned.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-400 mb-3">
+              Surgical Readiness
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <ReadinessItem
+                label="Pre-Op Assessment"
+                completed={
+                  surgery.preOpAssessment?.clearedForSurgery === true
+                }
+              />
+
+              <ReadinessItem
+                label="WHO Sign In"
+                completed={
+                  surgery.whoChecklist?.signIn?.completed === true
+                }
+              />
+
+              <ReadinessItem
+                label="WHO Time Out"
+                completed={
+                  surgery.whoChecklist?.timeOut?.completed === true
+                }
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoCard({
+  label,
+  value,
+  secondary,
+}: {
+  label: string;
+  value: string;
+  secondary?: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-4">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+        {label}
+      </p>
+
+      <p className="text-sm font-extrabold text-slate-800 mt-1">
+        {value}
+      </p>
+
+      {secondary && (
+        <p className="text-[10px] text-slate-400 mt-1">
+          {secondary}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ReadinessItem({
+  label,
+  completed,
+}: {
+  label: string;
+  completed: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-2xl border p-4 ${
+        completed
+          ? 'bg-emerald-50 border-emerald-100'
+          : 'bg-amber-50 border-amber-100'
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        {completed ? (
+          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+        ) : (
+          <Clock3 className="w-4 h-4 text-amber-600" />
+        )}
+
+        <span
+          className={`text-xs font-bold ${
+            completed ? 'text-emerald-700' : 'text-amber-700'
+          }`}
+        >
+          {completed ? 'Complete' : 'Pending'}
+        </span>
+      </div>
+
+      <p className="text-[10px] font-medium text-slate-500 mt-2">
+        {label}
+      </p>
+    </div>
   );
 }
 
@@ -941,6 +1515,23 @@ function ScheduleSurgeryModal({
   setForm,
   onClose,
   onSubmit,
+  patients,
+  patientSearch,
+  setPatientSearch,
+  loadingPatients,
+  selectedPatient,
+  setSelectedPatient,
+  setPatients,
+  staff,
+  staffSearch,
+  setStaffSearch,
+  loadingStaff,
+  selectedStaff,
+  setSelectedStaff,
+  surgicalTeam,
+  addStaffToTeam,
+  removeStaffFromTeam,
+  updateTeamRole,
 }: {
   form: {
     patientId: string;
@@ -956,24 +1547,56 @@ function ScheduleSurgeryModal({
   setForm: React.Dispatch<React.SetStateAction<typeof form>>;
   onClose: () => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+  patients: Patient[];
+  patientSearch: string;
+  setPatientSearch: React.Dispatch<React.SetStateAction<string>>;
+  loadingPatients: boolean;
+  selectedPatient: Patient | null;
+  setSelectedPatient: React.Dispatch<React.SetStateAction<Patient | null>>;
+  setPatients: React.Dispatch<React.SetStateAction<Patient[]>>;
+  staff: Staff[];
+  staffSearch: string;
+  setStaffSearch: React.Dispatch<React.SetStateAction<string>>;
+  loadingStaff: boolean;
+  selectedStaff: Staff | null;
+  setSelectedStaff: React.Dispatch<React.SetStateAction<Staff | null>>;
+  surgicalTeam: SurgicalTeamDraft[];
+  addStaffToTeam: () => void;
+  removeStaffFromTeam: (userId: string) => void;
+  updateTeamRole: (userId: string, role: SurgicalRole) => void;
 }) {
+  const selectedTeamStaff = surgicalTeam
+    .map((member) => staff.find((person) => person._id === member.userId))
+    .filter(Boolean) as Staff[];
+
+  const displayStaff = staff.filter(
+    (person) =>
+      person._id &&
+      !surgicalTeam.some((member) => member.userId === person._id)
+  );
+
+  const getPersonName = (person?: Patient | Staff | null) =>
+    person
+      ? `${person.firstName || ''} ${person.lastName || ''}`.trim() ||
+        'Unnamed Person'
+      : '';
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl my-8">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#e8f5f3] flex items-center justify-center text-[#1b7b68]">
-              <CalendarDays className="w-5 h-5" />
-            </div>
-
-            <div>
+      <div className="bg-white rounded-3xl max-w-3xl w-full shadow-2xl my-8 overflow-hidden">
+        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2">
               <h2 className="text-lg font-extrabold text-slate-800">
                 Schedule Surgery
               </h2>
-              <p className="text-[11px] text-slate-400">
-                Create a new operating theatre booking.
-              </p>
+              <span className="bg-[#e8f5f3] text-[#1b7b68] px-2.5 py-1 rounded-full text-[10px] font-bold uppercase">
+                Surgical Team
+              </span>
             </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Select the patient and build the complete operating theatre team.
+            </p>
           </div>
 
           <button
@@ -985,38 +1608,251 @@ function ScheduleSurgeryModal({
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-5">
+        <form onSubmit={onSubmit} className="p-6 space-y-5">
+          {/* Patient search */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+              Patient *
+            </label>
+
+            {selectedPatient ? (
+              <div className="flex items-center justify-between p-3 rounded-2xl border border-[#1b7b68]/30 bg-[#e8f5f3]/50">
+                <div>
+                  <p className="text-xs font-extrabold text-slate-800">
+                    {getPersonName(selectedPatient)}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    MRN: {selectedPatient.mrn || 'N/A'}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPatient(null);
+                    setForm((prev) => ({ ...prev, patientId: '' }));
+                    setPatientSearch('');
+                  }}
+                  className="text-[10px] font-bold text-rose-600 hover:underline"
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={patientSearch}
+                    onChange={(e) => setPatientSearch(e.target.value)}
+                    placeholder="Search patient by name or MRN..."
+                    className={`${inputClass} pl-9 pr-20`}
+                  />
+                  {loadingPatients && (
+                    <span className="absolute right-3 top-2.5 text-[10px] text-slate-400">
+                      Searching...
+                    </span>
+                  )}
+                </div>
+
+                {patientSearch.trim() && (
+                  <div className="mt-2 border border-slate-100 rounded-2xl overflow-hidden bg-white shadow-sm max-h-48 overflow-y-auto">
+                    {patients.length ? (
+                      patients.map((patient) => (
+                        <button
+                          type="button"
+                          key={patient._id}
+                          onClick={() => {
+                            setSelectedPatient(patient);
+                            setForm((prev) => ({
+                              ...prev,
+                              patientId: patient._id || '',
+                            }));
+                            setPatientSearch('');
+                            setPatients([]);
+                          }}
+                          className="w-full text-left px-4 py-3 hover:bg-[#e8f5f3]/60 border-b last:border-b-0 border-slate-100"
+                        >
+                          <p className="text-xs font-bold text-slate-700">
+                            {patient.firstName} {patient.lastName}
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            MRN: {patient.mrn || 'N/A'}
+                          </p>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="p-4 text-center text-[10px] text-slate-400">
+                        {loadingPatients
+                          ? 'Searching patients...'
+                          : 'No patients found.'}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Surgical team */}
+          <div className="border-t border-slate-100 pt-5">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Surgical Team *
+                </label>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Add as many staff members as required. One member must be the lead surgeon.
+                </p>
+              </div>
+
+              <span className="text-[10px] font-bold text-[#1b7b68] bg-[#e8f5f3] px-2.5 py-1 rounded-lg">
+                {surgicalTeam.length} member{surgicalTeam.length === 1 ? '' : 's'}
+              </span>
+            </div>
+
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                value={staffSearch}
+                onChange={(e) => setStaffSearch(e.target.value)}
+                placeholder="Search all staff by name, role or department..."
+                className={`${inputClass} pl-9 pr-20`}
+              />
+              {loadingStaff && (
+                <span className="absolute right-3 top-2.5 text-[10px] text-slate-400">
+                  Searching...
+                </span>
+              )}
+            </div>
+
+            {staffSearch.trim() && (
+              <div className="mt-2 border border-slate-100 rounded-2xl overflow-hidden bg-white shadow-sm max-h-56 overflow-y-auto">
+                {displayStaff.length ? (
+                  displayStaff.map((person) => (
+                    <button
+                      type="button"
+                      key={person._id}
+                      onClick={() => setSelectedStaff(person)}
+                      className={`w-full text-left px-4 py-3 border-b last:border-b-0 border-slate-100 hover:bg-[#e8f5f3]/60 ${
+                        selectedStaff?._id === person._id
+                          ? 'bg-[#e8f5f3]/60'
+                          : ''
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-bold text-slate-700">
+                            {getPersonName(person)}
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            {person.role || 'Staff'}
+                            {person.department
+                              ? ` • ${person.department}`
+                              : ''}
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-bold text-[#1b7b68]">
+                          Add
+                        </span>
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="p-4 text-center text-[10px] text-slate-400">
+                    {loadingStaff ? 'Searching staff...' : 'No staff found.'}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {selectedStaff && (
+              <div className="mt-3 flex items-center gap-2">
+                <div className="flex-1 p-3 rounded-2xl border border-[#1b7b68]/30 bg-[#e8f5f3]/40">
+                  <p className="text-xs font-bold text-slate-700">
+                    {getStaffName(selectedStaff)}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    {selectedStaff.role || 'Staff'}
+                    {selectedStaff.department
+                      ? ` • ${selectedStaff.department}`
+                      : ''}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={addStaffToTeam}
+                  className="px-4 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold hover:bg-[#146253]"
+                >
+                  Add to Team
+                </button>
+              </div>
+            )}
+
+            {surgicalTeam.length > 0 && (
+              <div className="mt-4 space-y-2">
+                {surgicalTeam.map((member, index) => {
+                  const person = staff.find(
+                    (item) => item._id === member.userId
+                  );
+
+                  return (
+                    <div
+                      key={member.userId}
+                      className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-2xl border border-slate-100 bg-slate-50/60"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="w-9 h-9 rounded-xl bg-[#e8f5f3] text-[#1b7b68] flex items-center justify-center shrink-0">
+                          <Users className="w-4 h-4" />
+                        </div>
+
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-700 truncate">
+                            {getPersonName(person)}
+                          </p>
+                          <p className="text-[10px] text-slate-400">
+                            {person?.department || person?.role || 'Staff'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={member.role}
+                          onChange={(e) =>
+                            updateTeamRole(
+                              member.userId,
+                              e.target.value as SurgicalRole
+                            )
+                          }
+                          className="px-3 py-2 text-[10px] font-bold rounded-xl border border-slate-200 bg-white text-slate-600 focus:outline-none focus:border-[#1b7b68]"
+                        >
+                          {Object.values(SurgicalRole).map((role) => (
+                            <option key={role} value={role}>
+                              {role.replaceAll('_', ' ')}
+                            </option>
+                          ))}
+                        </select>
+
+                        <button
+                          type="button"
+                          onClick={() => removeStaffFromTeam(member.userId)}
+                          className="px-3 py-2 rounded-xl bg-rose-50 text-rose-600 text-[10px] font-bold hover:bg-rose-100"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormField label="Patient ID">
-              <input
-                required
-                value={form.patientId}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    patientId: e.target.value,
-                  }))
-                }
-                placeholder="Enter patient ID"
-                className={inputClass}
-              />
-            </FormField>
-
-            <FormField label="Lead Surgeon ID">
-              <input
-                required
-                value={form.leadSurgeonId}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    leadSurgeonId: e.target.value,
-                  }))
-                }
-                placeholder="Enter surgeon ID"
-                className={inputClass}
-              />
-            </FormField>
-
             <FormField label="Theatre">
               <input
                 required
@@ -1139,7 +1975,7 @@ function ScheduleSurgeryModal({
 
             <button
               type="submit"
-              className="px-5 py-2.5 rounded-xl bg-[#1b7b68] hover:bg-[#146253] text-white text-xs font-bold"
+              className="px-5 py-2.5 rounded-xl bg-[#1b7b68] hover:bg-[#146253] text-white text-xs font-bold shadow-sm transition-all"
             >
               Schedule Surgery
             </button>
@@ -1162,19 +1998,10 @@ function FormField({
       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
         {label}
       </span>
+
       {children}
     </label>
   );
-}
-
-function formatLabel(value?: string) {
-  if (!value) return 'N/A';
-
-  return value
-    .toLowerCase()
-    .split('_')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
 }
 
 const inputClass =
