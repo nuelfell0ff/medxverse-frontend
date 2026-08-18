@@ -1741,8 +1741,12 @@ function TeamTab({
               const memberId = extractRefId(member.userId);
 
               const name = person
-                ? `${person.firstName || ''} ${person.lastName || ''}`.trim() || 'Assigned Staff'
-                : 'Assigned Staff';
+                ? getStaffDisplayName(person)
+                : getStaffDisplayName(
+                    typeof member.userId === 'object'
+                      ? (member.userId as Staff)
+                      : undefined
+                  );
 
               const isLead =
                 member.role === SurgicalRole.PRIMARY_SURGEON ||

@@ -196,8 +196,31 @@ function resolveStaffFromValue(
   directory: Record<string, Staff>
 ): Staff | undefined {
   if (!value) return undefined;
-  if (typeof value === 'object') return value;
-  return directory[value];
+
+  if (typeof value === 'string') {
+    return directory[value];
+  }
+
+  const record = value as Staff & {
+    _id?: string | { $oid?: string };
+  };
+
+  const id =
+    typeof record._id === 'string'
+      ? record._id
+      : record._id && typeof record._id === 'object'
+        ? (record._id as { $oid?: string }).$oid
+        : undefined;
+
+  if (id && directory[id]) {
+    return directory[id];
+  }
+
+  if (record.firstName || record.lastName || record.role || record.department) {
+    return record;
+  }
+
+  return undefined;
 }
 
 function formatLabel(value?: string) {
@@ -1232,6 +1255,7 @@ export default function SurgeryPage() {
           getPatientName={getPatientName}
           getPatientMrn={getPatientMrn}
           getSurgeonName={getSurgeonName}
+          staffDirectory={staffDirectory}
         />
       )}
 
@@ -1357,6 +1381,7 @@ function SurgeryDetailsModal({
   getPatientName,
   getPatientMrn,
   getSurgeonName,
+  staffDirectory,
 }: {
   surgery: SurgeryCase;
   onClose: () => void;
@@ -1365,6 +1390,7 @@ function SurgeryDetailsModal({
   getPatientName: (surgery: SurgeryCase) => string;
   getPatientMrn: (surgery: SurgeryCase) => string;
   getSurgeonName: (surgery: SurgeryCase) => string;
+  staffDirectory: Record<string, Staff>;
 }) {
   const status =
     statusConfig[surgery.status] ||
@@ -1460,17 +1486,17 @@ function SurgeryDetailsModal({
               {surgery.surgicalTeam &&
               surgery.surgicalTeam.length > 0 ? (
                 surgery.surgicalTeam.map((member, index) => {
-                  const staff =
-                    typeof member.userId === 'object'
-                      ? member.userId
-                      : undefined;
+                  const resolvedStaff = resolveStaffFromValue(
+                    member.userId,
+                    staffDirectory
+                  );
 
                   const name =
-                    typeof member.userId === 'string'
-                      ? 'Assigned Staff'
-                      : `${staff?.firstName || ''} ${
-                          staff?.lastName || ''
-                        }`.trim();
+                    resolvedStaff
+                      ? `${resolvedStaff.firstName || ''} ${
+                          resolvedStaff.lastName || ''
+                        }`.trim() || 'Assigned Staff'
+                      : 'Assigned Staff';
 
                   return (
                     <div
