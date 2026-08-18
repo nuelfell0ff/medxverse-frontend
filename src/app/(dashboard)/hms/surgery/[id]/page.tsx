@@ -295,11 +295,22 @@ const getPersonName = (person?: Patient | Staff | null) =>
     ? `${person.firstName || ''} ${person.lastName || ''}`.trim() || 'Unnamed Person'
     : '';
 
+const normalizeObjectId = (value?: string): string | undefined => {
+  if (!value) return undefined;
+
+  const trimmed = value.trim();
+  const raw = trimmed.match(/ObjectId\(\s*['\"]?([0-9a-fA-F]{24})['\"]?\s*\)/)?.[1]
+    || trimmed.match(/^([0-9a-fA-F]{24})$/)?.[1]
+    || trimmed.match(/([0-9a-fA-F]{24})/)?.[1];
+
+  return raw ? raw.toLowerCase() : undefined;
+};
+
 const extractRefId = (value: unknown): string | undefined => {
   if (!value) return undefined;
 
   if (typeof value === 'string') {
-    return value.trim();
+    return normalizeObjectId(value);
   }
 
   if (typeof value === 'number') {
@@ -313,14 +324,13 @@ const extractRefId = (value: unknown): string | undefined => {
     };
 
     if (typeof record.$oid === 'string') {
-      return record.$oid;
+      return normalizeObjectId(record.$oid);
     }
 
     if (typeof record.toHexString === 'function') {
       const hex = record.toHexString();
-      if (/^[0-9a-fA-F]{24}$/.test(hex)) {
-        return hex;
-      }
+      const normalized = normalizeObjectId(hex);
+      if (normalized) return normalized;
     }
 
     const nestedId = record._id ?? record.id;
@@ -328,8 +338,9 @@ const extractRefId = (value: unknown): string | undefined => {
     if (nestedRef) return nestedRef;
 
     const rawString = typeof record.toString === 'function' ? record.toString() : '';
-    if (/^[0-9a-fA-F]{24}$/.test(rawString)) {
-      return rawString;
+    const normalizedString = normalizeObjectId(rawString);
+    if (normalizedString) {
+      return normalizedString;
     }
   }
 
