@@ -531,7 +531,11 @@ export default function SurgeryCaseDetailsPage() {
   }, [surgeryCase, staff]);
 
   const patient = useMemo(() => {
-    if (!surgeryCase || typeof surgeryCase.patientId === 'string') {
+    if (!surgeryCase || !surgeryCase.patientId) {
+      return undefined;
+    }
+
+    if (typeof surgeryCase.patientId === 'string') {
       return undefined;
     }
 
@@ -539,12 +543,16 @@ export default function SurgeryCaseDetailsPage() {
   }, [surgeryCase]);
 
   const leadSurgeon = useMemo(() => {
-    if (!surgeryCase || typeof surgeryCase.leadSurgeonId === 'string') {
+    if (!surgeryCase || !surgeryCase.leadSurgeonId) {
+      return undefined;
+    }
+
+    if (typeof surgeryCase.leadSurgeonId === 'string') {
       return undefined;
     }
 
     const person = surgeryCase.leadSurgeonId as Staff;
-    if (!person.firstName && !person.lastName) {
+    if (!person || (!person.firstName && !person.lastName)) {
       return undefined;
     }
 
