@@ -353,6 +353,9 @@ const resolveStaffMember = (
 ): Staff | undefined => {
   if (!value) return undefined;
 
+  const rawValue = typeof value === 'object' ? value : { raw: value };
+  const valueId = extractRefId(value);
+
   if (typeof value === 'object') {
     const person = value as Staff & {
       _id?: string | { $oid?: string };
@@ -362,6 +365,12 @@ const resolveStaffMember = (
     if (personId) {
       const found = staffList.find((candidate) => extractRefId(candidate._id) === personId);
       if (found) return found;
+
+      console.warn('Staff ref did not match any staff record', {
+        rawValue,
+        extractedId: personId,
+        availableStaffIds: staffList.map((candidate) => extractRefId(candidate._id)),
+      });
     }
 
     if (person.firstName || person.lastName || person.role || person.department) {
@@ -369,10 +378,22 @@ const resolveStaffMember = (
     }
   }
 
-  const staffId = extractRefId(value);
-  if (!staffId) return undefined;
+  if (!valueId) {
+    console.warn('Unable to extract staff id from value', rawValue);
+    return undefined;
+  }
 
-  return staffList.find((person) => extractRefId(person._id) === staffId);
+  const match = staffList.find((person) => extractRefId(person._id) === valueId);
+
+  if (!match) {
+    console.warn('Staff lookup failed for surgical team member', {
+      rawValue,
+      extractedId: valueId,
+      availableStaffIds: staffList.map((candidate) => extractRefId(candidate._id)),
+    });
+  }
+
+  return match;
 };
 
 const inputClass =
@@ -500,6 +521,20 @@ export default function SurgeryCaseDetailsPage() {
         const memberId = extractRefId(member.userId);
         if (memberId) referencedIds.add(memberId);
       }
+
+      console.log('Surgery staff refs:', {
+        leadSurgeonId: surgeryCase.leadSurgeonId,
+        extractedLeadId: extractRefId(surgeryCase.leadSurgeonId),
+        surgicalTeam: (surgeryCase.surgicalTeam || []).map((member) => ({
+          role: member.role,
+          rawUserId: member.userId,
+          extractedId: extractRefId(member.userId),
+        })),
+        knownStaffIds: staff.map((person) => ({
+          _id: person._id,
+          normalized: extractRefId(person._id),
+        })),
+      });
 
       const knownIds = new Set(
         staff
