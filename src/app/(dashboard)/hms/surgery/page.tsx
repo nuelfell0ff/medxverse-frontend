@@ -198,19 +198,25 @@ function resolveStaffFromValue(
   if (!value) return undefined;
 
   if (typeof value === 'string') {
-    return directory[value];
+    return directory[value] || undefined;
   }
 
   const record = value as Staff & {
-    _id?: string | { $oid?: string };
+    _id?: string | { $oid?: string } | { toHexString?: () => string };
+    toHexString?: () => string;
   };
 
   const id =
     typeof record._id === 'string'
       ? record._id
       : record._id && typeof record._id === 'object'
-        ? (record._id as { $oid?: string }).$oid
-        : undefined;
+        ? (record._id as { $oid?: string }).$oid ||
+          (typeof (record._id as { toHexString?: () => string }).toHexString === 'function'
+            ? (record._id as { toHexString: () => string }).toHexString()
+            : undefined)
+        : typeof record.toHexString === 'function'
+          ? record.toHexString()
+          : undefined;
 
   if (id && directory[id]) {
     return directory[id];

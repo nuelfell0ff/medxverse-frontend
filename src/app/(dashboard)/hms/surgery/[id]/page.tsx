@@ -299,40 +299,37 @@ const extractRefId = (value: unknown): string | undefined => {
   if (!value) return undefined;
 
   if (typeof value === 'string') {
-    return value;
+    return value.trim();
+  }
+
+  if (typeof value === 'number') {
+    return String(value);
   }
 
   if (typeof value === 'object') {
-    const record = value as Record<string, unknown>;
+    const record = value as Record<string, unknown> & {
+      toHexString?: () => string;
+      toString?: () => string;
+    };
 
     if (typeof record.$oid === 'string') {
       return record.$oid;
     }
 
-    const nestedId = record._id;
-    if (typeof nestedId === 'string') {
-      return nestedId;
+    if (typeof record.toHexString === 'function') {
+      const hex = record.toHexString();
+      if (/^[0-9a-fA-F]{24}$/.test(hex)) {
+        return hex;
+      }
     }
 
-    if (
-      nestedId &&
-      typeof nestedId === 'object' &&
-      typeof (nestedId as Record<string, unknown>).$oid === 'string'
-    ) {
-      return (nestedId as Record<string, string>).$oid;
-    }
+    const nestedId = record._id ?? record.id;
+    const nestedRef = extractRefId(nestedId);
+    if (nestedRef) return nestedRef;
 
-    const plainId = record.id;
-    if (typeof plainId === 'string') {
-      return plainId;
-    }
-
-    if (
-      plainId &&
-      typeof plainId === 'object' &&
-      typeof (plainId as Record<string, unknown>).$oid === 'string'
-    ) {
-      return (plainId as Record<string, string>).$oid;
+    const rawString = typeof record.toString === 'function' ? record.toString() : '';
+    if (/^[0-9a-fA-F]{24}$/.test(rawString)) {
+      return rawString;
     }
   }
 
@@ -346,8 +343,17 @@ const resolveStaffMember = (
   if (!value) return undefined;
 
   if (typeof value === 'object') {
-    const person = value as Staff;
-    if (person.firstName || person.lastName) {
+    const person = value as Staff & {
+      _id?: string | { $oid?: string };
+    };
+
+    const personId = extractRefId(person._id);
+    if (personId) {
+      const found = staffList.find((candidate) => extractRefId(candidate._id) === personId);
+      if (found) return found;
+    }
+
+    if (person.firstName || person.lastName || person.role || person.department) {
       return person;
     }
   }
