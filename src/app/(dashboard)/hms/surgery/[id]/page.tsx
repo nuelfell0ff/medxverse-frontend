@@ -290,11 +290,6 @@ const getStaffDisplayName = (person?: Staff | null) => {
   return fullName || 'Assigned Staff';
 };
 
-const getPersonName = (person?: Patient | Staff | null) =>
-  person
-    ? `${person.firstName || ''} ${person.lastName || ''}`.trim() || 'Unnamed Person'
-    : '';
-
 const normalizeObjectId = (value?: string): string | undefined => {
   if (!value) return undefined;
 
@@ -353,47 +348,21 @@ const resolveStaffMember = (
 ): Staff | undefined => {
   if (!value) return undefined;
 
-  const rawValue = typeof value === 'object' ? value : { raw: value };
   const valueId = extractRefId(value);
 
-  if (typeof value === 'object') {
-    const person = value as Staff & {
-      _id?: string | { $oid?: string };
-    };
+  if (valueId && staffList.length > 0) {
+    const match = staffList.find((candidate) => extractRefId(candidate._id) === valueId);
+    if (match) return match;
+  }
 
-    const personId = extractRefId(person._id);
-    if (personId) {
-      const found = staffList.find((candidate) => extractRefId(candidate._id) === personId);
-      if (found) return found;
-
-      console.warn('Staff ref did not match any staff record', {
-        rawValue,
-        extractedId: personId,
-        availableStaffIds: staffList.map((candidate) => extractRefId(candidate._id)),
-      });
-    }
-
-    if (person.firstName || person.lastName || person.role || person.department) {
+  if (typeof value === 'object' && value !== null) {
+    const person = value as Staff;
+    if (person.firstName || person.lastName) {
       return person;
     }
   }
 
-  if (!valueId) {
-    console.warn('Unable to extract staff id from value', rawValue);
-    return undefined;
-  }
-
-  const match = staffList.find((person) => extractRefId(person._id) === valueId);
-
-  if (!match) {
-    console.warn('Staff lookup failed for surgical team member', {
-      rawValue,
-      extractedId: valueId,
-      availableStaffIds: staffList.map((candidate) => extractRefId(candidate._id)),
-    });
-  }
-
-  return match;
+  return undefined;
 };
 
 const inputClass =
@@ -419,12 +388,12 @@ export default function SurgeryCaseDetailsPage() {
 
   const [surgeryCase, setSurgeryCase] = useState<SurgeryCase | null>(null);
   const [staff, setStaff] = useState<Staff[]>([]);
-  const requestedStaffIdsRef = useRef<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [actionLoading, setActionLoading] = useState(false);
 
+  // Form states
   const [preOpForm, setPreOpForm] = useState<PreOpAssessment>({});
   const [consentForm, setConsentForm] = useState<Consent>({});
   const [whoForm, setWhoForm] = useState<Record<string, any>>({});
@@ -445,6 +414,13 @@ export default function SurgeryCaseDetailsPage() {
   const [consumables, setConsumables] = useState<ConsumableItem[]>([]);
   const [anaesthesiaNotes, setAnaesthesiaNotes] = useState('');
   const [postOpNotes, setPostOpNotes] = useState('');
+
+  // Lock states for saved sections
+  const [preOpSaved, setPreOpSaved] = useState(false);
+  const [consentSaved, setConsentSaved] = useState(false);
+  const [whoSaved, setWhoSaved] = useState<Record<string, boolean>>({});
+  const [equipmentSaved, setEquipmentSaved] = useState(false);
+  const [intraopSaved, setIntraopSaved] = useState(false);
 
   const fetchCase = useCallback(async () => {
     if (!caseId) return;
@@ -522,20 +498,6 @@ export default function SurgeryCaseDetailsPage() {
         if (memberId) referencedIds.add(memberId);
       }
 
-      console.log('Surgery staff refs:', {
-        leadSurgeonId: surgeryCase.leadSurgeonId,
-        extractedLeadId: extractRefId(surgeryCase.leadSurgeonId),
-        surgicalTeam: (surgeryCase.surgicalTeam || []).map((member) => ({
-          role: member.role,
-          rawUserId: member.userId,
-          extractedId: extractRefId(member.userId),
-        })),
-        knownStaffIds: staff.map((person) => ({
-          _id: person._id,
-          normalized: extractRefId(person._id),
-        })),
-      });
-
       const knownIds = new Set(
         staff
           .map((person) => extractRefId(person._id))
@@ -543,12 +505,10 @@ export default function SurgeryCaseDetailsPage() {
       );
 
       const missingIds = Array.from(referencedIds).filter(
-        (id) => !knownIds.has(id) && !requestedStaffIdsRef.current.has(id)
+        (id) => !knownIds.has(id)
       );
 
       if (!missingIds.length) return;
-
-      missingIds.forEach((id) => requestedStaffIdsRef.current.add(id));
 
       const resolved = await Promise.all(
         missingIds.map((id) =>
@@ -583,31 +543,16 @@ export default function SurgeryCaseDetailsPage() {
   }, [surgeryCase, staff]);
 
   const patient = useMemo(() => {
-    if (!surgeryCase || !surgeryCase.patientId) {
-      return undefined;
-    }
-
-    if (typeof surgeryCase.patientId === 'string') {
-      return undefined;
-    }
-
+    if (!surgeryCase || !surgeryCase.patientId) return undefined;
+    if (typeof surgeryCase.patientId === 'string') return undefined;
     return surgeryCase.patientId;
   }, [surgeryCase]);
 
   const leadSurgeon = useMemo(() => {
-    if (!surgeryCase || !surgeryCase.leadSurgeonId) {
-      return undefined;
-    }
-
-    if (typeof surgeryCase.leadSurgeonId === 'string') {
-      return undefined;
-    }
-
+    if (!surgeryCase || !surgeryCase.leadSurgeonId) return undefined;
+    if (typeof surgeryCase.leadSurgeonId === 'string') return undefined;
     const person = surgeryCase.leadSurgeonId as Staff;
-    if (!person || (!person.firstName && !person.lastName)) {
-      return undefined;
-    }
-
+    if (!person || (!person.firstName && !person.lastName)) return undefined;
     return person;
   }, [surgeryCase]);
 
@@ -622,10 +567,7 @@ export default function SurgeryCaseDetailsPage() {
     ? `${resolvedLeadSurgeon.firstName || ''} ${resolvedLeadSurgeon.lastName || ''}`.trim() || 'Assigned Surgeon'
     : 'Assigned Surgeon';
 
-  const request = async (
-    url: string,
-    options: RequestInit = {}
-  ) => {
+  const request = async (url: string, options: RequestInit = {}) => {
     const token = localStorage.getItem('token');
 
     const res = await fetch(`${API_BASE_URL}${url.startsWith('/') ? url : `/${url}`}`, {
@@ -663,6 +605,7 @@ export default function SurgeryCaseDetailsPage() {
 
       setSurgeryCase(updated);
       setPreOpForm(updated.preOpAssessment || {});
+      setPreOpSaved(true);
     } catch (error: any) {
       setActionError(error.message);
     } finally {
@@ -687,6 +630,7 @@ export default function SurgeryCaseDetailsPage() {
 
       setSurgeryCase(updated);
       setConsentForm(updated.consent || {});
+      setConsentSaved(true);
     } catch (error: any) {
       setActionError(error.message);
     } finally {
@@ -694,9 +638,7 @@ export default function SurgeryCaseDetailsPage() {
     }
   };
 
-  const saveWHO = async (
-    stage: 'signIn' | 'timeOut' | 'signOut'
-  ) => {
+  const saveWHO = async (stage: 'signIn' | 'timeOut' | 'signOut') => {
     if (!surgeryCase) return;
 
     setActionLoading(true);
@@ -716,6 +658,7 @@ export default function SurgeryCaseDetailsPage() {
 
       setSurgeryCase(updated);
       setWhoForm({});
+      setWhoSaved((prev) => ({ ...prev, [stage]: true }));
     } catch (error: any) {
       setActionError(error.message);
     } finally {
@@ -735,9 +678,7 @@ export default function SurgeryCaseDetailsPage() {
           .filter(([_, value]) => value !== '')
           .map(([key, value]) => [
             key,
-            ['ecgRhythm', 'notes'].includes(key)
-              ? value
-              : Number(value),
+            ['ecgRhythm', 'notes'].includes(key) ? value : Number(value),
           ])
       );
 
@@ -769,6 +710,36 @@ export default function SurgeryCaseDetailsPage() {
     }
   };
 
+  const saveEquipmentAndConsumables = async () => {
+    if (!surgeryCase) return;
+
+    setActionLoading(true);
+    setActionError(null);
+
+    try {
+      const updated = await request(
+        `/surgery/${surgeryCase._id}/intraop-docs`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            ...intraopForm,
+            equipmentChecklist: equipment,
+            consumablesUsed: consumables,
+          }),
+        }
+      );
+
+      setSurgeryCase(updated);
+      setEquipment(updated.equipmentChecklist || []);
+      setConsumables(updated.consumablesUsed || []);
+      setEquipmentSaved(true);
+    } catch (error: any) {
+      setActionError(error.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const saveIntraop = async () => {
     if (!surgeryCase) return;
 
@@ -790,8 +761,7 @@ export default function SurgeryCaseDetailsPage() {
 
       setSurgeryCase(updated);
       setIntraopForm(updated.intraopDocs || {});
-      setEquipment(updated.equipmentChecklist || []);
-      setConsumables(updated.consumablesUsed || []);
+      setIntraopSaved(true);
     } catch (error: any) {
       setActionError(error.message);
     } finally {
@@ -926,12 +896,10 @@ export default function SurgeryCaseDetailsPage() {
   }
 
   const status =
-    statusConfig[surgeryCase.status] ||
-    statusConfig[SurgeryStatus.SCHEDULED];
+    statusConfig[surgeryCase.status] || statusConfig[SurgeryStatus.SCHEDULED];
 
   const urgency =
-    urgencyConfig[surgeryCase.urgency] ||
-    urgencyConfig[UrgencyLevel.ELECTIVE];
+    urgencyConfig[surgeryCase.urgency] || urgencyConfig[UrgencyLevel.ELECTIVE];
 
   const whoCompleted = [
     surgeryCase.whoChecklist?.signIn?.completed,
@@ -942,8 +910,7 @@ export default function SurgeryCaseDetailsPage() {
   const readinessItems = [
     {
       label: 'Pre-operative assessment',
-      complete:
-        surgeryCase.preOpAssessment?.clearedForSurgery === true,
+      complete: surgeryCase.preOpAssessment?.clearedForSurgery === true,
     },
     {
       label: 'Surgical consent',
@@ -954,18 +921,15 @@ export default function SurgeryCaseDetailsPage() {
     },
     {
       label: 'WHO Sign In',
-      complete:
-        surgeryCase.whoChecklist?.signIn?.completed === true,
+      complete: surgeryCase.whoChecklist?.signIn?.completed === true,
     },
     {
       label: 'WHO Time Out',
-      complete:
-        surgeryCase.whoChecklist?.timeOut?.completed === true,
+      complete: surgeryCase.whoChecklist?.timeOut?.completed === true,
     },
     {
       label: 'Equipment checklist',
-      complete:
-        !!surgeryCase.equipmentChecklist?.length,
+      complete: !!surgeryCase.equipmentChecklist?.length,
     },
   ];
 
@@ -1033,9 +997,7 @@ export default function SurgeryCaseDetailsPage() {
             </p>
 
             <div className="flex items-center gap-2 mt-0.5">
-              <h1 className="text-xl font-extrabold">
-                Surgical Case
-              </h1>
+              <h1 className="text-xl font-extrabold">Surgical Case</h1>
 
               <span className="bg-[#e8f5f3] text-[#1b7b68] text-[10px] font-bold px-2.5 py-1 rounded-full uppercase">
                 Case Details
@@ -1224,18 +1186,26 @@ export default function SurgeryCaseDetailsPage() {
             {activeTab === 'pre-op' && (
               <PreOpTab
                 form={preOpForm}
-                setForm={setPreOpForm}
+                setForm={(action) => {
+                  setPreOpSaved(false);
+                  setPreOpForm(action);
+                }}
                 onSave={savePreOp}
                 loading={actionLoading}
+                isSaved={preOpSaved}
               />
             )}
 
             {activeTab === 'consent' && (
               <ConsentTab
                 form={consentForm}
-                setForm={setConsentForm}
+                setForm={(action) => {
+                  setConsentSaved(false);
+                  setConsentForm(action);
+                }}
                 onSave={saveConsent}
                 loading={actionLoading}
+                isSaved={consentSaved}
               />
             )}
 
@@ -1254,30 +1224,42 @@ export default function SurgeryCaseDetailsPage() {
                 setForm={setWhoForm}
                 onSave={saveWHO}
                 loading={actionLoading}
+                savedStages={whoSaved}
               />
             )}
 
             {activeTab === 'equipment' && (
               <EquipmentTab
                 equipment={equipment}
-                setEquipment={setEquipment}
+                setEquipment={(action) => {
+                  setEquipmentSaved(false);
+                  setEquipment(action);
+                }}
                 consumables={consumables}
-                setConsumables={setConsumables}
-                onSave={saveIntraop}
+                setConsumables={(action) => {
+                  setEquipmentSaved(false);
+                  setConsumables(action);
+                }}
+                onSave={saveEquipmentAndConsumables}
                 loading={actionLoading}
+                isSaved={equipmentSaved}
               />
             )}
 
             {activeTab === 'intraoperative' && (
               <IntraoperativeTab
                 form={intraopForm}
-                setForm={setIntraopForm}
+                setForm={(action) => {
+                  setIntraopSaved(false);
+                  setIntraopForm(action);
+                }}
                 vitals={surgeryCase.vitalsTimeline || []}
                 vitalsForm={vitalsForm}
                 setVitalsForm={setVitalsForm}
                 onAddVitals={addVitals}
                 onSave={saveIntraop}
                 loading={actionLoading}
+                isSaved={intraopSaved}
               />
             )}
 
@@ -1337,22 +1319,13 @@ function OverviewTab({
         >
           <div className="grid grid-cols-2 gap-4">
             <DetailItem label="Patient" value={patientName} />
-            <DetailItem
-              label="MRN"
-              value={patient?.mrn || 'N/A'}
-              mono
-            />
-            <DetailItem
-              label="Gender"
-              value={patient?.gender || 'N/A'}
-            />
+            <DetailItem label="MRN" value={patient?.mrn || 'N/A'} mono />
+            <DetailItem label="Gender" value={patient?.gender || 'N/A'} />
             <DetailItem
               label="Date of Birth"
               value={
                 patient?.dateOfBirth
-                  ? new Date(
-                      patient.dateOfBirth
-                    ).toLocaleDateString()
+                  ? new Date(patient.dateOfBirth).toLocaleDateString()
                   : 'N/A'
               }
             />
@@ -1364,26 +1337,14 @@ function OverviewTab({
           icon={<Stethoscope className="w-4 h-4" />}
         >
           <div className="grid grid-cols-2 gap-4">
-            <DetailItem
-              label="Procedure"
-              value={surgeryCase.procedureName}
-            />
-            <DetailItem
-              label="ICD Code"
-              value={surgeryCase.icdCode || 'N/A'}
-            />
-            <DetailItem
-              label="Lead Surgeon"
-              value={surgeonName}
-            />
+            <DetailItem label="Procedure" value={surgeryCase.procedureName} />
+            <DetailItem label="ICD Code" value={surgeryCase.icdCode || 'N/A'} />
+            <DetailItem label="Lead Surgeon" value={surgeonName} />
             <DetailItem
               label="Anaesthesia"
               value={formatLabel(surgeryCase.anesthesiaType)}
             />
-            <DetailItem
-              label="Theatre"
-              value={surgeryCase.theatreId}
-            />
+            <DetailItem label="Theatre" value={surgeryCase.theatreId} />
             <DetailItem
               label="Urgency"
               value={formatLabel(surgeryCase.urgency)}
@@ -1426,9 +1387,7 @@ function OverviewTab({
 
                 <span
                   className={`text-[10px] font-bold ${
-                    item.complete
-                      ? 'text-emerald-600'
-                      : 'text-amber-600'
+                    item.complete ? 'text-emerald-600' : 'text-amber-600'
                   }`}
                 >
                   {item.complete ? 'Complete' : 'Pending'}
@@ -1446,21 +1405,15 @@ function OverviewTab({
           <div className="grid grid-cols-3 gap-3">
             <ChecklistStage
               label="Sign In"
-              completed={
-                surgeryCase.whoChecklist?.signIn?.completed
-              }
+              completed={surgeryCase.whoChecklist?.signIn?.completed}
             />
             <ChecklistStage
               label="Time Out"
-              completed={
-                surgeryCase.whoChecklist?.timeOut?.completed
-              }
+              completed={surgeryCase.whoChecklist?.timeOut?.completed}
             />
             <ChecklistStage
               label="Sign Out"
-              completed={
-                surgeryCase.whoChecklist?.signOut?.completed
-              }
+              completed={surgeryCase.whoChecklist?.signOut?.completed}
             />
           </div>
         </SectionCard>
@@ -1474,11 +1427,13 @@ function PreOpTab({
   setForm,
   onSave,
   loading,
+  isSaved,
 }: {
   form: PreOpAssessment;
   setForm: React.Dispatch<React.SetStateAction<PreOpAssessment>>;
   onSave: () => void;
   loading: boolean;
+  isSaved: boolean;
 }) {
   return (
     <FormSection
@@ -1486,6 +1441,7 @@ function PreOpTab({
       description="Complete surgical and anaesthetic readiness assessment."
       onSave={onSave}
       loading={loading}
+      isSaved={isSaved}
     >
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Field label="ASA Classification">
@@ -1685,11 +1641,13 @@ function ConsentTab({
   setForm,
   onSave,
   loading,
+  isSaved,
 }: {
   form: Consent;
   setForm: React.Dispatch<React.SetStateAction<Consent>>;
   onSave: () => void;
   loading: boolean;
+  isSaved: boolean;
 }) {
   const toggle = (key: keyof Consent) =>
     setForm((p) => ({
@@ -1703,6 +1661,7 @@ function ConsentTab({
       description="Record required surgical and anaesthetic consents."
       onSave={onSave}
       loading={loading}
+      isSaved={isSaved}
     >
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {[
@@ -1794,11 +1753,9 @@ function TeamTab({
 
               const name = person
                 ? getStaffDisplayName(person)
-                : getStaffDisplayName(
-                    typeof member.userId === 'object'
-                      ? (member.userId as Staff)
-                      : undefined
-                  );
+                : typeof member.userId === 'object' && member.userId !== null
+                ? getStaffDisplayName(member.userId as Staff)
+                : 'Assigned Staff';
 
               const isLead =
                 member.role === SurgicalRole.PRIMARY_SURGEON ||
@@ -1806,7 +1763,7 @@ function TeamTab({
 
               return (
                 <div
-                  key={`${member.userId}-${member.role}-${index}`}
+                  key={`${memberId || index}-${member.role}-${index}`}
                   className={`flex items-center gap-3 p-4 rounded-2xl border ${
                     isLead
                       ? 'border-[#1b7b68]/20 bg-[#e8f5f3]/40'
@@ -1865,18 +1822,20 @@ function WHOTab({
   setForm,
   onSave,
   loading,
+  savedStages,
 }: {
   checklist?: SurgeryCase['whoChecklist'];
   form: Record<string, any>;
   setForm: React.Dispatch<React.SetStateAction<Record<string, any>>>;
   onSave: (stage: 'signIn' | 'timeOut' | 'signOut') => void;
   loading: boolean;
+  savedStages: Record<string, boolean>;
 }) {
   const [stage, setStage] =
     useState<'signIn' | 'timeOut' | 'signOut'>('signIn');
 
-  const current =
-    checklist?.[stage]?.completed === true;
+  const currentCompleted = checklist?.[stage]?.completed === true;
+  const isCurrentSaved = Boolean(savedStages[stage]) || currentCompleted;
 
   const fields: Record<string, string[]> = {
     signIn: [
@@ -1894,10 +1853,7 @@ function WHOTab({
       'antibioticProphylaxisGiven',
       'imagingDisplayed',
     ],
-    signOut: [
-      'countsCorrect',
-      'specimenLabeled',
-    ],
+    signOut: ['countsCorrect', 'specimenLabeled'],
   };
 
   return (
@@ -1921,7 +1877,9 @@ function WHOTab({
       <SectionCard
         title={`${formatLabel(stage)} Checklist`}
         subtitle={
-          current ? 'This stage has been completed.' : 'Complete all applicable checks.'
+          isCurrentSaved
+            ? 'This stage has been completed.'
+            : 'Complete all applicable checks.'
         }
         icon={<ShieldAlert className="w-4 h-4" />}
       >
@@ -2059,11 +2017,15 @@ function WHOTab({
 
         <div className="flex justify-end pt-3">
           <button
-            disabled={loading}
+            disabled={loading || isCurrentSaved}
             onClick={() => onSave(stage)}
-            className="px-5 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold disabled:opacity-50"
+            className="px-5 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Saving...' : `Complete ${formatLabel(stage)}`}
+            {loading
+              ? 'Saving...'
+              : isCurrentSaved
+              ? 'Saved'
+              : `Complete ${formatLabel(stage)}`}
           </button>
         </div>
       </SectionCard>
@@ -2078,6 +2040,7 @@ function EquipmentTab({
   setConsumables,
   onSave,
   loading,
+  isSaved,
 }: {
   equipment: EquipmentItem[];
   setEquipment: React.Dispatch<React.SetStateAction<EquipmentItem[]>>;
@@ -2085,6 +2048,7 @@ function EquipmentTab({
   setConsumables: React.Dispatch<React.SetStateAction<ConsumableItem[]>>;
   onSave: () => void;
   loading: boolean;
+  isSaved: boolean;
 }) {
   const addEquipment = () =>
     setEquipment((p) => [
@@ -2126,9 +2090,7 @@ function EquipmentTab({
                 onChange={(e) =>
                   setEquipment((p) =>
                     p.map((x, i) =>
-                      i === index
-                        ? { ...x, itemName: e.target.value }
-                        : x
+                      i === index ? { ...x, itemName: e.target.value } : x
                     )
                   )
                 }
@@ -2140,9 +2102,7 @@ function EquipmentTab({
                 onChange={(e) =>
                   setEquipment((p) =>
                     p.map((x, i) =>
-                      i === index
-                        ? { ...x, sterileStatus: e.target.value }
-                        : x
+                      i === index ? { ...x, sterileStatus: e.target.value } : x
                     )
                   )
                 }
@@ -2161,19 +2121,14 @@ function EquipmentTab({
                     setEquipment((p) =>
                       p.map((x, i) =>
                         i === index
-                          ? {
-                              ...x,
-                              maintenanceOk: e.target.checked,
-                            }
+                          ? { ...x, maintenanceOk: e.target.checked }
                           : x
                       )
                     )
                   }
                   className="accent-[#1b7b68]"
                 />
-                <span className="text-xs font-semibold">
-                  Maintenance OK
-                </span>
+                <span className="text-xs font-semibold">Maintenance OK</span>
               </label>
 
               <input
@@ -2182,9 +2137,7 @@ function EquipmentTab({
                 onChange={(e) =>
                   setEquipment((p) =>
                     p.map((x, i) =>
-                      i === index
-                        ? { ...x, notes: e.target.value }
-                        : x
+                      i === index ? { ...x, notes: e.target.value } : x
                     )
                   )
                 }
@@ -2203,10 +2156,7 @@ function EquipmentTab({
         </div>
       </SectionCard>
 
-      <SectionCard
-        title="Consumables"
-        icon={<Plus className="w-4 h-4" />}
-      >
+      <SectionCard title="Consumables" icon={<Plus className="w-4 h-4" />}>
         <div className="space-y-3">
           {consumables.map((item, index) => (
             <div
@@ -2219,9 +2169,7 @@ function EquipmentTab({
                 onChange={(e) =>
                   setConsumables((p) =>
                     p.map((x, i) =>
-                      i === index
-                        ? { ...x, itemName: e.target.value }
-                        : x
+                      i === index ? { ...x, itemName: e.target.value } : x
                     )
                   )
                 }
@@ -2236,10 +2184,7 @@ function EquipmentTab({
                   setConsumables((p) =>
                     p.map((x, i) =>
                       i === index
-                        ? {
-                            ...x,
-                            quantityUsed: Number(e.target.value),
-                          }
+                        ? { ...x, quantityUsed: Number(e.target.value) }
                         : x
                     )
                   )
@@ -2255,10 +2200,7 @@ function EquipmentTab({
                   setConsumables((p) =>
                     p.map((x, i) =>
                       i === index
-                        ? {
-                            ...x,
-                            unitCost: Number(e.target.value),
-                          }
+                        ? { ...x, unitCost: Number(e.target.value) }
                         : x
                     )
                   )
@@ -2272,9 +2214,7 @@ function EquipmentTab({
                 onChange={(e) =>
                   setConsumables((p) =>
                     p.map((x, i) =>
-                      i === index
-                        ? { ...x, lotNumber: e.target.value }
-                        : x
+                      i === index ? { ...x, lotNumber: e.target.value } : x
                     )
                   )
                 }
@@ -2296,10 +2236,10 @@ function EquipmentTab({
       <div className="flex justify-end">
         <button
           onClick={onSave}
-          disabled={loading}
-          className="px-5 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold disabled:opacity-50"
+          disabled={loading || isSaved}
+          className="px-5 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? 'Saving...' : 'Save Equipment & Consumables'}
+          {loading ? 'Saving...' : isSaved ? 'Saved' : 'Save Equipment & Consumables'}
         </button>
       </div>
     </div>
@@ -2315,17 +2255,17 @@ function IntraoperativeTab({
   onAddVitals,
   onSave,
   loading,
+  isSaved,
 }: {
   form: IntraopDocs;
   setForm: React.Dispatch<React.SetStateAction<IntraopDocs>>;
   vitals: VitalsLog[];
   vitalsForm: VitalsFormState;
-  setVitalsForm: React.Dispatch<
-    React.SetStateAction<VitalsFormState>
-  >;
+  setVitalsForm: React.Dispatch<React.SetStateAction<VitalsFormState>>;
   onAddVitals: () => void;
   onSave: () => void;
   loading: boolean;
+  isSaved: boolean;
 }) {
   const update = (key: keyof IntraopDocs, value: any) =>
     setForm((p) => ({
@@ -2365,9 +2305,7 @@ function IntraoperativeTab({
             <input
               type="number"
               value={form.eblMl ?? ''}
-              onChange={(e) =>
-                update('eblMl', Number(e.target.value))
-              }
+              onChange={(e) => update('eblMl', Number(e.target.value))}
               className={inputClass}
             />
           </Field>
@@ -2377,10 +2315,7 @@ function IntraoperativeTab({
               type="number"
               value={form.fluidsAdministeredMl ?? ''}
               onChange={(e) =>
-                update(
-                  'fluidsAdministeredMl',
-                  Number(e.target.value)
-                )
+                update('fluidsAdministeredMl', Number(e.target.value))
               }
               className={inputClass}
             />
@@ -2480,27 +2415,14 @@ function IntraoperativeTab({
                       {new Date(vital.timestamp).toLocaleTimeString()}
                     </td>
                     <td className="p-3">
-                      {vital.bpSystolic ?? '--'}/
-                      {vital.bpDiastolic ?? '--'}
+                      {vital.bpSystolic ?? '--'}/{vital.bpDiastolic ?? '--'}
                     </td>
-                    <td className="p-3">
-                      {vital.heartRate ?? '--'}
-                    </td>
-                    <td className="p-3">
-                      {vital.spO2 ?? '--'}%
-                    </td>
-                    <td className="p-3">
-                      {vital.respRate ?? '--'}
-                    </td>
-                    <td className="p-3">
-                      {vital.tempCelsius ?? '--'}
-                    </td>
-                    <td className="p-3">
-                      {vital.etCO2 ?? '--'}
-                    </td>
-                    <td className="p-3">
-                      {vital.ecgRhythm || '--'}
-                    </td>
+                    <td className="p-3">{vital.heartRate ?? '--'}</td>
+                    <td className="p-3">{vital.spO2 ?? '--'}%</td>
+                    <td className="p-3">{vital.respRate ?? '--'}</td>
+                    <td className="p-3">{vital.tempCelsius ?? '--'}</td>
+                    <td className="p-3">{vital.etCO2 ?? '--'}</td>
+                    <td className="p-3">{vital.ecgRhythm || '--'}</td>
                   </tr>
                 ))}
             </tbody>
@@ -2510,10 +2432,10 @@ function IntraoperativeTab({
         <div className="flex justify-end pt-4">
           <button
             onClick={onSave}
-            disabled={loading}
-            className="px-5 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold"
+            disabled={loading || isSaved}
+            className="px-5 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Saving...' : 'Save Operative Documentation'}
+            {loading ? 'Saving...' : isSaved ? 'Saved' : 'Save Operative Documentation'}
           </button>
         </div>
       </SectionCard>
@@ -2596,16 +2518,12 @@ function AnaesthesiaTab({
 
                   <div className="text-xs">
                     <p className="font-bold text-slate-700">
-                      {new Date(
-                        vital.timestamp
-                      ).toLocaleTimeString()}
+                      {new Date(vital.timestamp).toLocaleTimeString()}
                     </p>
 
                     <p className="text-[10px] text-slate-400 mt-1">
-                      BP {vital.bpSystolic ?? '--'}/
-                      {vital.bpDiastolic ?? '--'} • HR{' '}
-                      {vital.heartRate ?? '--'} • SpO₂{' '}
-                      {vital.spO2 ?? '--'}% • RR{' '}
+                      BP {vital.bpSystolic ?? '--'}/{vital.bpDiastolic ?? '--'} • HR{' '}
+                      {vital.heartRate ?? '--'} • SpO₂ {vital.spO2 ?? '--'}% • RR{' '}
                       {vital.respRate ?? '--'}
                     </p>
                   </div>
@@ -2640,18 +2558,13 @@ function PostOpTab({
       icon={<CheckCircle2 className="w-4 h-4" />}
     >
       <div className="grid md:grid-cols-3 gap-4">
-        <DetailItem
-          label="Procedure"
-          value={surgeryCase.procedureName}
-        />
+        <DetailItem label="Procedure" value={surgeryCase.procedureName} />
 
         <DetailItem
           label="Actual Start"
           value={
             surgeryCase.actualStartTime
-              ? new Date(
-                  surgeryCase.actualStartTime
-                ).toLocaleString()
+              ? new Date(surgeryCase.actualStartTime).toLocaleString()
               : 'Not started'
           }
         />
@@ -2660,9 +2573,7 @@ function PostOpTab({
           label="Actual End"
           value={
             surgeryCase.actualEndTime
-              ? new Date(
-                  surgeryCase.actualEndTime
-                ).toLocaleString()
+              ? new Date(surgeryCase.actualEndTime).toLocaleString()
               : 'Not completed'
           }
         />
@@ -2692,9 +2603,7 @@ function PostOpTab({
 
       {surgeryCase.cancellationReason && (
         <div className="p-4 rounded-2xl bg-rose-50 border border-rose-100">
-          <p className="text-xs font-bold text-rose-700">
-            Cancellation Reason
-          </p>
+          <p className="text-xs font-bold text-rose-700">Cancellation Reason</p>
           <p className="text-xs text-rose-600 mt-2">
             {surgeryCase.cancellationReason}
           </p>
@@ -2710,33 +2619,31 @@ function FormSection({
   children,
   onSave,
   loading,
+  isSaved,
 }: {
   title: string;
   description: string;
   children: React.ReactNode;
   onSave: () => void;
   loading: boolean;
+  isSaved?: boolean;
 }) {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-sm font-extrabold text-slate-800">
-          {title}
-        </h2>
-        <p className="text-[11px] text-slate-400 mt-0.5">
-          {description}
-        </p>
+        <h2 className="text-sm font-extrabold text-slate-800">{title}</h2>
+        <p className="text-[11px] text-slate-400 mt-0.5">{description}</p>
       </div>
 
       <div className="space-y-4">{children}</div>
 
       <div className="flex justify-end pt-3 border-t border-slate-100">
         <button
-          disabled={loading}
+          disabled={loading || Boolean(isSaved)}
           onClick={onSave}
-          className="px-5 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold disabled:opacity-50"
+          className="px-5 py-2.5 bg-[#1b7b68] text-white rounded-xl text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? 'Saving...' : 'Save Changes'}
+          {loading ? 'Saving...' : isSaved ? 'Saved' : 'Save Changes'}
         </button>
       </div>
     </div>
@@ -2780,14 +2687,10 @@ function SectionCard({
           </div>
 
           <div>
-            <h3 className="text-sm font-extrabold text-slate-800">
-              {title}
-            </h3>
+            <h3 className="text-sm font-extrabold text-slate-800">{title}</h3>
 
             {subtitle && (
-              <p className="text-[10px] text-slate-400 mt-0.5">
-                {subtitle}
-              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5">{subtitle}</p>
             )}
           </div>
         </div>
@@ -2845,9 +2748,7 @@ function InfoCard({
         </span>
       </div>
 
-      <p className="text-xs font-extrabold text-slate-700 truncate">
-        {value}
-      </p>
+      <p className="text-xs font-extrabold text-slate-700 truncate">{value}</p>
     </div>
   );
 }
@@ -2907,9 +2808,7 @@ function ChecklistStage({
         )}
       </div>
 
-      <p className="text-[10px] font-bold text-slate-700 mt-2">
-        {label}
-      </p>
+      <p className="text-[10px] font-bold text-slate-700 mt-2">{label}</p>
 
       <p
         className={`text-[9px] font-bold uppercase mt-0.5 ${
@@ -2929,9 +2828,7 @@ function EmptyState({ text }: { text: string }) {
         <Users className="w-5 h-5" />
       </div>
 
-      <p className="text-xs font-semibold text-slate-500 mt-3">
-        {text}
-      </p>
+      <p className="text-xs font-semibold text-slate-500 mt-3">{text}</p>
     </div>
   );
 }
@@ -2942,8 +2839,6 @@ function formatLabel(value?: string) {
   return value
     .toLowerCase()
     .split('_')
-    .map(
-      (word) => word.charAt(0).toUpperCase() + word.slice(1)
-    )
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
 }
