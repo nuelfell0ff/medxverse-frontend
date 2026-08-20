@@ -1242,749 +1242,582 @@ export default function RadiologyPage() {
       </div>
 
       {/* New Request Modal */}
-      {isCreateOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl">
-            <div className="sticky top-0 z-10 bg-white px-6 py-5 border-b border-slate-100 flex items-center justify-between rounded-t-3xl">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">
-                  New Radiology Request
-                </h2>
+{isCreateOpen && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm">
+    <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden">
+      
+      {/* Modal Header */}
+      <div className="sticky top-0 z-20 bg-white/95 backdrop-blur px-5 py-3.5 border-b border-slate-100 flex items-center justify-between shrink-0">
+        <div>
+          <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+            New Radiology Request
+          </h2>
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            Create an imaging examination request
+          </p>
+        </div>
 
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Create an imaging examination
-                  request.
-                </p>
-              </div>
+        <button
+          type="button"
+          onClick={() => {
+            setIsCreateOpen(false);
+            resetForm();
+          }}
+          className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
 
-              <button
-                onClick={() => {
-                  setIsCreateOpen(false);
-                  resetForm();
-                }}
-                className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"
-              >
-                <X className="w-5 h-5" />
-              </button>
+      {/* Error Alert */}
+      {formError && (
+        <div className="mx-5 mt-4 p-2.5 rounded-lg bg-rose-50 border border-rose-200/80 text-rose-700 text-[11px] flex items-center gap-2">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+          <span>{formError}</span>
+        </div>
+      )}
+
+      {/* Form Container */}
+      <form onSubmit={handleCreate} className="p-5 space-y-5 overflow-y-auto custom-scrollbar">
+        
+        {/* Patient Section */}
+        <FormSection
+          title="Patient Details"
+          icon={<UserRound className="w-3.5 h-3.5" />}
+        >
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+              Search Patient <span className="text-rose-500">*</span>
+            </label>
+
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+
+              <input
+                value={patientSearch}
+                onChange={(event) => setPatientSearch(event.target.value)}
+                placeholder="Search by name or MRN..."
+                className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none"
+              />
+
+              {loadingPatients && (
+                <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#1b7b68] animate-spin" />
+              )}
             </div>
 
-            {formError && (
-              <div className="mx-6 mt-5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
+            {patients.length > 0 && (
+              <div className="mt-1.5 border border-slate-200/80 rounded-lg overflow-hidden shadow-sm divide-y divide-slate-100 bg-white">
+                {patients.map((patient) => (
+                  <button
+                    type="button"
+                    key={patient._id}
+                    onClick={() => {
+                      setForm({
+                        ...form,
+                        patientId: patient._id,
+                      });
+                      setPatientSearch(
+                        `${patient.firstName || ''} ${patient.lastName || ''}`.trim()
+                      );
+                      setPatients([]);
+                    }}
+                    className={`w-full px-3 py-2 flex items-center gap-2.5 text-left transition-colors hover:bg-teal-50/40 ${
+                      form.patientId === patient._id ? 'bg-[#e8f5f3]/80' : ''
+                    }`}
+                  >
+                    <div className="w-7 h-7 rounded-md bg-slate-100 flex items-center justify-center shrink-0">
+                      <UserRound className="w-3.5 h-3.5 text-slate-500" />
+                    </div>
 
-                {formError}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-semibold text-slate-700 truncate">
+                        {patient.firstName} {patient.lastName}
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        MRN: {patient.mrn || 'Unavailable'}
+                      </p>
+                    </div>
+
+                    {form.patientId === patient._id && (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#1b7b68] shrink-0" />
+                    )}
+                  </button>
+                ))}
               </div>
             )}
 
-            <form
-              onSubmit={handleCreate}
-              className="p-6 space-y-6"
-            >
-              {/* Patient */}
-              <FormSection
-                title="Patient"
-                icon={
-                  <UserRound className="w-4 h-4" />
-                }
-              >
-                <label className="label">
-                  Search Patient *
-                </label>
-
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-
-                  <input
-                    value={patientSearch}
-                    onChange={(event) =>
-                      setPatientSearch(
-                        event.target.value
-                      )
-                    }
-                    placeholder="Search by name or MRN..."
-                    className="input pl-9"
-                  />
-
-                  {loadingPatients && (
-                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1b7b68] animate-spin" />
-                  )}
+            {selectedPatient && (
+              <div className="mt-2 p-2.5 rounded-lg bg-[#e8f5f3]/60 border border-[#c7e7e1] flex items-center gap-2.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#1b7b68] shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold text-[#156354]">
+                    {selectedPatient.firstName} {selectedPatient.lastName}
+                  </p>
+                  <p className="text-[10px] text-[#1b7b68]">
+                    MRN: {selectedPatient.mrn}
+                  </p>
                 </div>
+              </div>
+            )}
+          </div>
+        </FormSection>
 
-                {patients.length > 0 && (
-                  <div className="mt-2 border border-slate-200 rounded-xl overflow-hidden">
-                    {patients.map(
-                      (patient) => (
-                        <button
-                          type="button"
-                          key={patient._id}
-                          onClick={() => {
-                            setForm({
-                              ...form,
-                              patientId:
-                                patient._id,
-                            });
+        {/* Ordering Clinician Section */}
+        <FormSection
+          title="Ordering Clinician"
+          icon={<Stethoscope className="w-3.5 h-3.5" />}
+        >
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+              Search Staff
+            </label>
 
-                            setPatientSearch(
-                              `${patient.firstName || ''} ${
-                                patient.lastName || ''
-                              }`.trim()
-                            );
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
 
-                            setPatients([]);
-                          }}
-                          className={`w-full px-3 py-2.5 flex items-center gap-3 text-left hover:bg-[#e8f5f3]/50 ${
-                            form.patientId ===
-                            patient._id
-                              ? 'bg-[#e8f5f3]'
-                              : ''
-                          }`}
-                        >
-                          <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
-                            <UserRound className="w-4 h-4 text-slate-500" />
-                          </div>
+              <input
+                value={doctorSearch}
+                onChange={(event) => setDoctorSearch(event.target.value)}
+                placeholder="Search staff member..."
+                className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none"
+              />
 
-                          <div>
-                            <p className="text-xs font-bold text-slate-700">
-                              {
-                                patient.firstName
-                              }{' '}
-                              {
-                                patient.lastName
-                              }
-                            </p>
+              {loadingStaff && (
+                <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#1b7b68] animate-spin" />
+              )}
+            </div>
 
-                            <p className="text-[10px] text-slate-400">
-                              MRN:{' '}
-                              {patient.mrn ||
-                                'Unavailable'}
-                            </p>
-                          </div>
+            {staff.length > 0 && (
+              <div className="mt-1.5 border border-slate-200/80 rounded-lg overflow-hidden max-h-40 overflow-y-auto divide-y divide-slate-100 bg-white shadow-sm">
+                {staff.map((member) => (
+                  <button
+                    type="button"
+                    key={member._id}
+                    onClick={() => {
+                      setForm({
+                        ...form,
+                        orderingDoctorId: member._id,
+                      });
+                      setDoctorSearch(
+                        `${member.firstName || ''} ${member.lastName || ''}`.trim()
+                      );
+                      setStaff([]);
+                    }}
+                    className="w-full px-3 py-2 flex items-center gap-2.5 text-left hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="w-7 h-7 rounded-md bg-[#e8f5f3] text-[#1b7b68] flex items-center justify-center shrink-0">
+                      <Stethoscope className="w-3.5 h-3.5" />
+                    </div>
 
-                          {form.patientId ===
-                            patient._id && (
-                            <CheckCircle2 className="w-4 h-4 ml-auto text-[#1b7b68]" />
-                          )}
-                        </button>
-                      )
-                    )}
-                  </div>
-                )}
-
-                {selectedPatient && (
-                  <div className="mt-2 p-3 rounded-xl bg-[#e8f5f3] border border-[#c7e7e1] flex items-center gap-3">
-                    <CheckCircle2 className="w-4 h-4 text-[#1b7b68]" />
-
-                    <div>
-                      <p className="text-xs font-bold text-[#156354]">
-                        {
-                          selectedPatient.firstName
-                        }{' '}
-                        {
-                          selectedPatient.lastName
-                        }
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-semibold text-slate-700 truncate">
+                        {member.firstName} {member.lastName}
                       </p>
-
-                      <p className="text-[10px] text-[#1b7b68]">
-                        MRN:{' '}
-                        {
-                          selectedPatient.mrn
-                        }
+                      <p className="text-[10px] text-slate-400 truncate">
+                        {formatLabel(member.role)}
+                        {member.department ? ` • ${member.department}` : ''}
                       </p>
                     </div>
-                  </div>
-                )}
-              </FormSection>
-
-              {/* Ordering Doctor */}
-              <FormSection
-                title="Ordering Clinician"
-                icon={
-                  <Stethoscope className="w-4 h-4" />
-                }
-              >
-                <label className="label">
-                  Search Staff
-                </label>
-
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-
-                  <input
-                    value={doctorSearch}
-                    onChange={(event) =>
-                      setDoctorSearch(
-                        event.target.value
-                      )
-                    }
-                    placeholder="Search staff member..."
-                    className="input pl-9"
-                  />
-
-                  {loadingStaff && (
-                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1b7b68] animate-spin" />
-                  )}
-                </div>
-
-                {staff.length > 0 && (
-                  <div className="mt-2 border border-slate-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
-                    {staff.map((member) => (
-                      <button
-                        type="button"
-                        key={member._id}
-                        onClick={() => {
-                          setForm({
-                            ...form,
-                            orderingDoctorId:
-                              member._id,
-                          });
-
-                          setDoctorSearch(
-                            `${member.firstName || ''} ${
-                              member.lastName || ''
-                            }`.trim()
-                          );
-
-                          setStaff([]);
-                        }}
-                        className="w-full px-3 py-2.5 flex items-center gap-3 text-left hover:bg-slate-50"
-                      >
-                        <div className="w-8 h-8 rounded-lg bg-[#e8f5f3] text-[#1b7b68] flex items-center justify-center">
-                          <Stethoscope className="w-4 h-4" />
-                        </div>
-
-                        <div>
-                          <p className="text-xs font-bold text-slate-700">
-                            {member.firstName}{' '}
-                            {member.lastName}
-                          </p>
-
-                          <p className="text-[10px] text-slate-400">
-                            {formatLabel(
-                              member.role
-                            )}
-                            {member.department
-                              ? ` • ${member.department}`
-                              : ''}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Leave blank to use the currently
-                  authenticated clinician.
-                </p>
-              </FormSection>
-
-              {/* Examination */}
-              <FormSection
-                title="Examination"
-                icon={
-                  <ImageIcon className="w-4 h-4" />
-                }
-              >
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="label">
-                      Modality *
-                    </label>
-
-                    <select
-                      required
-                      value={form.modality}
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          modality:
-                            event.target
-                              .value as ImagingModality,
-                        })
-                      }
-                      className="input"
-                    >
-                      {Object.values(
-                        ImagingModality
-                      ).map((item) => (
-                        <option
-                          key={item}
-                          value={item}
-                        >
-                          {formatLabel(item)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="label">
-                      Priority *
-                    </label>
-
-                    <select
-                      value={form.priority}
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          priority:
-                            event.target
-                              .value as PriorityLevel,
-                        })
-                      }
-                      className="input"
-                    >
-                      {Object.values(
-                        PriorityLevel
-                      ).map((item) => (
-                        <option
-                          key={item}
-                          value={item}
-                        >
-                          {formatLabel(item)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="label">
-                      Procedure Name *
-                    </label>
-
-                    <input
-                      required
-                      value={form.procedureName}
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          procedureName:
-                            event.target
-                              .value,
-                        })
-                      }
-                      placeholder="e.g. CT Brain Without Contrast"
-                      className="input"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label">
-                      Body Part *
-                    </label>
-
-                    <input
-                      required
-                      value={form.bodyPart}
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          bodyPart:
-                            event.target.value,
-                        })
-                      }
-                      placeholder="e.g. Brain"
-                      className="input"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <label className="label">
-                    Clinical Indication *
-                  </label>
-
-                  <textarea
-                    required
-                    rows={3}
-                    value={
-                      form.clinicalIndication
-                    }
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        clinicalIndication:
-                          event.target.value,
-                      })
-                    }
-                    placeholder="Clinical reason for the examination..."
-                    className="input resize-none"
-                  />
-                </div>
-              </FormSection>
-
-              {/* Scheduling */}
-              <FormSection
-                title="Scheduling"
-                icon={
-                  <CalendarDays className="w-4 h-4" />
-                }
-              >
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="label">
-                      Scheduled Date
-                    </label>
-
-                    <input
-                      type="date"
-                      value={
-                        form.scheduledDate
-                      }
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          scheduledDate:
-                            event.target
-                              .value,
-                        })
-                      }
-                      className="input"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label">
-                      Room / Modality
-                    </label>
-
-                    <input
-                      value={
-                        form.theatreOrRoom
-                      }
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          theatreOrRoom:
-                            event.target
-                              .value,
-                        })
-                      }
-                      placeholder="e.g. CT Room 1"
-                      className="input"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label">
-                      Start Time
-                    </label>
-
-                    <input
-                      type="time"
-                      value={
-                        form.scheduledStartTime
-                      }
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          scheduledStartTime:
-                            event.target
-                              .value,
-                        })
-                      }
-                      className="input"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label">
-                      End Time
-                    </label>
-
-                    <input
-                      type="time"
-                      value={
-                        form.scheduledEndTime
-                      }
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          scheduledEndTime:
-                            event.target
-                              .value,
-                        })
-                      }
-                      className="input"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label">
-                      Estimated Duration
-                      (minutes)
-                    </label>
-
-                    <input
-                      type="number"
-                      min="1"
-                      value={
-                        form.estimatedDurationMinutes
-                      }
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          estimatedDurationMinutes:
-                            event.target
-                              .value,
-                        })
-                      }
-                      className="input"
-                    />
-                  </div>
-                </div>
-              </FormSection>
-
-              {/* Preparation */}
-              <FormSection
-                title="Patient Preparation"
-                icon={
-                  <ShieldAlert className="w-4 h-4" />
-                }
-              >
-                <div>
-                  <label className="label">
-                    Instructions
-                  </label>
-
-                  <textarea
-                    rows={2}
-                    value={
-                      form.preparationInstructions
-                    }
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        preparationInstructions:
-                          event.target
-                            .value,
-                      })
-                    }
-                    placeholder="Patient preparation instructions..."
-                    className="input resize-none"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                  <label className="flex items-center gap-2 p-3 rounded-xl border border-slate-200 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={
-                        form.fastingRequired
-                      }
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          fastingRequired:
-                            event.target
-                              .checked,
-                        })
-                      }
-                      className="accent-[#1b7b68]"
-                    />
-
-                    <span className="text-xs font-semibold text-slate-700">
-                      Fasting required
-                    </span>
-                  </label>
-
-                  <label className="flex items-center gap-2 p-3 rounded-xl border border-slate-200 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={
-                        form.hydrationRequired
-                      }
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          hydrationRequired:
-                            event.target
-                              .checked,
-                        })
-                      }
-                      className="accent-[#1b7b68]"
-                    />
-
-                    <span className="text-xs font-semibold text-slate-700">
-                      Hydration required
-                    </span>
-                  </label>
-                </div>
-
-                {form.fastingRequired && (
-                  <div className="mt-3">
-                    <label className="label">
-                      Fasting Hours
-                    </label>
-
-                    <input
-                      type="number"
-                      min="0"
-                      value={
-                        form.fastingHours
-                      }
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          fastingHours:
-                            event.target
-                              .value,
-                        })
-                      }
-                      className="input"
-                    />
-                  </div>
-                )}
-
-                <div className="mt-3">
-                  <label className="label">
-                    Medication Instructions
-                  </label>
-
-                  <textarea
-                    rows={2}
-                    value={
-                      form.medicationInstructions
-                    }
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        medicationInstructions:
-                          event.target
-                            .value,
-                      })
-                    }
-                    className="input resize-none"
-                  />
-                </div>
-              </FormSection>
-
-              {/* Contrast */}
-              <FormSection
-                title="Contrast"
-                icon={
-                  <Activity className="w-4 h-4" />
-                }
-              >
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="label">
-                      Contrast Status
-                    </label>
-
-                    <select
-                      value={
-                        form.contrastStatus
-                      }
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          contrastStatus:
-                            event.target
-                              .value,
-                        })
-                      }
-                      className="input"
-                    >
-                      <option value="NOT_REQUIRED">
-                        Not Required
-                      </option>
-
-                      <option value="PLANNED">
-                        Planned
-                      </option>
-
-                      <option value="ADMINISTERED">
-                        Administered
-                      </option>
-
-                      <option value="DECLINED">
-                        Declined
-                      </option>
-
-                      <option value="CONTRAINDICATED">
-                        Contraindicated
-                      </option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="label">
-                      Contrast Name
-                    </label>
-
-                    <input
-                      value={
-                        form.contrastName
-                      }
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          contrastName:
-                            event.target
-                              .value,
-                        })
-                      }
-                      className="input"
-                      placeholder="e.g. Iohexol"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <label className="label">
-                      Contrast Type
-                    </label>
-
-                    <input
-                      value={
-                        form.contrastType
-                      }
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          contrastType:
-                            event.target
-                              .value,
-                        })
-                      }
-                      className="input"
-                      placeholder="e.g. IV contrast"
-                    />
-                  </div>
-                </div>
-              </FormSection>
-
-              {/* Actions */}
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsCreateOpen(false);
-                    resetForm();
-                  }}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-5 py-2.5 rounded-xl bg-[#1b7b68] hover:bg-[#156354] text-white text-xs font-bold disabled:opacity-50 flex items-center gap-2"
-                >
-                  {submitting && (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  )}
-
-                  {submitting
-                    ? 'Creating...'
-                    : 'Create Request'}
-                </button>
+                  </button>
+                ))}
               </div>
-            </form>
+            )}
+
+            <p className="text-[10px] text-slate-400 mt-1">
+              Leave blank to use the currently authenticated clinician.
+            </p>
           </div>
+        </FormSection>
+
+        {/* Examination Section */}
+        <FormSection
+          title="Examination"
+          icon={<ImageIcon className="w-3.5 h-3.5" />}
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                Modality <span className="text-rose-500">*</span>
+              </label>
+              <select
+                required
+                value={form.modality}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    modality: event.target.value as ImagingModality,
+                  })
+                }
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none"
+              >
+                {Object.values(ImagingModality).map((item) => (
+                  <option key={item} value={item}>
+                    {formatLabel(item)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                Priority <span className="text-rose-500">*</span>
+              </label>
+              <select
+                value={form.priority}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    priority: event.target.value as PriorityLevel,
+                  })
+                }
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none"
+              >
+                {Object.values(PriorityLevel).map((item) => (
+                  <option key={item} value={item}>
+                    {formatLabel(item)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                Procedure Name <span className="text-rose-500">*</span>
+              </label>
+              <input
+                required
+                value={form.procedureName}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    procedureName: event.target.value,
+                  })
+                }
+                placeholder="e.g. CT Brain Without Contrast"
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                Body Part <span className="text-rose-500">*</span>
+              </label>
+              <input
+                required
+                value={form.bodyPart}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    bodyPart: event.target.value,
+                  })
+                }
+                placeholder="e.g. Brain"
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+              Clinical Indication <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              required
+              rows={2}
+              value={form.clinicalIndication}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  clinicalIndication: event.target.value,
+                })
+              }
+              placeholder="Clinical reason for the examination..."
+              className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none resize-none"
+            />
+          </div>
+        </FormSection>
+
+        {/* Scheduling Section */}
+        <FormSection
+          title="Scheduling"
+          icon={<CalendarDays className="w-3.5 h-3.5" />}
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                Scheduled Date
+              </label>
+              <input
+                type="date"
+                value={form.scheduledDate}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    scheduledDate: event.target.value,
+                  })
+                }
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                Room / Modality
+              </label>
+              <input
+                value={form.theatreOrRoom}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    theatreOrRoom: event.target.value,
+                  })
+                }
+                placeholder="e.g. CT Room 1"
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                Start Time
+              </label>
+              <input
+                type="time"
+                value={form.scheduledStartTime}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    scheduledStartTime: event.target.value,
+                  })
+                }
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                End Time
+              </label>
+              <input
+                type="time"
+                value={form.scheduledEndTime}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    scheduledEndTime: event.target.value,
+                  })
+                }
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                Estimated Duration (minutes)
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={form.estimatedDurationMinutes}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    estimatedDurationMinutes: event.target.value,
+                  })
+                }
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none"
+              />
+            </div>
+          </div>
+        </FormSection>
+
+        {/* Preparation Section */}
+        <FormSection
+          title="Patient Preparation"
+          icon={<ShieldAlert className="w-3.5 h-3.5" />}
+        >
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+              Instructions
+            </label>
+            <textarea
+              rows={2}
+              value={form.preparationInstructions}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  preparationInstructions: event.target.value,
+                })
+              }
+              placeholder="Patient preparation instructions..."
+              className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none resize-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-2.5">
+            <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200/80 bg-slate-50/30 hover:bg-slate-50 cursor-pointer transition-colors">
+              <input
+                type="checkbox"
+                checked={form.fastingRequired}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    fastingRequired: event.target.checked,
+                  })
+                }
+                className="w-3.5 h-3.5 rounded text-[#1b7b68] focus:ring-[#1b7b68] accent-[#1b7b68]"
+              />
+              <span className="text-[11px] font-medium text-slate-700">
+                Fasting required
+              </span>
+            </label>
+
+            <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200/80 bg-slate-50/30 hover:bg-slate-50 cursor-pointer transition-colors">
+              <input
+                type="checkbox"
+                checked={form.hydrationRequired}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    hydrationRequired: event.target.checked,
+                  })
+                }
+                className="w-3.5 h-3.5 rounded text-[#1b7b68] focus:ring-[#1b7b68] accent-[#1b7b68]"
+              />
+              <span className="text-[11px] font-medium text-slate-700">
+                Hydration required
+              </span>
+            </label>
+          </div>
+
+          {form.fastingRequired && (
+            <div className="mt-2.5">
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                Fasting Hours
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={form.fastingHours}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    fastingHours: event.target.value,
+                  })
+                }
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none"
+              />
+            </div>
+          )}
+
+          <div className="mt-2.5">
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+              Medication Instructions
+            </label>
+            <textarea
+              rows={2}
+              value={form.medicationInstructions}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  medicationInstructions: event.target.value,
+                })
+              }
+              className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none resize-none"
+            />
+          </div>
+        </FormSection>
+
+        {/* Contrast Section */}
+        <FormSection
+          title="Contrast Administration"
+          icon={<Activity className="w-3.5 h-3.5" />}
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                Contrast Status
+              </label>
+              <select
+                value={form.contrastStatus}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    contrastStatus: event.target.value,
+                  })
+                }
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none"
+              >
+                <option value="NOT_REQUIRED">Not Required</option>
+                <option value="PLANNED">Planned</option>
+                <option value="ADMINISTERED">Administered</option>
+                <option value="DECLINED">Declined</option>
+                <option value="CONTRAINDICATED">Contraindicated</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                Contrast Name
+              </label>
+              <input
+                value={form.contrastName}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    contrastName: event.target.value,
+                  })
+                }
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none"
+                placeholder="e.g. Iohexol"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                Contrast Type
+              </label>
+              <input
+                value={form.contrastType}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    contrastType: event.target.value,
+                  })
+                }
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none"
+                placeholder="e.g. IV contrast"
+              />
+            </div>
+          </div>
+        </FormSection>
+
+        {/* Footer Actions */}
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={() => {
+              setIsCreateOpen(false);
+              resetForm();
+            }}
+            className="px-3.5 py-2 rounded-lg border border-slate-200/90 text-slate-600 text-xs font-semibold hover:bg-slate-50 transition-colors"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="px-4 py-2 rounded-lg bg-[#1b7b68] hover:bg-[#156354] text-white text-xs font-semibold disabled:opacity-50 flex items-center gap-1.5 transition-colors shadow-sm"
+          >
+            {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {submitting ? 'Creating...' : 'Create Request'}
+          </button>
         </div>
-      )}
+      </form>
+    </div>
+  </div>
+)}
 
       {/* Quick Details Modal */}
       {selectedOrder && (
