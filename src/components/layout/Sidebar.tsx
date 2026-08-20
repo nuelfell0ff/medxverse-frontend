@@ -55,16 +55,16 @@ export default function Sidebar({ isCollapsed, isMobileOpen, onCloseMobile }: Si
 
       {/* Fixed Left Sidebar Container */}
       <aside
-        className={`fixed top-16 left-0 bottom-0 z-40 bg-white border-r border-slate-100 flex flex-col justify-between py-5 transition-all duration-300 ease-in-out font-sans ${
-          isCollapsed ? 'w-20 px-3' : 'w-64 px-4'
+        className={`fixed top-16 left-0 bottom-0 z-40 bg-white border-r border-slate-100 flex flex-col justify-between py-3.5 transition-all duration-300 ease-in-out font-sans overflow-hidden ${
+          isCollapsed ? 'w-20 px-2.5' : 'w-64 px-3'
         } ${
           isMobileOpen
-            ? 'translate-x-0 w-64 px-4 shadow-2xl'
+            ? 'translate-x-0 w-64 px-3 shadow-2xl'
             : '-translate-x-full md:translate-x-0'
         }`}
       >
-        {/* Navigation Items */}
-        <div className="space-y-1.5 overflow-y-auto no-scrollbar">
+        {/* Navigation Items (Scrollable without visible scrollbars) */}
+        <div className="flex-1 min-h-0 space-y-1 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden pr-0.5">
           {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
@@ -75,14 +75,14 @@ export default function Sidebar({ isCollapsed, isMobileOpen, onCloseMobile }: Si
                 href={item.href}
                 onClick={onCloseMobile}
                 title={isCollapsed ? item.label : undefined}
-                className={`flex items-center gap-3.5 px-3.5 py-3 rounded-2xl text-xs font-semibold transition-all duration-200 group ${
+                className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 group ${
                   isActive
-                    ? 'bg-[#1b7b68] text-white shadow-lg shadow-[#1b7b68]/25 font-bold'
-                    : 'text-slate-500 hover:text-[#1b7b68] hover:bg-[#e8f5f3]'
+                    ? 'bg-[#1b7b68] text-white shadow-md shadow-[#1b7b68]/20 font-bold'
+                    : 'text-slate-500 hover:text-[#1b7b68] hover:bg-[#e8f5f3]/80'
                 } ${isCollapsed ? 'justify-center px-0' : ''}`}
               >
                 <Icon
-                  className={`w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${
+                  className={`w-4 h-4 shrink-0 transition-transform duration-200 group-hover:scale-110 ${
                     isActive ? 'text-white' : 'text-slate-400 group-hover:text-[#1b7b68]'
                   }`}
                 />
@@ -94,20 +94,20 @@ export default function Sidebar({ isCollapsed, isMobileOpen, onCloseMobile }: Si
           })}
         </div>
 
-        {/* User Card & Logout Section */}
-        <div className="pt-4 border-t border-slate-100 space-y-3">
+        {/* User Card & Logout Section (Fixed Footer) */}
+        <div className="shrink-0 pt-2.5 mt-2 border-t border-slate-100 space-y-2">
           {!isCollapsed ? (
             <>
               {/* Profile Card */}
-              <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-slate-50 border border-slate-100">
-                <div className="w-9 h-9 rounded-xl bg-[#1b7b68] text-white flex items-center justify-center font-bold text-xs uppercase shadow-sm">
+              <div className="flex items-center gap-2.5 p-2 rounded-xl bg-slate-50/80 border border-slate-100">
+                <div className="w-7 h-7 rounded-lg bg-[#1b7b68] text-white flex items-center justify-center font-bold text-[11px] uppercase shadow-sm shrink-0">
                   {account?.name?.substring(0, 2) || 'RM'}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold text-slate-800 truncate">
+                  <p className="text-[11px] font-bold text-slate-800 truncate leading-tight">
                     {account?.name || 'Admin User'}
                   </p>
-                  <p className="text-[10px] text-slate-400 truncate">
+                  <p className="text-[10px] text-slate-400 truncate leading-tight mt-0.5">
                     {account?.email || 'admin@hospital.com'}
                   </p>
                 </div>
@@ -115,20 +115,22 @@ export default function Sidebar({ isCollapsed, isMobileOpen, onCloseMobile }: Si
 
               {/* Red Sign Out Pill */}
               <button
+                type="button"
                 onClick={handleLogout}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl border border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-bold transition-all duration-200 active:scale-98"
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-rose-200/80 text-rose-600 hover:bg-rose-50 text-[11px] font-bold transition-all duration-200 active:scale-98"
               >
-                <LogOut className="w-4 h-4" />
+                <LogOut className="w-3.5 h-3.5 shrink-0" />
                 <span>Sign Out</span>
               </button>
             </>
           ) : (
             <button
+              type="button"
               onClick={handleLogout}
               title="Sign Out"
-              className="w-full flex items-center justify-center py-3 rounded-2xl text-rose-600 hover:bg-rose-50 transition-all"
+              className="w-full flex items-center justify-center py-2 rounded-xl text-rose-600 hover:bg-rose-50 transition-all"
             >
-              <LogOut className="w-5 h-5" />
+              <LogOut className="w-4 h-4" />
             </button>
           )}
         </div>
