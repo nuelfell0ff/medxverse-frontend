@@ -1820,224 +1820,180 @@ export default function RadiologyPage() {
 )}
 
       {/* Quick Details Modal */}
-      {selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-            <div className="sticky top-0 bg-white px-6 py-5 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">
-                  Examination Details
-                </h2>
+{selectedOrder && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm">
+    <div className="bg-white rounded-2xl w-full max-w-xl max-h-[90vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden">
+      
+      {/* Modal Header */}
+      <div className="sticky top-0 z-20 bg-white/95 backdrop-blur px-5 py-3.5 border-b border-slate-100 flex items-center justify-between shrink-0">
+        <div>
+          <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+            Examination Details
+          </h2>
+          <p className="text-[11px] font-mono text-slate-400 mt-0.5">
+            Accession: {selectedOrder.accessionNumber || selectedOrder._id}
+          </p>
+        </div>
 
-                <p className="text-[10px] font-mono text-slate-400 mt-1">
-                  {selectedOrder.accessionNumber ||
-                    selectedOrder._id}
-                </p>
-              </div>
+        <button
+          type="button"
+          onClick={() => setSelectedOrder(null)}
+          className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
 
-              <button
-                onClick={() =>
-                  setSelectedOrder(null)
-                }
-                className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* Modal Content */}
+      <div className="p-5 space-y-4 overflow-y-auto custom-scrollbar">
+        
+        {/* Core Attributes Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          <DetailCard
+            label="Procedure"
+            value={selectedOrder.procedureName}
+          />
+          <DetailCard
+            label="Modality"
+            value={formatLabel(selectedOrder.modality)}
+          />
+          <DetailCard
+            label="Body Part"
+            value={selectedOrder.bodyPart}
+          />
+          <DetailCard
+            label="Priority"
+            value={formatLabel(selectedOrder.priority)}
+          />
+          <DetailCard
+            label="Status"
+            value={formatLabel(selectedOrder.status)}
+          />
+          <DetailCard
+            label="Queue"
+            value={
+              selectedOrder.queuePosition
+                ? `#${selectedOrder.queuePosition}`
+                : formatLabel(selectedOrder.queueStatus)
+            }
+          />
+        </div>
 
-            <div className="p-6 space-y-5">
-              <div className="grid grid-cols-2 gap-3">
-                <DetailCard
-                  label="Procedure"
-                  value={
-                    selectedOrder.procedureName
-                  }
-                />
-
-                <DetailCard
-                  label="Modality"
-                  value={formatLabel(
-                    selectedOrder.modality
-                  )}
-                />
-
-                <DetailCard
-                  label="Body Part"
-                  value={
-                    selectedOrder.bodyPart
-                  }
-                />
-
-                <DetailCard
-                  label="Priority"
-                  value={formatLabel(
-                    selectedOrder.priority
-                  )}
-                />
-
-                <DetailCard
-                  label="Status"
-                  value={formatLabel(
-                    selectedOrder.status
-                  )}
-                />
-
-                <DetailCard
-                  label="Queue"
-                  value={
-                    selectedOrder.queuePosition
-                      ? `#${selectedOrder.queuePosition}`
-                      : formatLabel(
-                          selectedOrder.queueStatus
-                        )
-                  }
-                />
-              </div>
-
-              <div>
-                <p className="label mb-2">
-                  Clinical Indication
-                </p>
-
-                <div className="p-4 rounded-xl bg-slate-50 text-xs text-slate-600 leading-5">
-                  {
-                    selectedOrder.clinicalIndication
-                  }
-                </div>
-              </div>
-
-              <div>
-                <p className="label mb-2">
-                  Scheduling
-                </p>
-
-                <div className="p-4 rounded-xl border border-slate-100">
-                  {selectedOrder.scheduling ? (
-                    <div className="grid grid-cols-2 gap-3 text-xs">
-                      <DetailRow
-                        label="Date"
-                        value={formatDate(
-                          selectedOrder
-                            .scheduling
-                            .scheduledDate
-                        )}
-                      />
-
-                      <DetailRow
-                        label="Time"
-                        value={`${
-                          selectedOrder
-                            .scheduling
-                            .scheduledStartTime ||
-                          '--'
-                        } - ${
-                          selectedOrder
-                            .scheduling
-                            .scheduledEndTime ||
-                          '--'
-                        }`}
-                      />
-
-                      <DetailRow
-                        label="Room"
-                        value={
-                          selectedOrder
-                            .scheduling
-                            .theatreOrRoom ||
-                          'Not assigned'
-                        }
-                      />
-
-                      <DetailRow
-                        label="Duration"
-                        value={
-                          selectedOrder
-                            .scheduling
-                            .estimatedDurationMinutes
-                            ? `${selectedOrder.scheduling.estimatedDurationMinutes} min`
-                            : '—'
-                        }
-                      />
-                    </div>
-                  ) : (
-                    <p className="text-xs text-slate-400">
-                      Examination has not been
-                      scheduled.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <p className="label mb-2">
-                  Assigned Staff
-                </p>
-
-                <div className="border border-slate-100 rounded-xl overflow-hidden">
-                  {selectedOrder.assignments?.length ? (
-                    selectedOrder.assignments.map(
-                      (assignment, index) => (
-                        <div
-                          key={`${assignment.role}-${index}`}
-                          className="px-4 py-3 flex items-center gap-3 border-b last:border-b-0 border-slate-100"
-                        >
-                          <div className="w-8 h-8 rounded-lg bg-[#e8f5f3] text-[#1b7b68] flex items-center justify-center">
-                            <Users className="w-4 h-4" />
-                          </div>
-
-                          <div>
-                            <p className="text-xs font-bold text-slate-700">
-                              {getStaffName(
-                                assignment.userId
-                              )}
-                            </p>
-
-                            <p className="text-[10px] text-slate-400">
-                              {formatLabel(
-                                assignment.role
-                              )}
-                            </p>
-                          </div>
-                        </div>
-                      )
-                    )
-                  ) : (
-                    <p className="p-4 text-xs text-slate-400 text-center">
-                      No staff assigned.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {selectedOrder.pacsMetadata
-                ?.dicomViewerUrl && (
-                <a
-                  href={
-                    selectedOrder
-                      .pacsMetadata
-                      .dicomViewerUrl
-                  }
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl bg-[#1b7b68] hover:bg-[#156354] text-white text-xs font-bold"
-                >
-                  <ImageIcon className="w-4 h-4" />
-                  Open DICOM Viewer
-                </a>
-              )}
-
-              <button
-                onClick={() => {
-                  window.location.href = `/hms/radiology/${selectedOrder._id}`;
-                }}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold"
-              >
-                Open Full Examination Workspace
-              </button>
-            </div>
+        {/* Clinical Indication */}
+        <div>
+          <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+            Clinical Indication
+          </h3>
+          <div className="p-3 rounded-lg bg-slate-50/80 border border-slate-100 text-xs text-slate-700 leading-relaxed">
+            {selectedOrder.clinicalIndication || 'No clinical indication provided.'}
           </div>
         </div>
-      )}
+
+        {/* Scheduling Details */}
+        <div>
+          <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+            Scheduling Information
+          </h3>
+          <div className="p-3 rounded-lg border border-slate-100 bg-slate-50/30">
+            {selectedOrder.scheduling ? (
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <DetailRow
+                  label="Date"
+                  value={formatDate(selectedOrder.scheduling.scheduledDate)}
+                />
+                <DetailRow
+                  label="Time"
+                  value={`${
+                    selectedOrder.scheduling.scheduledStartTime || '--'
+                  } - ${
+                    selectedOrder.scheduling.scheduledEndTime || '--'
+                  }`}
+                />
+                <DetailRow
+                  label="Room"
+                  value={
+                    selectedOrder.scheduling.theatreOrRoom || 'Not assigned'
+                  }
+                />
+                <DetailRow
+                  label="Duration"
+                  value={
+                    selectedOrder.scheduling.estimatedDurationMinutes
+                      ? `${selectedOrder.scheduling.estimatedDurationMinutes} min`
+                      : '—'
+                  }
+                />
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 italic">
+                Examination has not been scheduled yet.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Assigned Staff */}
+        <div>
+          <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+            Assigned Staff
+          </h3>
+          <div className="border border-slate-100 rounded-lg overflow-hidden bg-white divide-y divide-slate-100">
+            {selectedOrder.assignments?.length ? (
+              selectedOrder.assignments.map((assignment, index) => (
+                <div
+                  key={`${assignment.role}-${index}`}
+                  className="px-3 py-2 flex items-center gap-2.5 hover:bg-slate-50/50 transition-colors"
+                >
+                  <div className="w-7 h-7 rounded-md bg-[#e8f5f3] text-[#1b7b68] flex items-center justify-center shrink-0">
+                    <Users className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-700 truncate">
+                      {getStaffName(assignment.userId)}
+                    </p>
+                    <p className="text-[10px] text-slate-400">
+                      {formatLabel(assignment.role)}
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="p-3 text-xs text-slate-400 text-center italic">
+                No staff members currently assigned.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Modal Actions */}
+        <div className="pt-2 space-y-2">
+          {selectedOrder.pacsMetadata?.dicomViewerUrl && (
+            <a
+              href={selectedOrder.pacsMetadata.dicomViewerUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg bg-[#1b7b68] hover:bg-[#156354] text-white text-xs font-semibold shadow-sm transition-colors"
+            >
+              <ImageIcon className="w-3.5 h-3.5" />
+              Open DICOM Viewer
+            </a>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = `/hms/radiology/${selectedOrder._id}`;
+            }}
+            className="w-full px-4 py-2.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors"
+          >
+            Open Full Examination Workspace
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }
