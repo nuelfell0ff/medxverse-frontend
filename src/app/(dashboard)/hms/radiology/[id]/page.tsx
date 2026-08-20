@@ -44,7 +44,7 @@ import { useRouter, useParams } from 'next/navigation';
 
 import {
   RadiologyApiService,
-} from '@/services/radiology.services';
+} from '@/services/radiology.service';
 
 import {
   RadiologyOrder,
