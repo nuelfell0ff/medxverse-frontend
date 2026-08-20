@@ -3372,6 +3372,7 @@ export default function RadiologyOrderDetailsPage() {
         open={showStaffModal}
         title="Assign Radiology Staff"
         subtitle="Search your hospital staff and assign them to this examination."
+        onClose={() => setShowStaffModal(false)}
       >
         <div className="space-y-4">
           <div>
@@ -3569,6 +3570,7 @@ export default function RadiologyOrderDetailsPage() {
         open={showContrastModal}
         title="Contrast Documentation"
         subtitle="Record contrast administration and reactions."
+        onClose={() => setShowContrastModal(false)}
       >
         <div className="space-y-4">
           <div>
@@ -3722,6 +3724,7 @@ export default function RadiologyOrderDetailsPage() {
         open={showPregnancyModal}
         title="Pregnancy Screening"
         subtitle="Record pregnancy screening information."
+        onClose={() => setShowPregnancyModal(false)}
       >
         <div className="space-y-4">
           <div>
@@ -3806,6 +3809,7 @@ export default function RadiologyOrderDetailsPage() {
         open={showRadiationModal}
         title="Radiation Exposure"
         subtitle="Document radiation dose measurements for the study."
+        onClose={() => setShowRadiationModal(false)}
       >
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -4323,6 +4327,7 @@ export default function RadiologyOrderDetailsPage() {
         open={showCriticalModal}
         title="Critical Result Management"
         subtitle="Document notification and acknowledgement of critical findings."
+        onClose={() => setShowCriticalModal(false)}
       >
         <div className="space-y-4">
           <div>
