@@ -1,13 +1,12 @@
 import {
   Routes,
   Route,
-  Navigate
+  Navigate,
 } from "react-router-dom";
-import { motion } from "framer-motion";
-import { FiSliders, FiClock, FiCheckCircle } from "react-icons/fi";
+
 import {
   AuthProvider,
-  useAuth
+  useAuth,
 } from "./context/AuthContext";
 
 import ProtectedRoute from "./routes/ProtectedRoute";
@@ -15,7 +14,7 @@ import ProtectedRoute from "./routes/ProtectedRoute";
 import LandingPage from "./pages/landingPage/Landing";
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
-import ForgotPassword from "./pages/auth/ForgotPassword"
+import ForgotPassword from "./pages/auth/ForgotPassword";
 import Profile from "./pages/Profile";
 import Maintenance from "./pages/Maintainance";
 import CertificateVerification from "./pages/public/CertificateVerification";
@@ -32,7 +31,6 @@ import Notifications from "./pages/student/Notifications";
 import LiveClasses from "./pages/student/LiveClasses";
 import Messages from "./pages/student/Messages";
 import StudentQuiz from "./pages/student/StudentQuiz";
-// import PaymentCallback from "./pages/payments/PaymentCallback";
 import CertificateView from "./pages/student/CertificateView";
 
 import InstructorDashboard from "./pages/instructor/InstructorDashboard";
@@ -60,32 +58,46 @@ import AdminAiTickets from "./pages/admin/AdminAiTickets";
 import AdminNotifications from "./pages/admin/AdminNotificationForm";
 import AdminActivityLog from "./pages/admin/AdminActivityLog";
 
+
 function HomeRedirect() {
   const { user } = useAuth();
 
   if (!user) {
-    return <Navigate to="/login" />;
+    return <Navigate to="/login" replace />;
   }
 
   if (user.role === "student") {
-    return <Navigate to="/student" />;
+    return <Navigate to="/student" replace />;
   }
 
   if (user.role === "instructor") {
-    return <Navigate to="/instructor" />;
+    return <Navigate to="/instructor" replace />;
   }
 
   if (user.role === "admin") {
-    return <Navigate to="/admin" />;
+    return <Navigate to="/admin" replace />;
   }
 
-  return <Navigate to="/login" />;
+  return <Navigate to="/login" replace />;
 }
+
 
 function App() {
   return (
     <AuthProvider>
       <Routes>
+
+        {/* =====================================================
+            PUBLIC ROUTES
+        ====================================================== */}
+
+        {/* Redirect old Google-indexed URL to homepage */}
+        <Route
+          path="/how-it-works"
+          element={<Navigate to="/" replace />}
+        />
+
+        {/* Homepage */}
         <Route
           path="/"
           element={<LandingPage />}
@@ -96,40 +108,55 @@ function App() {
           element={<Login />}
         />
 
-        <Route path="/payments/callback" element={<PaymentCallback />} />
-
         <Route
           path="/register"
           element={<Register />}
         />
 
-        <Route 
+        <Route
           path="/forgot-password"
           element={<ForgotPassword />}
         />
 
-        <Route 
-        path="/profile" 
-        element={<Profile />} 
+        <Route
+          path="/profile"
+          element={<Profile />}
         />
 
-        {/* NEW: Explicit Global Maintenance Route */}
+        <Route
+          path="/payments/callback"
+          element={<PaymentCallback />}
+        />
+
         <Route
           path="/maintenance"
           element={<Maintenance />}
         />
 
-        <Route 
-          path="/verify/:certificateId" 
-          element={<CertificateVerification />} 
+        <Route
+          path="/verify/:certificateId"
+          element={<CertificateVerification />}
         />
+
+
+        {/* =====================================================
+            OPTIONAL AUTH-BASED HOME REDIRECT
+        ====================================================== */}
+
+        <Route
+          path="/home"
+          element={<HomeRedirect />}
+        />
+
+
+        {/* =====================================================
+            STUDENT ROUTES
+        ====================================================== */}
 
         <Route
           path="/student"
           element={
-            <ProtectedRoute
-              roles={["student"]}
-            >
+            <ProtectedRoute roles={["student"]}>
               <StudentLayout />
             </ProtectedRoute>
           }
@@ -165,32 +192,39 @@ function App() {
           />
 
           <Route
-            path="/student/quiz/:quizId"
+            path="quiz/:quizId"
             element={<StudentQuiz />}
           />
 
           <Route
-            path="/student/certificate/view/:courseId"
+            path="certificate/view/:courseId"
             element={<CertificateView />}
           />
 
           <Route
-            path="/student/certificate-callback"
+            path="certificate-callback"
             element={<PaymentCallback />}
           />
         </Route>
 
         <Route
           path="/student/courses/:courseId"
-          element={<CourseDetails />}
+          element={
+            <ProtectedRoute roles={["student"]}>
+              <CourseDetails />
+            </ProtectedRoute>
+          }
         />
+
+
+        {/* =====================================================
+            INSTRUCTOR ROUTES
+        ====================================================== */}
 
         <Route
           path="/instructor"
           element={
-            <ProtectedRoute
-              roles={["instructor"]}
-            >
+            <ProtectedRoute roles={["instructor"]}>
               <InstructorLayout />
             </ProtectedRoute>
           }
@@ -266,12 +300,15 @@ function App() {
           />
         </Route>
 
+
+        {/* =====================================================
+            ADMIN ROUTES
+        ====================================================== */}
+
         <Route
           path="/admin"
           element={
-            <ProtectedRoute
-              roles={["admin"]}
-            >
+            <ProtectedRoute roles={["admin"]}>
               <AdminLayout />
             </ProtectedRoute>
           }
@@ -315,12 +352,23 @@ function App() {
             path="notifications"
             element={<AdminNotifications />}
           />
-          
-          <Route 
-          path="/admin/activity-logs" 
-          element={<AdminActivityLog />} 
+
+          <Route
+            path="activity-logs"
+            element={<AdminActivityLog />}
           />
         </Route>
+
+
+        {/* =====================================================
+            FALLBACK
+        ====================================================== */}
+
+        <Route
+          path="*"
+          element={<Navigate to="/" replace />}
+        />
+
       </Routes>
     </AuthProvider>
   );
