@@ -13,7 +13,8 @@ import {
   UserCog,
   Stethoscope,
   Syringe,
-  ScanLine, // Added for Radiology / RIS
+  ScanLine,
+  FlaskConical,
 } from 'lucide-react';
 
 import { AccountType } from '@/types/auth.types';
@@ -22,7 +23,7 @@ export interface NavItem {
   label: string;
   href: string;
   icon: any;
-  moduleKey?: string; // Optional backend module permission
+  moduleKey?: string;
 }
 
 export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
@@ -59,6 +60,13 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       href: '/hms/radiology',
       icon: ScanLine,
       moduleKey: 'radiology',
+    },
+
+    {
+      label: 'Laboratory',
+      href: '/hms/lab',
+      icon: FlaskConical,
+      moduleKey: 'lab',
     },
 
     {
@@ -138,4 +146,4 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       icon: Settings,
     },
   ],
-};      
+};
