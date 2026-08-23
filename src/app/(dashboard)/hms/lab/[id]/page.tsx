@@ -257,7 +257,11 @@ export default function LabOrderDetailsPage() {
   const params = useParams();
   const router = useRouter();
 
-  const orderId = params?.id as string;
+  const rawOrderId = params?.id;
+
+  const orderId = Array.isArray(rawOrderId)
+    ? rawOrderId[0]
+    : rawOrderId;
 
   const [order, setOrder] = useState<LabOrder | null>(null);
 
@@ -374,10 +378,14 @@ export default function LabOrderDetailsPage() {
   };
 
   useEffect(() => {
-    if (orderId) {
-      fetchOrder();
-    }
-  }, [orderId]);
+    if (!orderId) {
+      setLoading(false);
+      setError('No laboratory order ID was provided.');
+    return;
+  }
+
+  fetchOrder();
+}, [orderId]);
 
   /* =========================================================
      ACTION HANDLER
@@ -651,7 +659,7 @@ export default function LabOrderDetailsPage() {
 
           <div className="mt-6 flex justify-center gap-3">
             <button
-              onClick={() => router.push('/lab')}
+              onClick={() => router.push('/hms/lab')}
               className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
             >
               Back to Laboratory
@@ -680,7 +688,7 @@ export default function LabOrderDetailsPage() {
       <div className="border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6 lg:px-8">
           <button
-            onClick={() => router.push('/lab')}
+            onClick={() => router.push('/hms/lab')}
             className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#08345a]"
           >
             <ArrowLeft className="h-4 w-4" />

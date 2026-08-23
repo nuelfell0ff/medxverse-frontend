@@ -1243,7 +1243,7 @@ export default function LabPage() {
               {orders.map((order) => (
                 <Link
                   key={order._id}
-                  href={`/lab/${order._id}`}
+                  href={`/hms/lab/${order._id}`}
                   className="block p-5 transition-all hover:bg-slate-50/70"
                 >
                   <div className="flex items-start justify-between gap-4">
@@ -1449,7 +1449,7 @@ export default function LabPage() {
 
                       <td className="px-6 py-4 text-right">
                         <Link
-                          href={`/lab/${order._id}`}
+                          href={`/hms/lab/${order._id}`}
                           className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-[#1b7b68] transition-all hover:bg-[#e8f5f3]"
                         >
                           View
