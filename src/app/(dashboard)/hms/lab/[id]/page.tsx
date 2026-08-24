@@ -764,7 +764,7 @@ export default function LabOrderDetailsPage() {
       ====================================================== */}
 
       <div className="border-b border-slate-200/80 bg-white">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mx-auto w-full px-4 py-6 sm:px-6 lg:px-8">
           <div className="mb-5 flex items-center justify-between gap-4">
             <button
               onClick={() => router.push('/hms/lab')}
