@@ -35,11 +35,14 @@ import {
    CONFIG
 ========================================================= */
 
-const API_URL =
+const API_URL = (
   process.env.NEXT_PUBLIC_API_URL ||
-  'https://medxverse-backend.onrender.com';
+  'https://medxverse-backend.onrender.com'
+).replace(/\/+$/, '');
 
-const LAB_API = `${API_URL}/api/v1/lab`;
+const LAB_API = API_URL.endsWith('/api/v1/lab')
+  ? API_URL
+  : `${API_URL}/api/v1/lab`;
 
 /* =========================================================
    TYPES
@@ -308,7 +311,7 @@ export default function LabOrderDetailsPage() {
 
   const [rejectReason, setRejectReason] = useState('');
   const [rejectQuality, setRejectQuality] =
-    useState('UNSATISFACTORY');
+    useState('HEMOLYZED');
   const [requestRecollection, setRequestRecollection] =
     useState(true);
 
@@ -452,25 +455,25 @@ export default function LabOrderDetailsPage() {
   ========================================================= */
 
   const handleCollectSample = async () => {
-    await runAction(`/${orderId}/collect`, 'POST');
+    await runAction(`/${orderId}/collect-sample`, 'PATCH');
   };
 
   const handleAccession = async () => {
-    await runAction(`/${orderId}/accession`, 'POST', {
+    await runAction(`/${orderId}/accession`, 'PATCH', {
       location: 'Central Laboratory',
     });
   };
 
   const handleRecollect = async () => {
-    await runAction(`/${orderId}/recollect`, 'POST');
+    await runAction(`/${orderId}/recollect`, 'PATCH');
   };
 
   const handleVerify = async () => {
-    await runAction(`/${orderId}/verify`, 'POST');
+    await runAction(`/${orderId}/verify`, 'PATCH');
   };
 
   const handleAuthorize = async () => {
-    await runAction(`/${orderId}/authorize`, 'POST');
+    await runAction(`/${orderId}/authorize`, 'PATCH');
   };
 
   const handleReject = async () => {
@@ -482,8 +485,8 @@ export default function LabOrderDetailsPage() {
     }
 
     const success = await runAction(
-      `/${orderId}/reject`,
-      'POST',
+      `/${orderId}/reject-sample`,
+      'PATCH',
       {
         reason: rejectReason,
         quality: rejectQuality,
@@ -513,7 +516,7 @@ export default function LabOrderDetailsPage() {
 
     const success = await runAction(
       `/${orderId}/results`,
-      'POST',
+      'PATCH',
       {
         results: validResults,
         specimenQuality:
@@ -537,8 +540,8 @@ export default function LabOrderDetailsPage() {
     }
 
     const success = await runAction(
-      `/${orderId}/repeat`,
-      'POST',
+      `/${orderId}/repeat-test`,
+      'PATCH',
       {
         reason: repeatReason,
         parameterNames: repeatParameters
@@ -1244,11 +1247,8 @@ export default function LabOrderDetailsPage() {
                           <option value="ABNORMAL">
                             Abnormal
                           </option>
-                          <option value="HIGH">
-                            High
-                          </option>
-                          <option value="LOW">
-                            Low
+                          <option value="DELTA_CHECK_WARNING">
+                            Delta Check Warning
                           </option>
                           <option value="CRITICAL">
                             Critical
@@ -1351,20 +1351,32 @@ export default function LabOrderDetailsPage() {
                   }
                   className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-red-300 focus:ring-4 focus:ring-red-50"
                 >
-                  <option value="UNSATISFACTORY">
-                    Unsatisfactory
+                                    <option value="SATISFACTORY">
+                    Satisfactory
                   </option>
                   <option value="HEMOLYZED">
                     Hemolyzed
                   </option>
+                  <option value="LIPEMIC">
+                    Lipemic
+                  </option>
                   <option value="CLOTTED">
                     Clotted
                   </option>
-                  <option value="INSUFFICIENT">
-                    Insufficient
+                  <option value="INSUFFICIENT_VOLUME">
+                    Insufficient Volume
                   </option>
                   <option value="CONTAMINATED">
                     Contaminated
+                  </option>
+                  <option value="LEAKING">
+                    Leaking
+                  </option>
+                  <option value="IMPROPERLY_LABELED">
+                    Improperly Labeled
+                  </option>
+                  <option value="DELAYED_TRANSPORT">
+                    Delayed Transport
                   </option>
                 </select>
               </div>
