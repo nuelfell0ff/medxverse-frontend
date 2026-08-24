@@ -907,7 +907,7 @@ export default function LabOrderDetailsPage() {
 
         {(order.criticalResultNotified ||
           order.duplicateTestDetected ||
-          order.aiPatternAlerts?.length) && (
+          Boolean(order.aiPatternAlerts?.length)) && (
           <div className="mb-6 space-y-3">
             {order.criticalResultNotified && (
               <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4">
