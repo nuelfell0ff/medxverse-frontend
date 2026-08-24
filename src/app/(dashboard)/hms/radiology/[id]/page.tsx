@@ -609,6 +609,44 @@ export default function RadiologyOrderDetailsPage() {
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     'https://medxverse-backend.onrender.com';
 
+  const fetchRadiologyApi = useCallback(async (endpoint = '') => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 30000);
+    try {
+      const token =
+        localStorage.getItem('token') ||
+        localStorage.getItem('accessToken') ||
+        localStorage.getItem('authToken');
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/radiology${endpoint}`, {
+        method: 'GET',
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      const json = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          json?.message ||
+            json?.error ||
+            `Radiology request failed (${response.status})`
+        );
+      }
+      return json;
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        throw new Error('Radiology request timed out. Please check that the backend is running and reachable.');
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }, [API_BASE_URL]);
+
   const getAuthHeaders = useCallback((): HeadersInit => {
     const token =
       typeof window !== 'undefined'
@@ -685,7 +723,11 @@ export default function RadiologyOrderDetailsPage() {
 
   const loadOrder = useCallback(
     async (isRefresh = false) => {
-      if (!orderId) return;
+      if (!orderId) {
+        setLoading(false);
+        setError('No radiology examination ID was provided.');
+        return;
+      }
 
       try {
         if (isRefresh) {
@@ -696,7 +738,12 @@ export default function RadiologyOrderDetailsPage() {
 
         setError(null);
 
-        const result = await RadiologyApiService.getOrder(orderId);
+        const payload = await fetchRadiologyApi(`/${encodeURIComponent(orderId)}`);
+        const result = payload?.data ?? payload?.order ?? payload;
+
+        if (!result || !result._id) {
+          throw new Error('Radiology examination data was not returned by the backend.');
+        }
 
         setOrder(result);
       } catch (err: any) {
@@ -709,7 +756,7 @@ export default function RadiologyOrderDetailsPage() {
         setRefreshing(false);
       }
     },
-    [orderId]
+    [orderId, fetchRadiologyApi]
   );
 
   useEffect(() => {
@@ -1443,7 +1490,7 @@ export default function RadiologyOrderDetailsPage() {
 
   if (loading) {
     return (
-      <div className="p-6 max-w-7xl mx-auto">
+      <div className="p-6 w-full mx-auto">
         <div className="animate-pulse space-y-6">
           <div className="h-10 bg-slate-100 rounded-xl w-2/3" />
 

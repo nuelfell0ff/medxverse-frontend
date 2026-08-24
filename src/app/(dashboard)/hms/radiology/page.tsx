@@ -53,6 +53,49 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ||
   'https://medxverse-backend.onrender.com';
 
+const RADIOLOGY_API_URL = `${API_BASE_URL}/api/v1/radiology`;
+
+async function fetchRadiologyApi(endpoint = '') {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 30000);
+  try {
+    const token =
+      localStorage.getItem('token') ||
+      localStorage.getItem('accessToken') ||
+      localStorage.getItem('authToken');
+
+    const response = await fetch(`${RADIOLOGY_API_URL}${endpoint}`, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+
+    const json = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        json?.message ||
+          json?.error ||
+          `Radiology request failed (${response.status})`
+      );
+    }
+
+    return json;
+  } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      throw new Error('Radiology request timed out. Please check that the backend is running and reachable.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+
 interface Staff {
   _id: string;
   firstName?: string;
@@ -300,30 +343,14 @@ export default function RadiologyPage() {
       setLoading(true);
       setError(null);
 
-      const response =
-        await RadiologyApiService.getOrders({
-          page,
-          limit: 15,
-          search: search || undefined,
-          status:
-            statusFilter !== 'ALL'
-              ? (statusFilter as RadiologyOrderStatus)
-              : undefined,
-          modality:
-            modalityFilter !== 'ALL'
-              ? (modalityFilter as ImagingModality)
-              : undefined,
-          priority:
-            priorityFilter !== 'ALL'
-              ? (priorityFilter as PriorityLevel)
-              : undefined,
-          queueStatus:
-            queueFilter !== 'ALL'
-              ? (queueFilter as ExaminationQueueStatus)
-              : undefined,
-          scheduledDate:
-            dateFilter || undefined,
-        });
+      const result = await fetchRadiologyApi(
+        `?page=${page}&limit=15${search ? `&search=${encodeURIComponent(search)}` : ''}${statusFilter !== 'ALL' ? `&status=${encodeURIComponent(statusFilter)}` : ''}${modalityFilter !== 'ALL' ? `&modality=${encodeURIComponent(modalityFilter)}` : ''}${priorityFilter !== 'ALL' ? `&priority=${encodeURIComponent(priorityFilter)}` : ''}${queueFilter !== 'ALL' ? `&queueStatus=${encodeURIComponent(queueFilter)}` : ''}${dateFilter ? `&scheduledDate=${encodeURIComponent(dateFilter)}` : ''}`
+      );
+
+      const response = result?.data ?? result ?? {};
+
+      /* The backend returns { success, data: { orders, total, page, totalPages } }.
+         Accept the unwrapped form too so the page remains compatible with both response shapes. */
 
       setOrders(response.orders || []);
       setTotal(response.total || 0);
