@@ -1,27 +1,33 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ElementType } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   Activity,
   AlertCircle,
   ArrowLeft,
   Beaker,
+  Check,
   CheckCircle2,
   ChevronRight,
   ClipboardCheck,
+  ClipboardList,
   Clock3,
   FileText,
   FlaskConical,
   Loader2,
   MapPin,
   PackageCheck,
+  Plus,
   RefreshCw,
   RotateCcw,
   Save,
+  ScanLine,
   ShieldCheck,
   TestTube2,
+  Trash2,
   User,
+  X,
   XCircle,
 } from 'lucide-react';
 
@@ -52,6 +58,8 @@ type LabOrderStatus =
   | 'COMPLETED'
   | 'CANCELLED'
   | string;
+
+type ActiveTab = 'overview' | 'results' | 'workflow';
 
 interface PopulatedPerson {
   _id?: string;
@@ -197,11 +205,17 @@ const formatStatus = (status?: string) => {
 const getPersonName = (person?: PopulatedPerson | string) => {
   if (!person) return '—';
 
-  if (typeof person === 'string') return person;
+  if (typeof person === 'string') {
+    return person;
+  }
 
-  if (person.name) return person.name;
+  if (person.name) {
+    return person.name;
+  }
 
-  const fullName = `${person.firstName || ''} ${person.lastName || ''}`.trim();
+  const fullName = `${person.firstName || ''} ${
+    person.lastName || ''
+  }`.trim();
 
   return fullName || person.email || person.mrn || '—';
 };
@@ -209,45 +223,55 @@ const getPersonName = (person?: PopulatedPerson | string) => {
 const getStatusStyle = (status: string) => {
   switch (status) {
     case 'COMPLETED':
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
 
     case 'VERIFIED':
-      return 'bg-blue-50 text-blue-700 border-blue-200';
+      return 'border-blue-200 bg-blue-50 text-blue-700';
 
     case 'RESULTS_RECORDED':
-      return 'bg-purple-50 text-purple-700 border-purple-200';
+      return 'border-violet-200 bg-violet-50 text-violet-700';
 
     case 'IN_PROGRESS':
-      return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+      return 'border-indigo-200 bg-indigo-50 text-indigo-700';
 
     case 'SAMPLE_COLLECTED':
     case 'SPECIMEN_RECEIVED':
-      return 'bg-cyan-50 text-cyan-700 border-cyan-200';
+      return 'border-cyan-200 bg-cyan-50 text-cyan-700';
 
     case 'SAMPLE_REJECTED':
     case 'RECOLLECTION_REQUIRED':
-      return 'bg-red-50 text-red-700 border-red-200';
+      return 'border-red-200 bg-red-50 text-red-700';
 
     case 'CANCELLED':
-      return 'bg-slate-100 text-slate-600 border-slate-200';
+      return 'border-slate-200 bg-slate-100 text-slate-600';
 
     default:
-      return 'bg-amber-50 text-amber-700 border-amber-200';
+      return 'border-amber-200 bg-amber-50 text-amber-700';
   }
 };
 
 const getPriorityStyle = (priority: string) => {
-  switch (priority) {
-    case 'STAT':
-      return 'bg-red-600 text-white';
+  const normalized = priority?.toUpperCase();
 
-    case 'URGENT':
-      return 'bg-orange-500 text-white';
-
-    default:
-      return 'bg-slate-100 text-slate-700';
+  if (normalized === 'STAT') {
+    return 'bg-red-600 text-white ring-red-100';
   }
+
+  if (normalized === 'URGENT') {
+    return 'bg-orange-500 text-white ring-orange-100';
+  }
+
+  return 'bg-slate-100 text-slate-700 ring-slate-100';
 };
+
+const createEmptyResult = (): LabResult => ({
+  parameterName: '',
+  value: '',
+  unit: '',
+  referenceRange: '',
+  flag: 'NORMAL',
+  entryMethod: 'MANUAL',
+});
 
 /* =========================================================
    COMPONENT
@@ -271,28 +295,22 @@ export default function LabOrderDetailsPage() {
 
   const [error, setError] = useState('');
 
-  const [activeTab, setActiveTab] = useState<
-    'overview' | 'results' | 'workflow'
-  >('overview');
+  const [activeTab, setActiveTab] =
+    useState<ActiveTab>('overview');
 
   const [showResultForm, setShowResultForm] = useState(false);
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [showRepeatForm, setShowRepeatForm] = useState(false);
 
   const [newResults, setNewResults] = useState<LabResult[]>([
-    {
-      parameterName: '',
-      value: '',
-      unit: '',
-      referenceRange: '',
-      flag: 'NORMAL',
-      entryMethod: 'MANUAL',
-    },
+    createEmptyResult(),
   ]);
 
   const [rejectReason, setRejectReason] = useState('');
-  const [rejectQuality, setRejectQuality] = useState('UNSATISFACTORY');
-  const [requestRecollection, setRequestRecollection] = useState(true);
+  const [rejectQuality, setRejectQuality] =
+    useState('UNSATISFACTORY');
+  const [requestRecollection, setRequestRecollection] =
+    useState(true);
 
   const [repeatReason, setRepeatReason] = useState('');
   const [repeatParameters, setRepeatParameters] = useState('');
@@ -302,7 +320,9 @@ export default function LabOrderDetailsPage() {
   ========================================================= */
 
   const getToken = () => {
-    if (typeof window === 'undefined') return null;
+    if (typeof window === 'undefined') {
+      return null;
+    }
 
     return (
       localStorage.getItem('token') ||
@@ -359,10 +379,7 @@ export default function LabOrderDetailsPage() {
 
       const data = await apiRequest(`/${orderId}`);
 
-      const labOrder =
-        data?.data ||
-        data?.order ||
-        data;
+      const labOrder = data?.data || data?.order || data;
 
       setOrder(labOrder);
     } catch (err) {
@@ -381,11 +398,11 @@ export default function LabOrderDetailsPage() {
     if (!orderId) {
       setLoading(false);
       setError('No laboratory order ID was provided.');
-    return;
-  }
+      return;
+    }
 
-  fetchOrder();
-}, [orderId]);
+    fetchOrder();
+  }, [orderId]);
 
   /* =========================================================
      ACTION HANDLER
@@ -458,7 +475,9 @@ export default function LabOrderDetailsPage() {
 
   const handleReject = async () => {
     if (!rejectReason.trim()) {
-      setError('Please provide a reason for rejecting the sample.');
+      setError(
+        'Please provide a reason for rejecting the sample.'
+      );
       return;
     }
 
@@ -504,23 +523,16 @@ export default function LabOrderDetailsPage() {
 
     if (success) {
       setShowResultForm(false);
-
-      setNewResults([
-        {
-          parameterName: '',
-          value: '',
-          unit: '',
-          referenceRange: '',
-          flag: 'NORMAL',
-          entryMethod: 'MANUAL',
-        },
-      ]);
+      setNewResults([createEmptyResult()]);
+      setActiveTab('results');
     }
   };
 
   const handleRepeatTest = async () => {
     if (!repeatReason.trim()) {
-      setError('Please provide a reason for repeating the test.');
+      setError(
+        'Please provide a reason for repeating the test.'
+      );
       return;
     }
 
@@ -547,17 +559,20 @@ export default function LabOrderDetailsPage() {
      COMPUTED DATA
   ========================================================= */
 
-  const patientName = useMemo(() => {
-    return getPersonName(order?.patientId);
-  }, [order]);
+  const patientName = useMemo(
+    () => getPersonName(order?.patientId),
+    [order]
+  );
 
   const workflowSteps = useMemo(() => {
-    if (!order) return [];
+    if (!order) {
+      return [];
+    }
 
     return [
       {
         title: 'Order Created',
-        description: 'Electronic laboratory requisition created.',
+        description: 'Laboratory requisition created.',
         complete: true,
         active: false,
         icon: FileText,
@@ -565,7 +580,9 @@ export default function LabOrderDetailsPage() {
       {
         title: 'Sample Collection',
         description: order.sampleCollectedAt
-          ? `Collected ${formatDate(order.sampleCollectedAt)}`
+          ? `Collected ${formatDate(
+              order.sampleCollectedAt
+            )}`
           : 'Awaiting specimen collection',
         complete: Boolean(order.sampleCollectedAt),
         active: [
@@ -578,7 +595,9 @@ export default function LabOrderDetailsPage() {
       {
         title: 'Specimen Received',
         description: order.specimenReceivedAt
-          ? `Accessioned ${formatDate(order.specimenReceivedAt)}`
+          ? `Received ${formatDate(
+              order.specimenReceivedAt
+            )}`
           : 'Awaiting laboratory accessioning',
         complete: Boolean(order.specimenReceivedAt),
         active: order.status === 'SAMPLE_COLLECTED',
@@ -587,7 +606,7 @@ export default function LabOrderDetailsPage() {
       {
         title: 'Results Recorded',
         description: order.results?.length
-          ? `${order.results.length} result(s) recorded`
+          ? `${order.results.length} parameter(s) recorded`
           : 'Awaiting test results',
         complete: Boolean(order.results?.length),
         active: [
@@ -608,7 +627,7 @@ export default function LabOrderDetailsPage() {
       {
         title: 'Results Released',
         description: order.completedAt
-          ? `Completed ${formatDate(order.completedAt)}`
+          ? `Released ${formatDate(order.completedAt)}`
           : 'Awaiting authorization',
         complete: order.status === 'COMPLETED',
         active: order.status === 'VERIFIED',
@@ -617,19 +636,70 @@ export default function LabOrderDetailsPage() {
     ];
   }, [order]);
 
+  const progressPercentage = useMemo(() => {
+    if (!workflowSteps.length) {
+      return 0;
+    }
+
+    const completedSteps = workflowSteps.filter(
+      (step) => step.complete
+    ).length;
+
+    return Math.round(
+      (completedSteps / workflowSteps.length) * 100
+    );
+  }, [workflowSteps]);
+
+  const currentStep = useMemo(() => {
+    if (!workflowSteps.length) {
+      return null;
+    }
+
+    return (
+      workflowSteps.find((step) => step.active) ||
+      workflowSteps[workflowSteps.length - 1]
+    );
+  }, [workflowSteps]);
+
+  const tabs = [
+    {
+      id: 'overview' as ActiveTab,
+      label: 'Overview',
+      icon: ClipboardList,
+    },
+    {
+      id: 'results' as ActiveTab,
+      label: 'Results',
+      icon: Beaker,
+      count: order?.results?.length || 0,
+    },
+    {
+      id: 'workflow' as ActiveTab,
+      label: 'Workflow',
+      icon: Clock3,
+      count: order?.chainOfCustody?.length || 0,
+    },
+  ];
+
   /* =========================================================
      LOADING
   ========================================================= */
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-[#f7f9fc]">
         <div className="flex min-h-[70vh] items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <Loader2 className="h-10 w-10 animate-spin text-[#2e7fc1]" />
+          <div className="flex flex-col items-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-[#08345a] shadow-lg shadow-blue-950/10">
+              <Loader2 className="h-7 w-7 animate-spin text-white" />
+            </div>
 
-            <p className="text-sm font-medium text-slate-500">
-              Loading laboratory workflow...
+            <h2 className="mt-5 font-bold text-[#08345a]">
+              Loading laboratory order
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Retrieving specimen and workflow information...
             </p>
           </div>
         </div>
@@ -643,34 +713,37 @@ export default function LabOrderDetailsPage() {
 
   if (!order) {
     return (
-      <div className="min-h-screen bg-slate-50 p-6">
-        <div className="mx-auto max-w-2xl rounded-2xl border border-red-100 bg-white p-8 text-center shadow-sm">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
-            <AlertCircle className="h-7 w-7 text-red-500" />
-          </div>
+      <div className="min-h-screen bg-[#f7f9fc] p-4 sm:p-6">
+        <div className="mx-auto flex min-h-[70vh] max-w-2xl items-center">
+          <div className="w-full rounded-3xl border border-red-100 bg-white p-8 text-center shadow-xl shadow-slate-200/40">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-red-50">
+              <AlertCircle className="h-8 w-8 text-red-500" />
+            </div>
 
-          <h2 className="text-xl font-bold text-[#08345a]">
-            Unable to Load Laboratory Order
-          </h2>
+            <h2 className="mt-5 text-xl font-bold text-[#08345a]">
+              Unable to Load Laboratory Order
+            </h2>
 
-          <p className="mt-2 text-sm text-slate-500">
-            {error || 'The requested laboratory order could not be found.'}
-          </p>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+              {error ||
+                'The requested laboratory order could not be found.'}
+            </p>
 
-          <div className="mt-6 flex justify-center gap-3">
-            <button
-              onClick={() => router.push('/hms/lab')}
-              className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              Back to Laboratory
-            </button>
+            <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+              <button
+                onClick={() => router.push('/hms/lab')}
+                className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Back to Laboratory
+              </button>
 
-            <button
-              onClick={() => fetchOrder()}
-              className="rounded-xl bg-[#08345a] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#062946]"
-            >
-              Try Again
-            </button>
+              <button
+                onClick={() => fetchOrder()}
+                className="rounded-xl bg-[#08345a] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#062946]"
+              >
+                Try Again
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -682,70 +755,26 @@ export default function LabOrderDetailsPage() {
   ========================================================= */
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-10">
-      {/* HEADER */}
+    <div className="min-h-screen bg-[#f7f9fc] pb-10">
+      {/* =====================================================
+          TOP HEADER
+      ====================================================== */}
 
-      <div className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6 lg:px-8">
-          <button
-            onClick={() => router.push('/hms/lab')}
-            className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#08345a]"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Laboratory
-          </button>
-
-          <div className="flex flex-col justify-between gap-5 xl:flex-row xl:items-center">
-            <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#08345a] text-white shadow-sm">
-                <FlaskConical className="h-7 w-7" />
-              </div>
-
-              <div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <h1 className="text-2xl font-bold tracking-tight text-[#08345a]">
-                    {order.testName}
-                  </h1>
-
-                  <span
-                    className={`rounded-full border px-3 py-1 text-xs font-bold ${getStatusStyle(
-                      order.status
-                    )}`}
-                  >
-                    {formatStatus(order.status)}
-                  </span>
-
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-bold ${getPriorityStyle(
-                      order.priority
-                    )}`}
-                  >
-                    {order.priority}
-                  </span>
-                </div>
-
-                <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-500">
-                  <span className="font-mono font-medium text-slate-700">
-                    {order.accessionNumber}
-                  </span>
-
-                  <span className="flex items-center gap-1.5">
-                    <User className="h-4 w-4" />
-                    {patientName}
-                  </span>
-
-                  <span className="flex items-center gap-1.5">
-                    <Beaker className="h-4 w-4" />
-                    {formatStatus(order.testCategory)}
-                  </span>
-                </div>
-              </div>
-            </div>
+      <div className="border-b border-slate-200/80 bg-white">
+        <div className="mx-auto max-w-[1700px] px-4 py-5 sm:px-6 lg:px-8">
+          <div className="mb-5 flex items-center justify-between gap-4">
+            <button
+              onClick={() => router.push('/hms/lab')}
+              className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#08345a]"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Laboratory Orders
+            </button>
 
             <button
               onClick={() => fetchOrder(true)}
               disabled={refreshing}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <RefreshCw
                 className={`h-4 w-4 ${
@@ -753,22 +782,106 @@ export default function LabOrderDetailsPage() {
                 }`}
               />
 
-              Refresh
+              <span className="hidden sm:inline">
+                Refresh
+              </span>
             </button>
+          </div>
+
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="flex h-15 w-15 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#08345a] to-[#12598e] text-white shadow-lg shadow-blue-950/10 sm:h-16 sm:w-16">
+                <FlaskConical className="h-7 w-7 sm:h-8 sm:w-8" />
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h1 className="text-xl font-bold tracking-tight text-[#08345a] sm:text-2xl">
+                    {order.testName}
+                  </h1>
+
+                  <span
+                    className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wide ${getStatusStyle(
+                      order.status
+                    )}`}
+                  >
+                    {formatStatus(order.status)}
+                  </span>
+
+                  <span
+                    className={`inline-flex rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wide ring-1 ${getPriorityStyle(
+                      order.priority
+                    )}`}
+                  >
+                    {order.priority}
+                  </span>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-500">
+                  <span className="rounded-lg bg-slate-100 px-2.5 py-1 font-mono text-xs font-bold text-slate-700">
+                    {order.accessionNumber}
+                  </span>
+
+                  <span className="inline-flex items-center gap-1.5">
+                    <User className="h-4 w-4 text-[#2e7fc1]" />
+                    {patientName}
+                  </span>
+
+                  <span className="inline-flex items-center gap-1.5">
+                    <Beaker className="h-4 w-4 text-[#2e7fc1]" />
+                    {formatStatus(order.testCategory)}
+                  </span>
+
+                  <span className="inline-flex items-center gap-1.5">
+                    <TestTube2 className="h-4 w-4 text-[#2e7fc1]" />
+                    {order.sampleType}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {order.isStat && (
+                <div className="inline-flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+                  <Activity className="h-4 w-4" />
+                  STAT REQUEST
+                </div>
+              )}
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Predicted TAT
+                </p>
+
+                <p className="mt-0.5 text-sm font-bold text-[#08345a]">
+                  {order.predictedTatMinutes
+                    ? `${order.predictedTatMinutes} min`
+                    : '—'}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
-        {/* ALERTS */}
+      {/* =====================================================
+          PAGE CONTENT
+      ====================================================== */}
+
+      <div className="mx-auto max-w-[1700px] px-4 py-6 sm:px-6 lg:px-8">
+        {/* ===================================================
+            ERROR ALERT
+        ==================================================== */}
 
         {error && (
-          <div className="mb-6 flex items-start justify-between gap-4 rounded-2xl border border-red-100 bg-red-50 px-5 py-4">
+          <div className="mb-6 flex items-start justify-between gap-4 rounded-2xl border border-red-100 bg-red-50 p-4">
             <div className="flex gap-3">
-              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-100">
+                <AlertCircle className="h-4 w-4 text-red-600" />
+              </div>
 
               <div>
-                <p className="text-sm font-semibold text-red-800">
+                <p className="text-sm font-bold text-red-800">
                   Action could not be completed
                 </p>
 
@@ -780,34 +893,56 @@ export default function LabOrderDetailsPage() {
 
             <button
               onClick={() => setError('')}
-              className="text-red-400 transition hover:text-red-600"
+              className="rounded-lg p-1 text-red-400 transition hover:bg-red-100 hover:text-red-600"
+              aria-label="Close error"
             >
-              <XCircle className="h-5 w-5" />
+              <X className="h-5 w-5" />
             </button>
           </div>
         )}
 
-        {/* AI / CRITICAL ALERTS */}
+        {/* ===================================================
+            CLINICAL ALERTS
+        ==================================================== */}
 
         {(order.criticalResultNotified ||
           order.duplicateTestDetected ||
           order.aiPatternAlerts?.length) && (
           <div className="mb-6 space-y-3">
+            {order.criticalResultNotified && (
+              <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-100">
+                  <Activity className="h-5 w-5 text-red-600" />
+                </div>
+
+                <div>
+                  <p className="text-sm font-bold text-red-900">
+                    Critical Result Notification
+                  </p>
+
+                  <p className="mt-1 text-sm leading-6 text-red-700">
+                    A critical laboratory result has been identified
+                    and notification has been recorded.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {order.duplicateTestDetected && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                <div className="flex gap-3">
-                  <AlertCircle className="h-5 w-5 shrink-0 text-amber-600" />
+              <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100">
+                  <AlertCircle className="h-5 w-5 text-amber-600" />
+                </div>
 
-                  <div>
-                    <p className="text-sm font-bold text-amber-900">
-                      Duplicate Test Alert
-                    </p>
+                <div>
+                  <p className="text-sm font-bold text-amber-900">
+                    Duplicate Test Alert
+                  </p>
 
-                    <p className="mt-1 text-sm text-amber-700">
-                      {order.duplicateTestMessage ||
-                        'A similar laboratory test may already be active for this patient.'}
-                    </p>
-                  </div>
+                  <p className="mt-1 text-sm leading-6 text-amber-700">
+                    {order.duplicateTestMessage ||
+                      'A similar laboratory test may already be active for this patient.'}
+                  </p>
                 </div>
               </div>
             )}
@@ -815,12 +950,18 @@ export default function LabOrderDetailsPage() {
             {order.aiPatternAlerts?.map((alert, index) => (
               <div
                 key={`${alert}-${index}`}
-                className="rounded-2xl border border-red-100 bg-red-50 p-4"
+                className="flex items-start gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-4"
               >
-                <div className="flex gap-3">
-                  <Activity className="h-5 w-5 shrink-0 text-red-500" />
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100">
+                  <Activity className="h-5 w-5 text-violet-600" />
+                </div>
 
-                  <p className="text-sm font-medium text-red-700">
+                <div>
+                  <p className="text-sm font-bold text-violet-900">
+                    Clinical Pattern Alert
+                  </p>
+
+                  <p className="mt-1 text-sm leading-6 text-violet-700">
                     {alert}
                   </p>
                 </div>
@@ -829,18 +970,35 @@ export default function LabOrderDetailsPage() {
           </div>
         )}
 
-        {/* QUICK ACTIONS */}
+        {/* ===================================================
+            WORKFLOW ACTION CENTER
+        ==================================================== */}
 
-        <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div>
-              <h2 className="font-bold text-[#08345a]">
-                Laboratory Workflow Actions
-              </h2>
+        <section className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-5 p-4 sm:p-5 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#2e7fc1]">
+                {currentStep ? (
+                  <currentStep.icon className="h-5 w-5" />
+                ) : (
+                  <ClipboardCheck className="h-5 w-5" />
+                )}
+              </div>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Continue this specimen through the laboratory workflow.
-              </p>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-[#2e7fc1]">
+                  Current workflow stage
+                </p>
+
+                <h2 className="mt-1 font-bold text-[#08345a]">
+                  {currentStep?.title || 'Laboratory Workflow'}
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  {currentStep?.description ||
+                    'Continue this specimen through the laboratory workflow.'}
+                </p>
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -848,52 +1006,49 @@ export default function LabOrderDetailsPage() {
                 'PENDING',
                 'SAMPLE_SCHEDULED',
               ].includes(order.status) && (
-                <button
+                <ActionButton
                   onClick={handleCollectSample}
                   disabled={actionLoading}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#08345a] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#062946] disabled:opacity-60"
+                  icon={TestTube2}
+                  loading={actionLoading}
                 >
-                  {actionLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <TestTube2 className="h-4 w-4" />
-                  )}
-
                   Collect Sample
-                </button>
+                </ActionButton>
               )}
 
               {order.status === 'SAMPLE_COLLECTED' && (
                 <>
-                  <button
+                  <ActionButton
                     onClick={handleAccession}
                     disabled={actionLoading}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#2e7fc1] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#246ca6] disabled:opacity-60"
+                    icon={PackageCheck}
+                    loading={actionLoading}
+                    variant="blue"
                   >
-                    <PackageCheck className="h-4 w-4" />
                     Accession Specimen
-                  </button>
+                  </ActionButton>
 
-                  <button
+                  <ActionButton
                     onClick={() => setShowRejectForm(true)}
                     disabled={actionLoading}
-                    className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-100"
+                    icon={XCircle}
+                    variant="danger-outline"
                   >
-                    <XCircle className="h-4 w-4" />
                     Reject Sample
-                  </button>
+                  </ActionButton>
                 </>
               )}
 
               {order.status === 'RECOLLECTION_REQUIRED' && (
-                <button
+                <ActionButton
                   onClick={handleRecollect}
                   disabled={actionLoading}
-                  className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600"
+                  icon={RotateCcw}
+                  loading={actionLoading}
+                  variant="orange"
                 >
-                  <RotateCcw className="h-4 w-4" />
                   Recollect Sample
-                </button>
+                </ActionButton>
               )}
 
               {[
@@ -901,189 +1056,228 @@ export default function LabOrderDetailsPage() {
                 'IN_PROGRESS',
               ].includes(order.status) && (
                 <>
-                  <button
-                    onClick={() => setShowResultForm(!showResultForm)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#08345a] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#062946]"
+                  <ActionButton
+                    onClick={() =>
+                      setShowResultForm(!showResultForm)
+                    }
+                    icon={ClipboardCheck}
                   >
-                    <FileText className="h-4 w-4" />
-                    Record Results
-                  </button>
+                    {showResultForm
+                      ? 'Close Result Entry'
+                      : 'Record Results'}
+                  </ActionButton>
 
-                  <button
-                    onClick={() => setShowRepeatForm(!showRepeatForm)}
-                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  <ActionButton
+                    onClick={() =>
+                      setShowRepeatForm(!showRepeatForm)
+                    }
+                    icon={RotateCcw}
+                    variant="secondary"
                   >
-                    <RotateCcw className="h-4 w-4" />
                     Repeat Test
-                  </button>
+                  </ActionButton>
                 </>
               )}
 
               {order.status === 'RESULTS_RECORDED' && (
-                <button
+                <ActionButton
                   onClick={handleVerify}
                   disabled={actionLoading}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#2e7fc1] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#246ca6]"
+                  icon={ShieldCheck}
+                  loading={actionLoading}
+                  variant="blue"
                 >
-                  <ShieldCheck className="h-4 w-4" />
                   Verify Results
-                </button>
+                </ActionButton>
               )}
 
               {order.status === 'VERIFIED' && (
-                <button
+                <ActionButton
                   onClick={handleAuthorize}
                   disabled={actionLoading}
-                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                  icon={CheckCircle2}
+                  loading={actionLoading}
+                  variant="success"
                 >
-                  <CheckCircle2 className="h-4 w-4" />
                   Authorize & Release
-                </button>
+                </ActionButton>
+              )}
+
+              {[
+                'COMPLETED',
+                'CANCELLED',
+                'SAMPLE_REJECTED',
+              ].includes(order.status) && (
+                <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-500">
+                  <Check className="h-4 w-4" />
+                  No workflow actions available
+                </div>
               )}
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* RESULT FORM */}
+        {/* ===================================================
+            RESULT ENTRY FORM
+        ==================================================== */}
 
         {showResultForm && (
-          <div className="mb-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-100 px-6 py-5">
-              <h2 className="font-bold text-[#08345a]">
-                Record Laboratory Results
-              </h2>
+          <section className="mb-6 overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm">
+            <div className="flex flex-col justify-between gap-4 border-b border-blue-100 bg-blue-50/40 px-5 py-5 sm:flex-row sm:items-center sm:px-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#08345a] text-white">
+                  <ClipboardCheck className="h-5 w-5" />
+                </div>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Enter the measured values for this laboratory test.
-              </p>
+                <div>
+                  <h2 className="font-bold text-[#08345a]">
+                    Record Laboratory Results
+                  </h2>
+
+                  <p className="mt-1 text-sm text-slate-500">
+                    Enter measured values and clinical flags.
+                  </p>
+                </div>
+              </div>
+
+              <span className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-slate-500 shadow-sm ring-1 ring-slate-100">
+                {newResults.length} parameter
+                {newResults.length !== 1 ? 's' : ''}
+              </span>
             </div>
 
-            <div className="p-6">
-              <div className="space-y-4">
+            <div className="p-4 sm:p-6">
+              <div className="space-y-3">
                 {newResults.map((result, index) => (
                   <div
                     key={index}
-                    className="grid gap-3 rounded-xl border border-slate-200 p-4 md:grid-cols-5"
+                    className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4"
                   >
-                    <input
-                      value={result.parameterName}
-                      onChange={(event) => {
-                        const updated = [...newResults];
-
-                        updated[index].parameterName =
-                          event.target.value;
-
-                        setNewResults(updated);
-                      }}
-                      placeholder="Parameter"
-                      className="rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-[#2e7fc1] focus:ring-2 focus:ring-blue-100"
-                    />
-
-                    <input
-                      value={result.value}
-                      onChange={(event) => {
-                        const updated = [...newResults];
-
-                        updated[index].value =
-                          event.target.value;
-
-                        setNewResults(updated);
-                      }}
-                      placeholder="Value"
-                      className="rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-[#2e7fc1] focus:ring-2 focus:ring-blue-100"
-                    />
-
-                    <input
-                      value={result.unit || ''}
-                      onChange={(event) => {
-                        const updated = [...newResults];
-
-                        updated[index].unit =
-                          event.target.value;
-
-                        setNewResults(updated);
-                      }}
-                      placeholder="Unit"
-                      className="rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-[#2e7fc1] focus:ring-2 focus:ring-blue-100"
-                    />
-
-                    <input
-                      value={result.referenceRange || ''}
-                      onChange={(event) => {
-                        const updated = [...newResults];
-
-                        updated[index].referenceRange =
-                          event.target.value;
-
-                        setNewResults(updated);
-                      }}
-                      placeholder="Reference range"
-                      className="rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-[#2e7fc1] focus:ring-2 focus:ring-blue-100"
-                    />
-
-                    <div className="flex gap-2">
-                      <select
-                        value={result.flag || 'NORMAL'}
-                        onChange={(event) => {
-                          const updated = [...newResults];
-
-                          updated[index].flag =
-                            event.target.value;
-
-                          setNewResults(updated);
-                        }}
-                        className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none"
-                      >
-                        <option value="NORMAL">Normal</option>
-                        <option value="ABNORMAL">Abnormal</option>
-                        <option value="HIGH">High</option>
-                        <option value="LOW">Low</option>
-                        <option value="CRITICAL">Critical</option>
-                      </select>
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#08345a] text-xs font-bold text-white">
+                        {index + 1}
+                      </span>
 
                       {newResults.length > 1 && (
                         <button
-                          onClick={() => {
+                          type="button"
+                          onClick={() =>
                             setNewResults(
                               newResults.filter(
                                 (_, itemIndex) =>
                                   itemIndex !== index
                               )
-                            );
-                          }}
-                          className="rounded-lg border border-red-100 px-3 text-red-500 transition hover:bg-red-50"
+                            )
+                          }
+                          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-red-500 transition hover:bg-red-50"
                         >
-                          <XCircle className="h-4 w-4" />
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Remove
                         </button>
                       )}
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                      <FormInput
+                        label="Parameter"
+                        value={result.parameterName}
+                        placeholder="e.g. Haemoglobin"
+                        onChange={(value) => {
+                          const updated = [...newResults];
+                          updated[index].parameterName = value;
+                          setNewResults(updated);
+                        }}
+                      />
+
+                      <FormInput
+                        label="Result"
+                        value={result.value}
+                        placeholder="Enter value"
+                        onChange={(value) => {
+                          const updated = [...newResults];
+                          updated[index].value = value;
+                          setNewResults(updated);
+                        }}
+                      />
+
+                      <FormInput
+                        label="Unit"
+                        value={result.unit || ''}
+                        placeholder="e.g. g/dL"
+                        onChange={(value) => {
+                          const updated = [...newResults];
+                          updated[index].unit = value;
+                          setNewResults(updated);
+                        }}
+                      />
+
+                      <FormInput
+                        label="Reference Range"
+                        value={result.referenceRange || ''}
+                        placeholder="e.g. 12 - 16"
+                        onChange={(value) => {
+                          const updated = [...newResults];
+                          updated[index].referenceRange =
+                            value;
+                          setNewResults(updated);
+                        }}
+                      />
+
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-slate-500">
+                          Clinical Flag
+                        </label>
+
+                        <select
+                          value={result.flag || 'NORMAL'}
+                          onChange={(event) => {
+                            const updated = [...newResults];
+                            updated[index].flag =
+                              event.target.value;
+                            setNewResults(updated);
+                          }}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-[#2e7fc1] focus:ring-4 focus:ring-blue-50"
+                        >
+                          <option value="NORMAL">
+                            Normal
+                          </option>
+                          <option value="ABNORMAL">
+                            Abnormal
+                          </option>
+                          <option value="HIGH">
+                            High
+                          </option>
+                          <option value="LOW">
+                            Low
+                          </option>
+                          <option value="CRITICAL">
+                            Critical
+                          </option>
+                        </select>
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
 
               <button
+                type="button"
                 onClick={() =>
                   setNewResults([
                     ...newResults,
-                    {
-                      parameterName: '',
-                      value: '',
-                      unit: '',
-                      referenceRange: '',
-                      flag: 'NORMAL',
-                      entryMethod: 'MANUAL',
-                    },
+                    createEmptyResult(),
                   ])
                 }
-                className="mt-4 text-sm font-semibold text-[#2e7fc1] hover:text-[#08345a]"
+                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-dashed border-[#2e7fc1]/40 bg-blue-50/30 px-4 py-2.5 text-sm font-semibold text-[#2e7fc1] transition hover:bg-blue-50"
               >
-                + Add another parameter
+                <Plus className="h-4 w-4" />
+                Add Parameter
               </button>
 
-              <div className="mt-6 flex justify-end gap-3">
+              <div className="mt-6 flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
                 <button
                   onClick={() => setShowResultForm(false)}
-                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600"
+                  className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
                 >
                   Cancel
                 </button>
@@ -1091,78 +1285,118 @@ export default function LabOrderDetailsPage() {
                 <button
                   onClick={handleRecordResults}
                   disabled={actionLoading}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#08345a] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#08345a] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#062946] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {actionLoading && (
+                  {actionLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
                   )}
 
-                  <Save className="h-4 w-4" />
                   Save Results
                 </button>
               </div>
             </div>
-          </div>
+          </section>
         )}
 
-        {/* REJECTION FORM */}
+        {/* ===================================================
+            REJECTION FORM
+        ==================================================== */}
 
         {showRejectForm && (
-          <div className="mb-6 rounded-2xl border border-red-100 bg-white shadow-sm">
-            <div className="border-b border-red-100 px-6 py-5">
-              <h2 className="font-bold text-red-700">
-                Reject Specimen
-              </h2>
+          <section className="mb-6 overflow-hidden rounded-2xl border border-red-100 bg-white shadow-sm">
+            <div className="flex items-start gap-3 border-b border-red-100 bg-red-50 px-5 py-5 sm:px-6">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-100">
+                <XCircle className="h-5 w-5 text-red-600" />
+              </div>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Record why this specimen cannot be processed.
-              </p>
+              <div>
+                <h2 className="font-bold text-red-800">
+                  Reject Specimen
+                </h2>
+
+                <p className="mt-1 text-sm text-red-600">
+                  Document why this specimen cannot proceed.
+                </p>
+              </div>
             </div>
 
-            <div className="space-y-4 p-6">
-              <textarea
-                value={rejectReason}
-                onChange={(event) =>
-                  setRejectReason(event.target.value)
-                }
-                placeholder="Reason for specimen rejection..."
-                rows={4}
-                className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-red-300 focus:ring-2 focus:ring-red-50"
-              />
+            <div className="space-y-5 p-5 sm:p-6">
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-500">
+                  Reason for Rejection
+                </label>
 
-              <select
-                value={rejectQuality}
-                onChange={(event) =>
-                  setRejectQuality(event.target.value)
-                }
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none"
-              >
-                <option value="UNSATISFACTORY">
-                  Unsatisfactory
-                </option>
-                <option value="HEMOLYZED">Hemolyzed</option>
-                <option value="CLOTTED">Clotted</option>
-                <option value="INSUFFICIENT">Insufficient</option>
-                <option value="CONTAMINATED">Contaminated</option>
-              </select>
+                <textarea
+                  value={rejectReason}
+                  onChange={(event) =>
+                    setRejectReason(event.target.value)
+                  }
+                  placeholder="Describe the reason for specimen rejection..."
+                  rows={4}
+                  className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-red-300 focus:ring-4 focus:ring-red-50"
+                />
+              </div>
 
-              <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-500">
+                  Specimen Quality
+                </label>
+
+                <select
+                  value={rejectQuality}
+                  onChange={(event) =>
+                    setRejectQuality(event.target.value)
+                  }
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-red-300 focus:ring-4 focus:ring-red-50"
+                >
+                  <option value="UNSATISFACTORY">
+                    Unsatisfactory
+                  </option>
+                  <option value="HEMOLYZED">
+                    Hemolyzed
+                  </option>
+                  <option value="CLOTTED">
+                    Clotted
+                  </option>
+                  <option value="INSUFFICIENT">
+                    Insufficient
+                  </option>
+                  <option value="CONTAMINATED">
+                    Contaminated
+                  </option>
+                </select>
+              </div>
+
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-4 transition hover:bg-slate-50">
                 <input
                   type="checkbox"
                   checked={requestRecollection}
                   onChange={(event) =>
-                    setRequestRecollection(event.target.checked)
+                    setRequestRecollection(
+                      event.target.checked
+                    )
                   }
-                  className="h-4 w-4 rounded border-slate-300"
+                  className="h-4 w-4 rounded border-slate-300 accent-[#08345a]"
                 />
 
-                Request recollection of specimen
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">
+                    Request specimen recollection
+                  </p>
+
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Create a new recollection workflow for this
+                    patient.
+                  </p>
+                </div>
               </label>
 
-              <div className="flex justify-end gap-3">
+              <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
                 <button
                   onClick={() => setShowRejectForm(false)}
-                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600"
+                  className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600"
                 >
                   Cancel
                 </button>
@@ -1170,52 +1404,61 @@ export default function LabOrderDetailsPage() {
                 <button
                   onClick={handleReject}
                   disabled={actionLoading}
-                  className="rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
                 >
+                  {actionLoading && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+
                   Confirm Rejection
                 </button>
               </div>
             </div>
-          </div>
+          </section>
         )}
 
-        {/* REPEAT TEST FORM */}
+        {/* ===================================================
+            REPEAT FORM
+        ==================================================== */}
 
         {showRepeatForm && (
-          <div className="mb-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-100 px-6 py-5">
-              <h2 className="font-bold text-[#08345a]">
-                Repeat Test
-              </h2>
+          <section className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-start gap-3 border-b border-slate-100 bg-slate-50 px-5 py-5 sm:px-6">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#2e7fc1]">
+                <RotateCcw className="h-5 w-5" />
+              </div>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Document the reason for repeating this analysis.
-              </p>
+              <div>
+                <h2 className="font-bold text-[#08345a]">
+                  Repeat Test
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Document why this analysis needs to be
+                  repeated.
+                </p>
+              </div>
             </div>
 
-            <div className="space-y-4 p-6">
-              <input
+            <div className="space-y-5 p-5 sm:p-6">
+              <FormInput
+                label="Reason for Repeat"
                 value={repeatReason}
-                onChange={(event) =>
-                  setRepeatReason(event.target.value)
-                }
-                placeholder="Reason for repeat test"
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-[#2e7fc1] focus:ring-2 focus:ring-blue-100"
+                placeholder="e.g. Analyzer error, quality control issue..."
+                onChange={setRepeatReason}
               />
 
-              <input
+              <FormInput
+                label="Parameters to Repeat"
                 value={repeatParameters}
-                onChange={(event) =>
-                  setRepeatParameters(event.target.value)
-                }
-                placeholder="Parameters to repeat (separate with commas)"
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-[#2e7fc1] focus:ring-2 focus:ring-blue-100"
+                placeholder="Separate multiple parameters with commas"
+                onChange={setRepeatParameters}
               />
 
-              <div className="flex justify-end gap-3">
+              <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
                 <button
                   onClick={() => setShowRepeatForm(false)}
-                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600"
+                  className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600"
                 >
                   Cancel
                 </button>
@@ -1223,73 +1466,87 @@ export default function LabOrderDetailsPage() {
                 <button
                   onClick={handleRepeatTest}
                   disabled={actionLoading}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#08345a] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#08345a] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#062946] disabled:opacity-60"
                 >
-                  <RotateCcw className="h-4 w-4" />
+                  {actionLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-4 w-4" />
+                  )}
+
                   Start Repeat
                 </button>
               </div>
             </div>
-          </div>
+          </section>
         )}
 
-        {/* MAIN CONTENT */}
+        {/* ===================================================
+            MAIN GRID
+        ==================================================== */}
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div>
-            {/* TABS */}
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_350px]">
+          <main className="min-w-0">
+            {/* =================================================
+                TABS
+            ================================================= */}
 
-            <div className="mb-6 flex gap-1 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm">
-              {[
-                {
-                  id: 'overview',
-                  label: 'Overview',
-                },
-                {
-                  id: 'results',
-                  label: 'Results',
-                },
-                {
-                  id: 'workflow',
-                  label: 'Workflow History',
-                },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() =>
-                    setActiveTab(
-                      tab.id as
-                        | 'overview'
-                        | 'results'
-                        | 'workflow'
-                    )
-                  }
-                  className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
-                    activeTab === tab.id
-                      ? 'bg-[#08345a] text-white shadow-sm'
-                      : 'text-slate-500 hover:bg-slate-50 hover:text-[#08345a]'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+            <div className="mb-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
+              <div className="flex min-w-max gap-1">
+                {tabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                        isActive
+                          ? 'bg-[#08345a] text-white shadow-sm'
+                          : 'text-slate-500 hover:bg-slate-50 hover:text-[#08345a]'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+
+                      {tab.label}
+
+                      {typeof tab.count === 'number' &&
+                        tab.count > 0 && (
+                          <span
+                            className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold ${
+                              isActive
+                                ? 'bg-white/20 text-white'
+                                : 'bg-slate-100 text-slate-500'
+                            }`}
+                          >
+                            {tab.count}
+                          </span>
+                        )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* OVERVIEW */}
+            {/* =================================================
+                OVERVIEW TAB
+            ================================================= */}
 
             {activeTab === 'overview' && (
               <div className="space-y-6">
-                <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                  <div className="border-b border-slate-100 px-6 py-5">
-                    <h2 className="font-bold text-[#08345a]">
-                      Test Information
-                    </h2>
-                  </div>
+                {/* Test Information */}
 
-                  <div className="grid gap-6 p-6 sm:grid-cols-2 lg:grid-cols-3">
+                <SectionCard
+                  icon={FlaskConical}
+                  title="Test Information"
+                  subtitle="Core details for this laboratory investigation"
+                >
+                  <div className="grid gap-x-6 gap-y-7 sm:grid-cols-2 lg:grid-cols-3">
                     <InfoItem
                       label="Test Name"
                       value={order.testName}
+                      prominent
                     />
 
                     <InfoItem
@@ -1327,19 +1584,20 @@ export default function LabOrderDetailsPage() {
                       }
                     />
                   </div>
-                </section>
+                </SectionCard>
 
-                <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                  <div className="border-b border-slate-100 px-6 py-5">
-                    <h2 className="font-bold text-[#08345a]">
-                      Patient & Request Information
-                    </h2>
-                  </div>
+                {/* Patient */}
 
-                  <div className="grid gap-6 p-6 sm:grid-cols-2">
+                <SectionCard
+                  icon={User}
+                  title="Patient & Request"
+                  subtitle="Patient identification and requesting clinician"
+                >
+                  <div className="grid gap-x-6 gap-y-7 sm:grid-cols-2">
                     <InfoItem
                       label="Patient"
                       value={patientName}
+                      prominent
                     />
 
                     <InfoItem
@@ -1353,20 +1611,34 @@ export default function LabOrderDetailsPage() {
                     />
 
                     <InfoItem
-                      label="Created"
+                      label="Order Created"
                       value={formatDate(order.createdAt)}
                     />
-                  </div>
-                </section>
 
-                <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                  <div className="border-b border-slate-100 px-6 py-5">
-                    <h2 className="font-bold text-[#08345a]">
-                      Specimen Routing
-                    </h2>
-                  </div>
+                    <InfoItem
+                      label="Phlebotomist"
+                      value={getPersonName(
+                        order.phlebotomistId
+                      )}
+                    />
 
-                  <div className="grid gap-6 p-6 sm:grid-cols-2">
+                    <InfoItem
+                      label="Laboratory Technician"
+                      value={getPersonName(
+                        order.labTechnicianId
+                      )}
+                    />
+                  </div>
+                </SectionCard>
+
+                {/* Routing */}
+
+                <SectionCard
+                  icon={PackageCheck}
+                  title="Specimen Routing"
+                  subtitle="Current routing and laboratory location information"
+                >
+                  <div className="grid gap-x-6 gap-y-7 sm:grid-cols-2">
                     <InfoItem
                       label="Department"
                       value={
@@ -1402,74 +1674,103 @@ export default function LabOrderDetailsPage() {
                         order.sampleRouting?.routedAt
                       )}
                     />
+
+                    <InfoItem
+                      label="Received At"
+                      value={formatDate(
+                        order.sampleRouting?.receivedAt
+                      )}
+                    />
+
+                    <InfoItem
+                      label="Last Updated"
+                      value={formatDate(order.updatedAt)}
+                    />
                   </div>
-                </section>
+                </SectionCard>
+
+                {/* Notes */}
 
                 {order.notes && (
-                  <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                    <div className="border-b border-slate-100 px-6 py-5">
-                      <h2 className="font-bold text-[#08345a]">
-                        Notes
-                      </h2>
-                    </div>
-
-                    <div className="p-6">
-                      <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                  <SectionCard
+                    icon={FileText}
+                    title="Clinical Notes"
+                    subtitle="Additional instructions or information"
+                  >
+                    <div className="rounded-xl bg-slate-50 p-4">
+                      <p className="whitespace-pre-wrap text-sm leading-7 text-slate-600">
                         {order.notes}
                       </p>
                     </div>
-                  </section>
+                  </SectionCard>
                 )}
               </div>
             )}
 
-            {/* RESULTS */}
+            {/* =================================================
+                RESULTS TAB
+            ================================================= */}
 
             {activeTab === 'results' && (
               <div className="space-y-6">
                 <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                  <div className="flex flex-col justify-between gap-4 border-b border-slate-100 px-6 py-5 sm:flex-row sm:items-center">
-                    <div>
-                      <h2 className="font-bold text-[#08345a]">
-                        Laboratory Results
-                      </h2>
+                  <div className="flex flex-col justify-between gap-4 border-b border-slate-100 px-5 py-5 sm:flex-row sm:items-center sm:px-6">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-[#2e7fc1]">
+                        <Beaker className="h-5 w-5" />
+                      </div>
 
-                      <p className="mt-1 text-sm text-slate-500">
-                        Version {order.version || 1} •{' '}
-                        {order.results?.length || 0} parameter(s)
-                      </p>
+                      <div>
+                        <h2 className="font-bold text-[#08345a]">
+                          Laboratory Results
+                        </h2>
+
+                        <p className="mt-1 text-sm text-slate-500">
+                          Version {order.version || 1} ·{' '}
+                          {order.results?.length || 0}{' '}
+                          parameter
+                          {order.results?.length === 1
+                            ? ''
+                            : 's'}
+                        </p>
+                      </div>
                     </div>
 
-                    {order.status === 'COMPLETED' && (
-                      <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
+                    {order.status === 'COMPLETED' ? (
+                      <span className="inline-flex items-center gap-2 self-start rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 sm:self-auto">
                         <CheckCircle2 className="h-3.5 w-3.5" />
-                        Final Results
+                        FINAL RESULTS
                       </span>
-                    )}
+                    ) : order.results?.length ? (
+                      <span className="inline-flex items-center gap-2 self-start rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 sm:self-auto">
+                        <Clock3 className="h-3.5 w-3.5" />
+                        PENDING RELEASE
+                      </span>
+                    ) : null}
                   </div>
 
                   {order.results?.length ? (
                     <div className="overflow-x-auto">
-                      <table className="w-full min-w-[700px] text-left">
-                        <thead className="bg-slate-50">
-                          <tr className="text-xs uppercase tracking-wide text-slate-500">
-                            <th className="px-6 py-4 font-semibold">
+                      <table className="w-full min-w-[760px] text-left">
+                        <thead className="border-b border-slate-100 bg-slate-50">
+                          <tr className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                            <th className="px-6 py-4">
                               Parameter
                             </th>
 
-                            <th className="px-6 py-4 font-semibold">
+                            <th className="px-6 py-4">
                               Result
                             </th>
 
-                            <th className="px-6 py-4 font-semibold">
+                            <th className="px-6 py-4">
                               Unit
                             </th>
 
-                            <th className="px-6 py-4 font-semibold">
+                            <th className="px-6 py-4">
                               Reference Range
                             </th>
 
-                            <th className="px-6 py-4 font-semibold">
+                            <th className="px-6 py-4">
                               Flag
                             </th>
                           </tr>
@@ -1478,8 +1779,11 @@ export default function LabOrderDetailsPage() {
                         <tbody className="divide-y divide-slate-100">
                           {order.results.map(
                             (result, index) => (
-                              <tr key={`${result.parameterName}-${index}`}>
-                                <td className="px-6 py-4 text-sm font-semibold text-[#08345a]">
+                              <tr
+                                key={`${result.parameterName}-${index}`}
+                                className="transition hover:bg-slate-50/70"
+                              >
+                                <td className="px-6 py-4 text-sm font-bold text-[#08345a]">
                                   {result.parameterName}
                                 </td>
 
@@ -1499,7 +1803,9 @@ export default function LabOrderDetailsPage() {
 
                                 <td className="px-6 py-4">
                                   <ResultFlagBadge
-                                    flag={result.flag || 'NORMAL'}
+                                    flag={
+                                      result.flag || 'NORMAL'
+                                    }
                                   />
                                 </td>
                               </tr>
@@ -1510,18 +1816,29 @@ export default function LabOrderDetailsPage() {
                     </div>
                   ) : (
                     <EmptyState
-                      icon={FileText}
+                      icon={Beaker}
                       title="No Results Recorded"
                       description="Laboratory results will appear here once testing has been completed."
                     />
                   )}
                 </section>
 
-                <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                  <div className="border-b border-slate-100 px-6 py-5">
-                    <h2 className="font-bold text-[#08345a]">
-                      Result Authorization History
-                    </h2>
+                <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-5 sm:px-6">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                      <ShieldCheck className="h-5 w-5" />
+                    </div>
+
+                    <div>
+                      <h2 className="font-bold text-[#08345a]">
+                        Authorization History
+                      </h2>
+
+                      <p className="mt-1 text-sm text-slate-500">
+                        Verification and result authorization
+                        records
+                      </p>
+                    </div>
                   </div>
 
                   {order.authorizationHistory?.length ? (
@@ -1530,29 +1847,35 @@ export default function LabOrderDetailsPage() {
                         (authorization, index) => (
                           <div
                             key={index}
-                            className="flex items-start justify-between gap-4 px-6 py-5"
+                            className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6"
                           >
-                            <div>
-                              <p className="text-sm font-semibold text-[#08345a]">
-                                {formatStatus(
-                                  authorization.level
-                                )}
-                              </p>
+                            <div className="flex gap-3">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                                <CheckCircle2 className="h-4 w-4" />
+                              </div>
 
-                              <p className="mt-1 text-sm text-slate-500">
-                                {getPersonName(
-                                  authorization.authorizedBy
-                                )}
-                              </p>
-
-                              {authorization.notes && (
-                                <p className="mt-2 text-sm text-slate-500">
-                                  {authorization.notes}
+                              <div>
+                                <p className="text-sm font-bold text-[#08345a]">
+                                  {formatStatus(
+                                    authorization.level
+                                  )}
                                 </p>
-                              )}
+
+                                <p className="mt-1 text-sm text-slate-500">
+                                  {getPersonName(
+                                    authorization.authorizedBy
+                                  )}
+                                </p>
+
+                                {authorization.notes && (
+                                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                                    {authorization.notes}
+                                  </p>
+                                )}
+                              </div>
                             </div>
 
-                            <span className="whitespace-nowrap text-xs text-slate-400">
+                            <span className="pl-12 text-xs text-slate-400 sm:pl-0">
                               {formatDate(
                                 authorization.authorizedAt
                               )}
@@ -1572,104 +1895,188 @@ export default function LabOrderDetailsPage() {
               </div>
             )}
 
-            {/* WORKFLOW */}
+            {/* =================================================
+                WORKFLOW TAB
+            ================================================= */}
 
             {activeTab === 'workflow' && (
-              <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-100 px-6 py-5">
-                  <h2 className="font-bold text-[#08345a]">
-                    Complete Chain of Custody
-                  </h2>
+              <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-5 sm:px-6">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-[#2e7fc1]">
+                    <Clock3 className="h-5 w-5" />
+                  </div>
 
-                  <p className="mt-1 text-sm text-slate-500">
-                    Every important action performed on this specimen.
-                  </p>
+                  <div>
+                    <h2 className="font-bold text-[#08345a]">
+                      Complete Chain of Custody
+                    </h2>
+
+                    <p className="mt-1 text-sm text-slate-500">
+                      A chronological record of every important
+                      specimen event.
+                    </p>
+                  </div>
                 </div>
 
                 {order.chainOfCustody?.length ? (
                   <div className="divide-y divide-slate-100">
-                    {order.chainOfCustody.map((item, index) => (
-                      <div
-                        key={`${item.action}-${index}`}
-                        className="flex gap-4 px-6 py-5"
-                      >
-                        <div className="flex flex-col items-center">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[#2e7fc1]">
-                            <Clock3 className="h-4 w-4" />
-                          </div>
+                    {order.chainOfCustody.map(
+                      (item, index) => (
+                        <div
+                          key={`${item.action}-${index}`}
+                          className="flex gap-4 px-5 py-5 sm:px-6"
+                        >
+                          <div className="flex flex-col items-center">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[#2e7fc1] ring-4 ring-blue-50/50">
+                              <Clock3 className="h-4 w-4" />
+                            </div>
 
-                          {index <
-                            order.chainOfCustody.length - 1 && (
-                            <div className="mt-2 h-full w-px bg-slate-100" />
-                          )}
-                        </div>
-
-                        <div className="min-w-0 flex-1 pb-3">
-                          <div className="flex flex-col justify-between gap-2 sm:flex-row">
-                            <p className="font-semibold text-[#08345a]">
-                              {formatStatus(item.action)}
-                            </p>
-
-                            <span className="text-xs text-slate-400">
-                              {formatDate(item.timestamp)}
-                            </span>
-                          </div>
-
-                          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-500">
-                            {item.performedBy && (
-                              <span className="flex items-center gap-1.5">
-                                <User className="h-4 w-4" />
-                                {getPersonName(
-                                  item.performedBy
-                                )}
-                              </span>
-                            )}
-
-                            {item.location && (
-                              <span className="flex items-center gap-1.5">
-                                <MapPin className="h-4 w-4" />
-                                {item.location}
-                              </span>
+                            {index <
+                              order.chainOfCustody.length -
+                                1 && (
+                              <div className="mt-2 min-h-8 flex-1 w-px bg-slate-200" />
                             )}
                           </div>
 
-                          {item.notes && (
-                            <p className="mt-3 text-sm leading-6 text-slate-500">
-                              {item.notes}
-                            </p>
-                          )}
+                          <div className="min-w-0 flex-1 pb-2">
+                            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                              <p className="font-bold text-[#08345a]">
+                                {formatStatus(item.action)}
+                              </p>
+
+                              <span className="text-xs text-slate-400">
+                                {formatDate(item.timestamp)}
+                              </span>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-500">
+                              {item.performedBy && (
+                                <span className="inline-flex items-center gap-1.5">
+                                  <User className="h-4 w-4 text-slate-400" />
+                                  {getPersonName(
+                                    item.performedBy
+                                  )}
+                                </span>
+                              )}
+
+                              {item.location && (
+                                <span className="inline-flex items-center gap-1.5">
+                                  <MapPin className="h-4 w-4 text-slate-400" />
+                                  {item.location}
+                                </span>
+                              )}
+                            </div>
+
+                            {item.notes && (
+                              <div className="mt-3 rounded-xl bg-slate-50 px-4 py-3">
+                                <p className="text-sm leading-6 text-slate-600">
+                                  {item.notes}
+                                </p>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    )}
                   </div>
                 ) : (
                   <EmptyState
                     icon={Clock3}
                     title="No Workflow History"
-                    description="Chain of custody events will appear here."
+                    description="Chain of custody events will appear here as the specimen progresses."
                   />
                 )}
               </section>
             )}
-          </div>
+          </main>
 
-          {/* RIGHT SIDEBAR */}
+          {/* ===================================================
+              SIDEBAR
+          =================================================== */}
 
           <aside className="space-y-6">
-            {/* WORKFLOW PROGRESS */}
+            {/* Patient Snapshot */}
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="mb-6">
+            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-100 px-5 py-4">
                 <h2 className="font-bold text-[#08345a]">
-                  Workflow Progress
+                  Patient Snapshot
                 </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Current laboratory status
-                </p>
               </div>
 
-              <div className="space-y-1">
+              <div className="p-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#08345a] text-sm font-bold text-white">
+                    {patientName !== '—'
+                      ? patientName.charAt(0).toUpperCase()
+                      : <User className="h-5 w-5" />}
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-[#08345a]">
+                      {patientName}
+                    </p>
+
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      MRN:{' '}
+                      {order.patientId?.mrn || '—'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid grid-cols-2 gap-3 border-t border-slate-100 pt-5">
+                  <SidebarStat
+                    label="Sample"
+                    value={order.sampleType}
+                  />
+
+                  <SidebarStat
+                    label="Priority"
+                    value={order.priority}
+                  />
+
+                  <SidebarStat
+                    label="Category"
+                    value={formatStatus(order.testCategory)}
+                  />
+
+                  <SidebarStat
+                    label="Results"
+                    value={`${order.results?.length || 0}`}
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* Workflow Progress */}
+
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="font-bold text-[#08345a]">
+                    Workflow Progress
+                  </h2>
+
+                  <p className="mt-1 text-sm text-slate-500">
+                    Specimen processing status
+                  </p>
+                </div>
+
+                <span className="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-[#2e7fc1]">
+                  {progressPercentage}%
+                </span>
+              </div>
+
+              <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-[#2e7fc1] transition-all duration-500"
+                  style={{
+                    width: `${progressPercentage}%`,
+                  }}
+                />
+              </div>
+
+              <div className="mt-6 space-y-1">
                 {workflowSteps.map((step, index) => {
                   const Icon = step.icon;
 
@@ -1680,7 +2087,7 @@ export default function LabOrderDetailsPage() {
                     >
                       <div className="flex flex-col items-center">
                         <div
-                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition ${
                             step.complete
                               ? 'bg-emerald-500 text-white'
                               : step.active
@@ -1689,15 +2096,16 @@ export default function LabOrderDetailsPage() {
                           }`}
                         >
                           {step.complete ? (
-                            <CheckCircle2 className="h-4 w-4" />
+                            <Check className="h-4 w-4" />
                           ) : (
                             <Icon className="h-4 w-4" />
                           )}
                         </div>
 
-                        {index < workflowSteps.length - 1 && (
+                        {index <
+                          workflowSteps.length - 1 && (
                           <div
-                            className={`my-1 h-8 w-px ${
+                            className={`my-1 h-7 w-px ${
                               step.complete
                                 ? 'bg-emerald-300'
                                 : 'bg-slate-200'
@@ -1706,7 +2114,7 @@ export default function LabOrderDetailsPage() {
                         )}
                       </div>
 
-                      <div className="pb-5">
+                      <div className="min-w-0 pb-5">
                         <p
                           className={`text-sm font-semibold ${
                             step.active || step.complete
@@ -1725,12 +2133,14 @@ export default function LabOrderDetailsPage() {
                   );
                 })}
               </div>
-            </div>
+            </section>
 
-            {/* SAMPLE TIMELINE */}
+            {/* Timeline */}
 
-            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-100 px-5 py-4">
+            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
+                <Clock3 className="h-4 w-4 text-[#2e7fc1]" />
+
                 <h2 className="font-bold text-[#08345a]">
                   Sample Timeline
                 </h2>
@@ -1766,13 +2176,19 @@ export default function LabOrderDetailsPage() {
                   value={formatDate(order.completedAt)}
                 />
               </div>
-            </div>
+            </section>
 
-            {/* QR */}
+            {/* QR / Barcode */}
 
             {(order.qrCodeUrl || order.barcodeUrl) && (
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-sm">
-                <h2 className="font-bold text-[#08345a]">
+              <section className="rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-sm">
+                <div className="flex justify-center">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-[#2e7fc1]">
+                    <ScanLine className="h-5 w-5" />
+                  </div>
+                </div>
+
+                <h2 className="mt-3 font-bold text-[#08345a]">
                   Specimen Identification
                 </h2>
 
@@ -1780,47 +2196,79 @@ export default function LabOrderDetailsPage() {
                   Scan to identify this specimen
                 </p>
 
-                <div className="mx-auto mt-5 flex h-40 w-40 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-white p-3">
+                <div className="mx-auto mt-5 flex h-40 w-40 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white p-3">
                   <img
                     src={
                       order.qrCodeUrl ||
                       order.barcodeUrl ||
                       ''
                     }
-                    alt="Laboratory specimen QR code"
+                    alt="Laboratory specimen identification code"
                     className="h-full w-full object-contain"
                   />
                 </div>
 
-                <p className="mt-3 break-all font-mono text-xs font-semibold text-slate-600">
+                <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 font-mono text-xs font-bold text-slate-600">
                   {order.accessionNumber}
                 </p>
-              </div>
+              </section>
             )}
 
-            {/* REJECTION INFO */}
+            {/* Rejection Information */}
 
             {order.rejectionInfo && (
-              <div className="rounded-2xl border border-red-100 bg-red-50 p-5">
+              <section className="rounded-2xl border border-red-100 bg-red-50 p-5">
                 <div className="flex items-center gap-2">
-                  <XCircle className="h-5 w-5 text-red-500" />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-100">
+                    <XCircle className="h-4 w-4 text-red-600" />
+                  </div>
 
-                  <h2 className="font-bold text-red-800">
-                    Specimen Rejected
-                  </h2>
+                  <div>
+                    <h2 className="text-sm font-bold text-red-800">
+                      Specimen Rejected
+                    </h2>
+
+                    <p className="text-xs text-red-600">
+                      Processing exception recorded
+                    </p>
+                  </div>
                 </div>
 
-                <p className="mt-3 text-sm leading-6 text-red-700">
-                  {order.rejectionInfo.reason}
-                </p>
+                {order.rejectionInfo.reason && (
+                  <div className="mt-4 rounded-xl bg-white/60 p-3">
+                    <p className="text-sm leading-6 text-red-700">
+                      {order.rejectionInfo.reason}
+                    </p>
+                  </div>
+                )}
 
-                <div className="mt-4 border-t border-red-100 pt-4 text-xs text-red-600">
-                  Quality:{' '}
-                  {formatStatus(
-                    order.rejectionInfo.quality
-                  )}
+                <div className="mt-4 space-y-2 border-t border-red-100 pt-4 text-xs">
+                  <div className="flex justify-between gap-3">
+                    <span className="text-red-500">
+                      Quality
+                    </span>
+
+                    <span className="font-bold text-red-700">
+                      {formatStatus(
+                        order.rejectionInfo.quality
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between gap-3">
+                    <span className="text-red-500">
+                      Recollection
+                    </span>
+
+                    <span className="font-bold text-red-700">
+                      {order.rejectionInfo
+                        .recollectionRequested
+                        ? 'Requested'
+                        : 'Not requested'}
+                    </span>
+                  </div>
                 </div>
-              </div>
+              </section>
             )}
           </aside>
         </div>
@@ -1833,7 +2281,124 @@ export default function LabOrderDetailsPage() {
    SMALL COMPONENTS
 ========================================================= */
 
+function ActionButton({
+  children,
+  icon: Icon,
+  onClick,
+  disabled,
+  loading,
+  variant = 'primary',
+}: {
+  children: React.ReactNode;
+  icon: ElementType;
+  onClick: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  variant?:
+    | 'primary'
+    | 'blue'
+    | 'secondary'
+    | 'orange'
+    | 'success'
+    | 'danger-outline';
+}) {
+  const styles = {
+    primary:
+      'bg-[#08345a] text-white hover:bg-[#062946]',
+    blue:
+      'bg-[#2e7fc1] text-white hover:bg-[#246ca6]',
+    secondary:
+      'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+    orange:
+      'bg-orange-500 text-white hover:bg-orange-600',
+    success:
+      'bg-emerald-600 text-white hover:bg-emerald-700',
+    'danger-outline':
+      'border border-red-200 bg-red-50 text-red-600 hover:bg-red-100',
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${styles[variant]}`}
+    >
+      {loading ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <Icon className="h-4 w-4" />
+      )}
+
+      {children}
+    </button>
+  );
+}
+
+function SectionCard({
+  icon: Icon,
+  title,
+  subtitle,
+  children,
+}: {
+  icon: ElementType;
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-5 sm:px-6">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#2e7fc1]">
+          <Icon className="h-5 w-5" />
+        </div>
+
+        <div>
+          <h2 className="font-bold text-[#08345a]">
+            {title}
+          </h2>
+
+          {subtitle && (
+            <p className="mt-1 text-sm text-slate-500">
+              {subtitle}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="p-5 sm:p-6">{children}</div>
+    </section>
+  );
+}
+
 function InfoItem({
+  label,
+  value,
+  prominent = false,
+}: {
+  label: string;
+  value: string;
+  prominent?: boolean;
+}) {
+  return (
+    <div>
+      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+        {label}
+      </p>
+
+      <p
+        className={`mt-2 break-words ${
+          prominent
+            ? 'text-[15px] font-bold text-[#08345a]'
+            : 'text-sm font-semibold text-slate-700'
+        }`}
+      >
+        {value || '—'}
+      </p>
+    </div>
+  );
+}
+
+function SidebarStat({
   label,
   value,
 }: {
@@ -1841,14 +2406,41 @@ function InfoItem({
   value: string;
 }) {
   return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+    <div className="min-w-0 rounded-xl bg-slate-50 p-3">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
         {label}
       </p>
 
-      <p className="mt-2 text-sm font-semibold text-slate-700">
-        {value}
+      <p className="mt-1 truncate text-xs font-bold text-[#08345a]">
+        {value || '—'}
       </p>
+    </div>
+  );
+}
+
+function FormInput({
+  label,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-xs font-bold text-slate-500">
+        {label}
+      </label>
+
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2e7fc1] focus:ring-4 focus:ring-blue-50"
+      />
     </div>
   );
 }
@@ -1866,7 +2458,7 @@ function TimelineItem({
         {label}
       </span>
 
-      <span className="text-right text-xs font-semibold text-slate-700">
+      <span className="max-w-[150px] text-right text-xs font-semibold leading-5 text-slate-700">
         {value}
       </span>
     </div>
@@ -1878,13 +2470,13 @@ function EmptyState({
   title,
   description,
 }: {
-  icon: React.ElementType;
+  icon: ElementType;
   title: string;
   description: string;
 }) {
   return (
-    <div className="flex flex-col items-center px-6 py-14 text-center">
-      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-slate-400">
+    <div className="flex flex-col items-center px-6 py-16 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 text-slate-400">
         <Icon className="h-6 w-6" />
       </div>
 
@@ -1907,29 +2499,30 @@ function ResultFlagBadge({
   const normalized = flag.toUpperCase();
 
   let classes =
-    'bg-slate-100 text-slate-600';
+    'border-slate-200 bg-slate-100 text-slate-600';
 
   if (
     normalized === 'CRITICAL' ||
     normalized === 'CRITICALLY_HIGH' ||
     normalized === 'CRITICALLY_LOW'
   ) {
-    classes = 'bg-red-50 text-red-700';
+    classes =
+      'border-red-200 bg-red-50 text-red-700';
   } else if (
     normalized === 'ABNORMAL' ||
     normalized === 'HIGH' ||
     normalized === 'LOW'
   ) {
-    classes = 'bg-amber-50 text-amber-700';
-  } else if (
-    normalized === 'NORMAL'
-  ) {
-    classes = 'bg-emerald-50 text-emerald-700';
+    classes =
+      'border-amber-200 bg-amber-50 text-amber-700';
+  } else if (normalized === 'NORMAL') {
+    classes =
+      'border-emerald-200 bg-emerald-50 text-emerald-700';
   }
 
   return (
     <span
-      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${classes}`}
+      className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${classes}`}
     >
       {formatStatus(flag)}
     </span>
