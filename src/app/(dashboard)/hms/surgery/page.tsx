@@ -191,6 +191,63 @@ function getStaffName(person?: Staff | null) {
     : 'Unnamed Staff';
 }
 
+function normalizeStaffId(value: unknown): string | undefined {
+  if (!value) return undefined;
+  if (typeof value === 'string') return value.trim() || undefined;
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if (typeof record.$oid === 'string') return record.$oid;
+    if (typeof record._id === 'string') return record._id;
+    if (typeof record.id === 'string') return record.id;
+  }
+  return undefined;
+}
+
+function normalizeStaffRecord(raw: any): Staff | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const source = raw.user || raw.account || raw.profile || raw;
+  const id = normalizeStaffId(raw._id) || normalizeStaffId(raw.id) || normalizeStaffId(source._id) || normalizeStaffId(source.id);
+  if (!id) return null;
+  return {
+    ...raw,
+    _id: id,
+    firstName: raw.firstName ?? source.firstName ?? source.givenName ?? '',
+    lastName: raw.lastName ?? source.lastName ?? source.familyName ?? '',
+    role: raw.role ?? source.role ?? source.staffRole ?? source.jobRole ?? '',
+    department: raw.department ?? source.department ?? '',
+    isActive: raw.isActive ?? source.isActive ?? true,
+  };
+}
+
+function extractStaffRows(json: any): any[] {
+  const data = json?.data ?? json;
+  const rows = data?.staff ?? data?.users ?? data?.accounts ?? data?.items ?? data?.results ?? data?.records ?? data;
+  return Array.isArray(rows) ? rows : [];
+}
+
+function normalizeRole(value?: string): string {
+  return String(value || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+}
+
+function getAllowedSurgicalRoles(person?: Staff | null): SurgicalRole[] {
+  const role = normalizeRole(person?.role);
+  const department = normalizeRole(person?.department);
+  const source = `${role} ${department}`;
+  if (role.includes('ANESTH') || role.includes('ANAESTH')) return [SurgicalRole.ANAESTHETIST];
+  if (role.includes('NURSE') || source.includes('NURSING')) return [SurgicalRole.SCRUB_NURSE, SurgicalRole.CIRCULATING_NURSE];
+  if (role.includes('TECHNICIAN') || role.includes('TECHNOLOGIST') || source.includes('THEATRE') || source.includes('THEATER')) return [SurgicalRole.THEATRE_TECHNICIAN];
+  if (role.includes('SURGEON') || role === 'DOCTOR' || role === 'PHYSICIAN' || role.includes('MEDICAL_DOCTOR')) return [SurgicalRole.PRIMARY_SURGEON, SurgicalRole.ASSISTING_SURGEON];
+  return [];
+}
+
+function getDefaultSurgicalRole(person: Staff, hasPrimarySurgeon: boolean): SurgicalRole | undefined {
+  const allowed = getAllowedSurgicalRoles(person);
+  if (!allowed.length) return undefined;
+  if (!hasPrimarySurgeon && allowed.includes(SurgicalRole.PRIMARY_SURGEON)) return SurgicalRole.PRIMARY_SURGEON;
+  if (allowed.includes(SurgicalRole.ASSISTING_SURGEON)) return SurgicalRole.ASSISTING_SURGEON;
+  return allowed[0];
+}
+
 function resolveStaffFromValue(
   value: Staff | string | undefined,
   directory: Record<string, Staff>
@@ -198,7 +255,7 @@ function resolveStaffFromValue(
   if (!value) return undefined;
 
   if (typeof value === 'string') {
-    return directory[value] || undefined;
+    return directory[normalizeStaffId(value) || value] || undefined;
   }
 
   const record = value as Staff & {
@@ -314,13 +371,9 @@ export default function SurgeryPage() {
         throw new Error(json?.message || 'Failed to load staff directory.');
       }
 
-      const rows = Array.isArray(json?.data)
-        ? json.data
-        : Array.isArray(json)
-          ? json
-          : [];
-
-      const directory = rows.reduce((acc: Record<string, Staff>, person: Staff) => {
+      const rows = extractStaffRows(json);
+      const directory = rows.reduce((acc: Record<string, Staff>, raw: any) => {
+        const person = normalizeStaffRecord(raw);
         if (person?._id) acc[person._id] = person;
         return acc;
       }, {});
@@ -359,8 +412,17 @@ export default function SurgeryPage() {
         throw new Error(json?.message || 'Failed to load staff.');
       }
 
-      const data = json?.data || json;
-      setStaff(Array.isArray(data) ? data : []);
+      const normalized = extractStaffRows(json)
+        .map(normalizeStaffRecord)
+        .filter((person): person is Staff => Boolean(person));
+      setStaff(normalized);
+      setStaffDirectory((current) => {
+        const next = { ...current };
+        for (const person of normalized) {
+          if (person._id) next[person._id] = person;
+        }
+        return next;
+      });
     } catch (error) {
       console.error('Failed to search staff:', error);
       setStaff([]);
@@ -368,10 +430,6 @@ export default function SurgeryPage() {
       setLoadingStaff(false);
     }
   }, []);
-
-  useEffect(() => {
-    fetchStaffDirectory();
-  }, [fetchStaffDirectory]);
 
   useEffect(() => {
     fetchStaffDirectory();
@@ -420,32 +478,24 @@ export default function SurgeryPage() {
   };
 
   const addStaffToTeam = () => {
-    if (!selectedStaff?._id) return;
+    const staffId = normalizeStaffId(selectedStaff?._id);
+    if (!selectedStaff || !staffId) return;
+    if (surgicalTeam.some((member) => member.userId === staffId)) return;
 
-    if (surgicalTeam.some((member) => member.userId === selectedStaff._id)) {
+    const role = getDefaultSurgicalRole(
+      selectedStaff,
+      surgicalTeam.some((member) => member.role === SurgicalRole.PRIMARY_SURGEON)
+    );
+
+    if (!role) {
+      setActionError('This staff member is not eligible for a supported surgical team role. Please select a surgeon, anaesthetist, nurse, or theatre technician.');
       return;
     }
 
-    const role =
-      surgicalTeam.length === 0
-        ? SurgicalRole.PRIMARY_SURGEON
-        : SurgicalRole.ASSISTING_SURGEON;
-
-    setSurgicalTeam((current) => [
-      ...current,
-      {
-        userId: selectedStaff._id!,
-        role,
-      },
-    ]);
-
+    setSurgicalTeam((current) => [...current, { userId: staffId, role }]);
     if (role === SurgicalRole.PRIMARY_SURGEON) {
-      setScheduleForm((prev) => ({
-        ...prev,
-        leadSurgeonId: selectedStaff._id!,
-      }));
+      setScheduleForm((prev) => ({ ...prev, leadSurgeonId: staffId }));
     }
-
     setSelectedStaff(null);
     setStaffSearch('');
   };
@@ -475,40 +525,24 @@ export default function SurgeryPage() {
   };
 
   const updateTeamRole = (userId: string, role: SurgicalRole) => {
+    const person = staff.find((item) => normalizeStaffId(item._id) === userId);
+    const allowed = getAllowedSurgicalRoles(person);
+    if (!person || !allowed.includes(role)) {
+      setActionError(`${getStaffName(person)} cannot be assigned the ${formatLabel(role)} role based on the staff record.`);
+      return;
+    }
+
     setSurgicalTeam((current) => {
-      let next = current;
+      const next = role === SurgicalRole.PRIMARY_SURGEON
+        ? current.map((member) => member.userId === userId
+            ? { ...member, role }
+            : member.role === SurgicalRole.PRIMARY_SURGEON
+              ? { ...member, role: SurgicalRole.ASSISTING_SURGEON }
+              : member)
+        : current.map((member) => member.userId === userId ? { ...member, role } : member);
 
-      if (role === SurgicalRole.PRIMARY_SURGEON) {
-        next = current.map((member) => {
-          if (member.userId === userId) {
-            return {
-              ...member,
-              role: SurgicalRole.PRIMARY_SURGEON,
-            };
-          }
-
-          return member.role === SurgicalRole.PRIMARY_SURGEON
-            ? {
-                ...member,
-                role: SurgicalRole.ASSISTING_SURGEON,
-              }
-            : member;
-        });
-      } else {
-        next = current.map((member) =>
-          member.userId === userId ? { ...member, role } : member
-        );
-      }
-
-      const primary = next.find(
-        (member) => member.role === SurgicalRole.PRIMARY_SURGEON
-      );
-
-      setScheduleForm((prev) => ({
-        ...prev,
-        leadSurgeonId: primary?.userId || '',
-      }));
-
+      const primary = next.find((member) => member.role === SurgicalRole.PRIMARY_SURGEON);
+      setScheduleForm((prev) => ({ ...prev, leadSurgeonId: primary?.userId || '' }));
       return next;
     });
   };
@@ -661,6 +695,18 @@ export default function SurgeryPage() {
 
       if (!surgicalTeam.length) {
         throw new Error('Please add at least one staff member to the surgical team.');
+      }
+
+      const primary = surgicalTeam.find((member) => member.role === SurgicalRole.PRIMARY_SURGEON);
+      if (!primary || primary.userId !== scheduleForm.leadSurgeonId) {
+        throw new Error('The lead surgeon must be assigned as the primary surgeon in the surgical team.');
+      }
+
+      for (const member of surgicalTeam) {
+        const person = staff.find((item) => normalizeStaffId(item._id) === member.userId);
+        if (!person || !getAllowedSurgicalRoles(person).includes(member.role as SurgicalRole)) {
+          throw new Error(`${getStaffName(person)} is not eligible for the selected surgical role. Please correct the team before scheduling.`);
+        }
       }
 
       const payload = {
@@ -1705,15 +1751,10 @@ function ScheduleSurgeryModal({
   removeStaffFromTeam: (userId: string) => void;
   updateTeamRole: (userId: string, role: SurgicalRole) => void;
 }) {
-  const selectedTeamStaff = surgicalTeam
-    .map((member) => staff.find((person) => person._id === member.userId))
-    .filter(Boolean) as Staff[];
-
-  const displayStaff = staff.filter(
-    (person) =>
-      person._id &&
-      !surgicalTeam.some((member) => member.userId === person._id)
-  );
+  const displayStaff = staff.filter((person) => {
+    const id = normalizeStaffId(person._id);
+    return Boolean(id && person.isActive !== false && getAllowedSurgicalRoles(person).length && !surgicalTeam.some((member) => member.userId === id));
+  });
 
   const getPersonName = (person?: Patient | Staff | null) =>
     person
@@ -1877,7 +1918,7 @@ function ScheduleSurgeryModal({
                       key={person._id}
                       onClick={() => setSelectedStaff(person)}
                       className={`w-full text-left px-4 py-3 border-b last:border-b-0 border-slate-100 hover:bg-[#e8f5f3]/60 ${
-                        selectedStaff?._id === person._id
+                        normalizeStaffId(selectedStaff?._id) === normalizeStaffId(person._id)
                           ? 'bg-[#e8f5f3]/60'
                           : ''
                       }`}
@@ -1936,7 +1977,7 @@ function ScheduleSurgeryModal({
               <div className="mt-4 space-y-2">
                 {surgicalTeam.map((member, index) => {
                   const person = staff.find(
-                    (item) => item._id === member.userId
+                    (item) => normalizeStaffId(item._id) === member.userId
                   );
 
                   return (
@@ -1970,7 +2011,7 @@ function ScheduleSurgeryModal({
                           }
                           className="px-3 py-2 text-[10px] font-bold rounded-xl border border-slate-200 bg-white text-slate-600 focus:outline-none focus:border-[#1b7b68]"
                         >
-                          {Object.values(SurgicalRole).map((role) => (
+                          {getAllowedSurgicalRoles(person).map((role) => (
                             <option key={role} value={role}>
                               {role.replaceAll('_', ' ')}
                             </option>
