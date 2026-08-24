@@ -32,6 +32,11 @@ import {
 
 import {
   CreateStaffDTO,
+  CredentialStatus,
+  EmploymentType,
+  IEmergencyContact,
+  IEmployment,
+  IProfessionalRegistration,
   IStaff,
   StaffCategory,
   StaffClassification,
@@ -50,61 +55,65 @@ const GREEN = '#1b7b68';
 /* CONSTANTS                                                                  */
 /* -------------------------------------------------------------------------- */
 
-/**
- * IMPORTANT:
- * These values should match the enum values in your backend Staff model.
- *
- * The old form allowed "fulltime", which your backend explicitly rejected.
- *
- * If your backend enum uses different values, change ONLY these values.
- */
-const EMPLOYMENT_TYPE_OPTIONS = [
-  ['full_time', 'Full Time'],
-  ['part_time', 'Part Time'],
-  ['contract', 'Contract'],
-  ['temporary', 'Temporary'],
-  ['locum', 'Locum'],
-  ['casual', 'Casual'],
+const EMPLOYMENT_TYPE_OPTIONS: [EmploymentType, string][] = [
+  [EmploymentType.FULL_TIME, 'Full Time'],
+  [EmploymentType.PART_TIME, 'Part Time'],
+  [EmploymentType.CONTRACT, 'Contract'],
+  [EmploymentType.TEMPORARY, 'Temporary'],
+  [EmploymentType.LOCUM, 'Locum'],
+  [EmploymentType.INTERN, 'Intern'],
+  [EmploymentType.VOLUNTEER, 'Volunteer'],
 ];
 
-/**
- * Converts old/legacy values into the values expected by the API.
- *
- * This is especially important when editing existing staff records that
- * already contain values such as "fulltime".
- */
+/* -------------------------------------------------------------------------- */
+/* NORMALIZATION HELPERS                                                      */
+/* -------------------------------------------------------------------------- */
+
 function normalizeEmploymentType(
-  value?: string | null
-): string | undefined {
-  if (!value) return undefined;
+  value?: EmploymentType | string | null
+): EmploymentType {
+  if (!value) {
+    return EmploymentType.FULL_TIME;
+  }
+
+  if (
+    Object.values(EmploymentType).includes(
+      value as EmploymentType
+    )
+  ) {
+    return value as EmploymentType;
+  }
 
   const normalized = value
     .trim()
     .toLowerCase()
     .replace(/[\s-]+/g, '_');
 
-  const aliases: Record<string, string> = {
-    fulltime: 'full_time',
-    full_time: 'full_time',
-    'full-time': 'full_time',
+  const aliases: Record<string, EmploymentType> = {
+    fulltime: EmploymentType.FULL_TIME,
+    full_time: EmploymentType.FULL_TIME,
 
-    parttime: 'part_time',
-    part_time: 'part_time',
-    'part-time': 'part_time',
+    parttime: EmploymentType.PART_TIME,
+    part_time: EmploymentType.PART_TIME,
 
-    contract: 'contract',
-    temporary: 'temporary',
-    temp: 'temporary',
-    locum: 'locum',
-    casual: 'casual',
+    contract: EmploymentType.CONTRACT,
+
+    temporary: EmploymentType.TEMPORARY,
+    temp: EmploymentType.TEMPORARY,
+
+    locum: EmploymentType.LOCUM,
+
+    intern: EmploymentType.INTERN,
+
+    volunteer: EmploymentType.VOLUNTEER,
   };
 
-  return aliases[normalized] || normalized;
+  return (
+    aliases[normalized] ||
+    EmploymentType.FULL_TIME
+  );
 }
 
-/**
- * Makes sure an existing staff record always has the required classification.
- */
 function normalizeClassification(
   classification?: StaffClassification | string | null
 ): StaffClassification {
@@ -120,111 +129,217 @@ function normalizeClassification(
   return StaffClassification.GENERAL;
 }
 
-/**
- * Converts the frontend registration object into the structure expected
- * by the backend.
- *
- * Backend error:
- * professionalRegistrations.0.regulatoryBody: Path `regulatoryBody` is required.
- *
- * The old frontend was using `registrationBody`.
- */
 function normalizeProfessionalRegistrations(
-  registrations: any[] | undefined | null
-) {
+  registrations:
+    | IProfessionalRegistration[]
+    | undefined
+    | null
+): IProfessionalRegistration[] {
   if (!registrations?.length) {
     return [];
   }
 
   return registrations
     .filter(Boolean)
-    .map((registration) => ({
-      ...registration,
-
-      regulatoryBody:
-        registration.regulatoryBody ||
-        registration.registrationBody ||
-        '',
-
-      registrationNumber:
-        registration.registrationNumber || '',
-
-      expiryDate:
-        registration.expiryDate || undefined,
-    }));
+    .map((registration): IProfessionalRegistration => {
+      return {
+        regulatoryBody:
+          registration.regulatoryBody || '',
+        registrationNumber:
+          registration.registrationNumber || '',
+        registrationType:
+          registration.registrationType,
+        issueDate:
+          registration.issueDate,
+        expiryDate:
+          registration.expiryDate,
+        status:
+          registration.status ||
+          CredentialStatus.PENDING,
+        verificationDate:
+          registration.verificationDate,
+        verifiedBy:
+          registration.verifiedBy,
+        documentUrl:
+          registration.documentUrl,
+        notes:
+          registration.notes,
+      };
+    });
 }
 
-/**
- * Removes invalid/empty employment type values from the outgoing payload.
- *
- * This prevents an old database value such as "fulltime" from being sent
- * back to Mongoose during an edit.
- */
 function buildEmploymentPayload(
-  employment: any,
+  employment: IEmployment | undefined,
   classification: StaffClassification
-) {
-  const source = employment || {};
+): IEmployment {
+  const source = employment;
 
-  const result: Record<string, any> = {
-    ...source,
+  return {
+    employeeNumber:
+      source?.employeeNumber || undefined,
+
+    employmentType:
+      normalizeEmploymentType(
+        source?.employmentType
+      ),
+
     classification,
+
+    jobTitle:
+      source?.jobTitle || undefined,
+
+    departmentId:
+      source?.departmentId || undefined,
+
+    unitId:
+      source?.unitId || undefined,
+
+    startDate:
+      source?.startDate || undefined,
+
+    endDate:
+      source?.endDate || undefined,
+
+    contractStartDate:
+      source?.contractStartDate ||
+      undefined,
+
+    contractEndDate:
+      source?.contractEndDate ||
+      undefined,
+
+    salary:
+      source?.salary,
+
+    currency:
+      source?.currency || undefined,
+
+    supervisorId:
+      source?.supervisorId || undefined,
+
+    contractDocumentUrl:
+      source?.contractDocumentUrl ||
+      undefined,
   };
+}
 
-  const normalizedEmploymentType =
-    normalizeEmploymentType(
-      source.employmentType
-    );
-
-  if (normalizedEmploymentType) {
-    result.employmentType =
-      normalizedEmploymentType;
-  } else {
-    delete result.employmentType;
+function buildEmergencyContactPayload(
+  emergencyContact:
+    | IEmergencyContact
+    | undefined
+): IEmergencyContact | undefined {
+  if (!emergencyContact) {
+    return undefined;
   }
 
-  return result;
+  const name =
+    emergencyContact.name?.trim() || '';
+
+  const relationship =
+    emergencyContact.relationship?.trim() || '';
+
+  const phone =
+    emergencyContact.phone?.trim() || '';
+
+  if (
+    !name &&
+    !relationship &&
+    !phone &&
+    !emergencyContact.alternatePhone &&
+    !emergencyContact.email &&
+    !emergencyContact.address
+  ) {
+    return undefined;
+  }
+
+  return {
+    name,
+    relationship,
+    phone,
+    alternatePhone:
+      emergencyContact.alternatePhone ||
+      undefined,
+    email:
+      emergencyContact.email ||
+      undefined,
+    address:
+      emergencyContact.address ||
+      undefined,
+  };
 }
+
+/* -------------------------------------------------------------------------- */
+/* EMPTY FORM                                                                 */
+/* -------------------------------------------------------------------------- */
 
 const emptyForm: CreateStaffDTO = {
   firstName: '',
   middleName: '',
   lastName: '',
+
   role: StaffRole.DOCTOR,
+
   category: StaffCategory.CLINICAL,
-  classification: StaffClassification.GENERAL,
+
+  classification:
+    StaffClassification.GENERAL,
+
   specialties: [],
+
   professionalRegistrations: [],
+
   qualifications: [],
+
   certifications: [],
+
   professionalExperience: [],
+
   clinicalPrivileges: [],
+
   employment: {
-    classification: StaffClassification.GENERAL,
+    employmentType:
+      EmploymentType.FULL_TIME,
+
+    classification:
+      StaffClassification.GENERAL,
   },
+
   contact: {},
-  emergencyContact: {},
+
+  emergencyContact: undefined,
+
   trainingRecords: [],
+
   performanceRecords: [],
+
   availability: [],
+
   onCallAssignments: [],
+
   leaveRecords: [],
+
   attendanceRecords: [],
+
   incidents: [],
+
   communications: [],
 };
 
 /* -------------------------------------------------------------------------- */
-/* HELPERS                                                                    */
+/* GENERAL HELPERS                                                            */
 /* -------------------------------------------------------------------------- */
 
 function formatLabel(value?: string) {
-  if (!value) return '—';
+  if (!value) {
+    return '—';
+  }
 
   return value
     .replace(/_/g, ' ')
     .toLowerCase()
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    .replace(/\b\w/g, (letter) =>
+      letter.toUpperCase()
+    );
 }
 
 function getInitials(staff: IStaff) {
@@ -235,24 +350,35 @@ function getInitials(staff: IStaff) {
 
 function getPrimarySpecialty(staff: IStaff) {
   const specialty =
-    staff.specialties?.find((item) => item.isPrimary) ||
+    staff.specialties?.find(
+      (item) => item.isPrimary
+    ) ||
     staff.specialties?.[0];
 
-  if (!specialty) return 'No specialty';
+  if (!specialty) {
+    return 'No specialty';
+  }
 
   return specialty.subSpecialty
     ? `${specialty.specialty} · ${specialty.subSpecialty}`
-    : specialty.specialty || 'No specialty';
+    : specialty.specialty ||
+        'No specialty';
 }
+
+/* -------------------------------------------------------------------------- */
+/* CREDENTIAL STATE                                                           */
+/* -------------------------------------------------------------------------- */
 
 function getCredentialState(staff: IStaff) {
   const dates: string[] = [];
 
-  staff.professionalRegistrations?.forEach((item) => {
-    if (item.expiryDate) {
-      dates.push(item.expiryDate);
+  staff.professionalRegistrations?.forEach(
+    (item) => {
+      if (item.expiryDate) {
+        dates.push(item.expiryDate);
+      }
     }
-  });
+  );
 
   staff.certifications?.forEach((item) => {
     if (item.expiryDate) {
@@ -274,13 +400,30 @@ function getCredentialState(staff: IStaff) {
     };
   }
 
-  const nearest = dates
+  const validDates = dates
     .map((date) => new Date(date))
-    .sort((a, b) => a.getTime() - b.getTime())[0];
+    .filter(
+      (date) => !Number.isNaN(date.getTime())
+    )
+    .sort(
+      (a, b) =>
+        a.getTime() - b.getTime()
+    );
+
+  if (!validDates.length) {
+    return {
+      label: 'No expiry date',
+      className:
+        'bg-slate-50 text-slate-500 border-slate-200',
+    };
+  }
+
+  const nearest = validDates[0];
 
   const now = new Date();
 
   const warningDate = new Date();
+
   warningDate.setDate(
     warningDate.getDate() + 30
   );
@@ -308,17 +451,25 @@ function getCredentialState(staff: IStaff) {
   };
 }
 
+/* -------------------------------------------------------------------------- */
+/* ROLE ICON                                                                  */
+/* -------------------------------------------------------------------------- */
+
 function RoleIcon({
   role,
 }: {
   role: StaffRole;
 }) {
   if (role === StaffRole.DOCTOR) {
-    return <Stethoscope className="w-4 h-4" />;
+    return (
+      <Stethoscope className="w-4 h-4" />
+    );
   }
 
   if (role === StaffRole.NURSE) {
-    return <HeartPulse className="w-4 h-4" />;
+    return (
+      <HeartPulse className="w-4 h-4" />
+    );
   }
 
   if (
@@ -326,10 +477,14 @@ function RoleIcon({
     role === StaffRole.LAB_TECH ||
     role === StaffRole.RADIOLOGY_TECH
   ) {
-    return <FileCheck2 className="w-4 h-4" />;
+    return (
+      <FileCheck2 className="w-4 h-4" />
+    );
   }
 
-  return <UserCheck className="w-4 h-4" />;
+  return (
+    <UserCheck className="w-4 h-4" />
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -343,29 +498,38 @@ export default function StaffPage() {
   const [dashboard, setDashboard] =
     useState<StaffDashboard | null>(null);
 
-  const [loading, setLoading] = useState(true);
-
-  const [dashboardLoading, setDashboardLoading] =
+  const [loading, setLoading] =
     useState(true);
+
+  const [
+    dashboardLoading,
+    setDashboardLoading,
+  ] = useState(true);
 
   const [error, setError] =
     useState<string | null>(null);
 
-  const [search, setSearch] = useState('');
+  const [search, setSearch] =
+    useState('');
 
-  const [role, setRole] = useState<string>('ALL');
+  const [role, setRole] =
+    useState<string>('ALL');
 
   const [category, setCategory] =
     useState<string>('ALL');
 
-  const [classification, setClassification] =
-    useState<string>('ALL');
+  const [
+    classification,
+    setClassification,
+  ] = useState<string>('ALL');
 
   const [status, setStatus] =
     useState<string>('ALL');
 
-  const [expandedStaff, setExpandedStaff] =
-    useState<string | null>(null);
+  const [
+    expandedStaff,
+    setExpandedStaff,
+  ] = useState<string | null>(null);
 
   const [isAddOpen, setIsAddOpen] =
     useState(false);
@@ -373,102 +537,126 @@ export default function StaffPage() {
   const [isEditOpen, setIsEditOpen] =
     useState(false);
 
-  const [editingStaff, setEditingStaff] =
-    useState<IStaff | null>(null);
+  const [
+    editingStaff,
+    setEditingStaff,
+  ] = useState<IStaff | null>(null);
 
   const [form, setForm] =
     useState<CreateStaffDTO>({
       ...emptyForm,
+      employment: {
+        ...emptyForm.employment,
+      },
     });
 
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] =
+    useState(false);
 
   /* ------------------------------------------------------------------------ */
   /* LOAD DASHBOARD                                                           */
   /* ------------------------------------------------------------------------ */
 
-  const loadDashboard = useCallback(async () => {
-    try {
-      setDashboardLoading(true);
+  const loadDashboard =
+    useCallback(async () => {
+      try {
+        setDashboardLoading(true);
 
-      const data =
-        await StaffApiService.getStaffDashboard();
+        const data =
+          await StaffApiService.getStaffDashboard();
 
-      setDashboard(data);
-    } catch {
-      /*
-       * Dashboard endpoint is supplemental.
-       * Staff list should still work if the
-       * dashboard route has not been mounted yet.
-       */
-    } finally {
-      setDashboardLoading(false);
-    }
-  }, []);
+        setDashboard(data);
+      } catch {
+        //
+      } finally {
+        setDashboardLoading(false);
+      }
+    }, []);
 
   /* ------------------------------------------------------------------------ */
   /* LOAD STAFF                                                               */
   /* ------------------------------------------------------------------------ */
 
-  const loadStaff = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const loadStaff =
+    useCallback(async () => {
+      try {
+        setLoading(true);
 
-      const filters: StaffListFilters = {};
+        setError(null);
 
-      if (search.trim()) {
-        filters.search = search.trim();
+        const filters: StaffListFilters = {};
+
+        if (search.trim()) {
+          filters.search =
+            search.trim();
+        }
+
+        if (role !== 'ALL') {
+          filters.role =
+            role as StaffListFilters['role'];
+        }
+
+        if (category !== 'ALL') {
+          filters.category =
+            category as StaffListFilters['category'];
+        }
+
+        if (classification !== 'ALL') {
+          filters.classification =
+            classification as StaffListFilters['classification'];
+        }
+
+        if (status !== 'ALL') {
+          filters.status =
+            status as StaffListFilters['status'];
+        }
+
+        const response =
+          await StaffApiService.getStaff(
+            filters
+          );
+
+        setStaffList(
+          response.data || []
+        );
+      } catch (err: unknown) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Failed to fetch staff members'
+        );
+      } finally {
+        setLoading(false);
       }
+    }, [
+      search,
+      role,
+      category,
+      classification,
+      status,
+    ]);
 
-      if (role !== 'ALL') {
-        filters.role = role;
-      }
-
-      if (category !== 'ALL') {
-        filters.category = category;
-      }
-
-      if (classification !== 'ALL') {
-        filters.classification = classification;
-      }
-
-      if (status !== 'ALL') {
-        filters.status = status;
-      }
-
-      const response =
-        await StaffApiService.getStaff(filters);
-
-      setStaffList(response.data || []);
-    } catch (err: unknown) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to fetch staff members'
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    search,
-    role,
-    category,
-    classification,
-    status,
-  ]);
+  /* ------------------------------------------------------------------------ */
+  /* EFFECTS                                                                  */
+  /* ------------------------------------------------------------------------ */
 
   useEffect(() => {
     const timer = setTimeout(() => {
       loadStaff();
     }, 300);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+    };
   }, [loadStaff]);
 
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
+
+  /* ------------------------------------------------------------------------ */
+  /* REFRESH                                                                  */
+  /* ------------------------------------------------------------------------ */
 
   const refreshAll = async () => {
     await Promise.all([
@@ -484,22 +672,60 @@ export default function StaffPage() {
   const resetForm = () => {
     setForm({
       ...emptyForm,
+
       employment: {
+        employmentType:
+          EmploymentType.FULL_TIME,
+
         classification:
           StaffClassification.GENERAL,
       },
+
+      emergencyContact: undefined,
+
+      specialties: [],
+
+      professionalRegistrations: [],
+
+      qualifications: [],
+
+      certifications: [],
+
+      professionalExperience: [],
+
+      clinicalPrivileges: [],
+
+      trainingRecords: [],
+
+      performanceRecords: [],
+
+      availability: [],
+
+      onCallAssignments: [],
+
+      leaveRecords: [],
+
+      attendanceRecords: [],
+
+      incidents: [],
+
+      communications: [],
     });
   };
 
   const closeModal = () => {
     setIsAddOpen(false);
+
     setIsEditOpen(false);
+
     setEditingStaff(null);
+
     resetForm();
   };
 
   const openAdd = () => {
     resetForm();
+
     setIsAddOpen(true);
   };
 
@@ -514,28 +740,54 @@ export default function StaffPage() {
         staff.professionalRegistrations
       );
 
-    const employment = {
-      ...(staff.employment || {}),
-      classification: staffClassification,
-
-      employmentType:
-        normalizeEmploymentType(
-          staff.employment?.employmentType
-        ),
-    };
+    const employment: IEmployment =
+      buildEmploymentPayload(
+        staff.employment,
+        staffClassification
+      );
 
     setEditingStaff(staff);
 
     setForm({
-      firstName: staff.firstName || '',
-      middleName: staff.middleName || '',
-      lastName: staff.lastName || '',
+      firstName:
+        staff.firstName || '',
+
+      middleName:
+        staff.middleName || '',
+
+      lastName:
+        staff.lastName || '',
+
+      title:
+        staff.title || undefined,
+
+      profilePhotoUrl:
+        staff.profilePhotoUrl ||
+        undefined,
+
+      dateOfBirth:
+        staff.dateOfBirth ||
+        undefined,
+
+      gender:
+        staff.gender || undefined,
 
       role: staff.role,
-      category: staff.category,
-      classification: staffClassification,
 
-      specialties: staff.specialties || [],
+      category: staff.category,
+
+      classification:
+        staffClassification,
+
+      professionalTitle:
+        staff.professionalTitle ||
+        undefined,
+
+      jobTitle:
+        staff.jobTitle || undefined,
+
+      specialties:
+        staff.specialties || [],
 
       professionalRegistrations:
         registrations,
@@ -547,35 +799,43 @@ export default function StaffPage() {
         staff.certifications || [],
 
       professionalExperience:
-        staff.professionalExperience || [],
+        staff.professionalExperience ||
+        [],
 
       clinicalPrivileges:
-        staff.clinicalPrivileges || [],
+        staff.clinicalPrivileges ||
+        [],
 
       employment,
 
-      contact: staff.contact || {},
+      contact:
+        staff.contact || {},
 
       emergencyContact:
-        staff.emergencyContact || {},
+        buildEmergencyContactPayload(
+          staff.emergencyContact
+        ),
 
       trainingRecords:
         staff.trainingRecords || [],
 
       performanceRecords:
-        staff.performanceRecords || [],
+        staff.performanceRecords ||
+        [],
 
       availability:
         staff.availability || [],
 
       onCallAssignments:
-        staff.onCallAssignments || [],
+        staff.onCallAssignments ||
+        [],
 
       leaveRecords:
         staff.leaveRecords || [],
 
       attendanceRecords:
-        staff.attendanceRecords || [],
+        staff.attendanceRecords ||
+        [],
 
       incidents:
         staff.incidents || [],
@@ -588,7 +848,7 @@ export default function StaffPage() {
   };
 
   /* ------------------------------------------------------------------------ */
-  /* CREATE                                                                    */
+  /* CREATE                                                                   */
   /* ------------------------------------------------------------------------ */
 
   const handleCreate = async (
@@ -599,7 +859,7 @@ export default function StaffPage() {
     try {
       setSaving(true);
 
-      const classification =
+      const staffClassification =
         normalizeClassification(
           form.classification
         );
@@ -607,12 +867,18 @@ export default function StaffPage() {
       const payload: CreateStaffDTO = {
         ...form,
 
-        classification,
+        classification:
+          staffClassification,
 
         employment:
           buildEmploymentPayload(
             form.employment,
-            classification
+            staffClassification
+          ),
+
+        emergencyContact:
+          buildEmergencyContactPayload(
+            form.emergencyContact
           ),
 
         professionalRegistrations:
@@ -640,7 +906,7 @@ export default function StaffPage() {
   };
 
   /* ------------------------------------------------------------------------ */
-  /* UPDATE                                                                    */
+  /* UPDATE                                                                   */
   /* ------------------------------------------------------------------------ */
 
   const handleUpdate = async (
@@ -648,41 +914,25 @@ export default function StaffPage() {
   ) => {
     event.preventDefault();
 
-    if (!editingStaff) return;
+    if (!editingStaff) {
+      return;
+    }
 
     try {
       setSaving(true);
 
-      /**
-       * The backend requires classification.
-       *
-       * Always send it explicitly.
-       */
       const staffClassification =
         normalizeClassification(
           form.classification ||
             editingStaff.classification
         );
 
-      /**
-       * Build a clean employment object.
-       *
-       * This prevents:
-       * employment.employmentType = "fulltime"
-       *
-       * from being submitted.
-       */
       const employmentPayload =
         buildEmploymentPayload(
           form.employment,
           staffClassification
         );
 
-      /**
-       * Backend requires regulatoryBody.
-       *
-       * Frontend previously used registrationBody.
-       */
       const registrationPayload =
         normalizeProfessionalRegistrations(
           form.professionalRegistrations
@@ -696,6 +946,11 @@ export default function StaffPage() {
 
         employment:
           employmentPayload,
+
+        emergencyContact:
+          buildEmergencyContactPayload(
+            form.emergencyContact
+          ),
 
         professionalRegistrations:
           registrationPayload,
@@ -721,7 +976,7 @@ export default function StaffPage() {
   };
 
   /* ------------------------------------------------------------------------ */
-  /* STATUS                                                                    */
+  /* STATUS                                                                   */
   /* ------------------------------------------------------------------------ */
 
   const toggleStatus = async (
@@ -755,7 +1010,7 @@ export default function StaffPage() {
   };
 
   /* ------------------------------------------------------------------------ */
-  /* STATS                                                                     */
+  /* LOCAL STATS                                                              */
   /* ------------------------------------------------------------------------ */
 
   const localStats = useMemo(() => {
@@ -765,19 +1020,26 @@ export default function StaffPage() {
 
     return {
       total: staffList.length,
+
       active: active.length,
 
       doctors: active.filter(
         (staff) =>
-          staff.role === StaffRole.DOCTOR
+          staff.role ===
+          StaffRole.DOCTOR
       ).length,
 
       nurses: active.filter(
         (staff) =>
-          staff.role === StaffRole.NURSE
+          staff.role ===
+          StaffRole.NURSE
       ).length,
     };
   }, [staffList]);
+
+  /* ------------------------------------------------------------------------ */
+  /* STATS                                                                    */
+  /* ------------------------------------------------------------------------ */
 
   const stats = dashboard || {
     total: localStats.total,
@@ -818,7 +1080,7 @@ export default function StaffPage() {
   };
 
   /* ------------------------------------------------------------------------ */
-  /* RENDER                                                                    */
+  /* RENDER                                                                   */
   /* ------------------------------------------------------------------------ */
 
   return (
@@ -855,6 +1117,7 @@ export default function StaffPage() {
 
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={refreshAll}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50"
             >
@@ -870,6 +1133,7 @@ export default function StaffPage() {
             </button>
 
             <button
+              type="button"
               onClick={openAdd}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold shadow-sm hover:opacity-90"
               style={{
@@ -877,6 +1141,7 @@ export default function StaffPage() {
               }}
             >
               <UserPlus className="w-4 h-4" />
+
               Add Healthcare Worker
             </button>
           </div>
@@ -964,6 +1229,7 @@ export default function StaffPage() {
               onChange={setRole}
               options={[
                 ['ALL', 'All Roles'],
+
                 ...Object.values(
                   StaffRole
                 ).map((item) => [
@@ -978,6 +1244,7 @@ export default function StaffPage() {
               onChange={setCategory}
               options={[
                 ['ALL', 'All Categories'],
+
                 ...Object.values(
                   StaffCategory
                 ).map((item) => [
@@ -995,6 +1262,7 @@ export default function StaffPage() {
                   'ALL',
                   'All Classifications',
                 ],
+
                 ...Object.values(
                   StaffClassification
                 ).map((item) => [
@@ -1009,6 +1277,7 @@ export default function StaffPage() {
               onChange={setStatus}
               options={[
                 ['ALL', 'All Statuses'],
+
                 ...Object.values(
                   StaffStatus
                 ).map((item) => [
@@ -1131,6 +1400,8 @@ export default function StaffPage() {
                       >
                         <tr className="hover:bg-slate-50/70 transition-colors">
 
+                          {/* STAFF */}
+
                           <td className="px-5 py-4">
                             <div className="flex items-center gap-3">
                               <div
@@ -1149,9 +1420,11 @@ export default function StaffPage() {
                               <div>
                                 <div className="font-bold text-sm text-slate-800">
                                   {staff.firstName}{' '}
+
                                   {staff.middleName
                                     ? `${staff.middleName} `
                                     : ''}
+
                                   {staff.lastName}
                                 </div>
 
@@ -1173,6 +1446,8 @@ export default function StaffPage() {
                               </div>
                             </div>
                           </td>
+
+                          {/* ROLE */}
 
                           <td className="px-5 py-4">
                             <div className="flex items-center gap-2">
@@ -1200,6 +1475,8 @@ export default function StaffPage() {
                             </div>
                           </td>
 
+                          {/* DEPARTMENT */}
+
                           <td className="px-5 py-4">
                             <div className="flex items-start gap-2">
                               <Building2 className="w-3.5 h-3.5 text-slate-400 mt-0.5" />
@@ -1207,25 +1484,25 @@ export default function StaffPage() {
                               <div>
                                 <div className="text-xs font-semibold text-slate-700">
                                   {staff.employment
-                                    ?.departmentName ||
-                                    staff.employment
-                                      ?.departmentId ||
+                                    ?.departmentId ||
                                     'Unassigned'}
                                 </div>
 
                                 {staff.employment
-                                  ?.unitName && (
+                                  ?.unitId && (
                                   <div className="text-[10px] text-slate-400 mt-0.5">
                                     {
                                       staff
                                         .employment
-                                        .unitName
+                                        .unitId
                                     }
                                   </div>
                                 )}
                               </div>
                             </div>
                           </td>
+
+                          {/* SPECIALTY */}
 
                           <td className="px-5 py-4">
                             <span className="text-xs text-slate-600">
@@ -1234,6 +1511,8 @@ export default function StaffPage() {
                               )}
                             </span>
                           </td>
+
+                          {/* CREDENTIALS */}
 
                           <td className="px-5 py-4">
                             <div className="space-y-1.5">
@@ -1257,6 +1536,8 @@ export default function StaffPage() {
                             </div>
                           </td>
 
+                          {/* ACTIVITY */}
+
                           <td className="px-5 py-4">
                             <div className="space-y-1">
                               <div className="text-[10px] text-slate-500">
@@ -1279,6 +1560,8 @@ export default function StaffPage() {
                             </div>
                           </td>
 
+                          {/* STATUS */}
+
                           <td className="px-5 py-4">
                             <span
                               className={`inline-flex px-2.5 py-1 rounded-full border text-[10px] font-bold ${
@@ -1293,10 +1576,13 @@ export default function StaffPage() {
                             </span>
                           </td>
 
+                          {/* ACTIONS */}
+
                           <td className="px-5 py-4">
                             <div className="flex justify-end items-center gap-1">
 
                               <button
+                                type="button"
                                 onClick={() =>
                                   setExpandedStaff(
                                     expanded
@@ -1315,6 +1601,7 @@ export default function StaffPage() {
                               </button>
 
                               <button
+                                type="button"
                                 onClick={() =>
                                   openEdit(
                                     staff
@@ -1327,6 +1614,7 @@ export default function StaffPage() {
                               </button>
 
                               <button
+                                type="button"
                                 onClick={() =>
                                   toggleStatus(
                                     staff
@@ -1506,7 +1794,8 @@ function StaffProfileSummary({
           <InfoRow
             label="Job title"
             value={
-              staff.employment?.jobTitle
+              staff.employment
+                ?.jobTitle
             }
           />
 
@@ -1531,7 +1820,9 @@ function StaffProfileSummary({
           <InfoRow
             label="Classification"
             value={formatLabel(
-              staff.classification
+              staff.employment
+                ?.classification ||
+                staff.classification
             )}
           />
         </ProfileSection>
@@ -1697,16 +1988,25 @@ function StaffModal({
   onSubmit,
 }: {
   form: CreateStaffDTO;
+
   setForm: React.Dispatch<
     React.SetStateAction<CreateStaffDTO>
   >;
+
   editing: boolean;
+
   saving: boolean;
+
   onClose: () => void;
+
   onSubmit: (
     event: React.FormEvent
   ) => Promise<void>;
 }) {
+  /* ------------------------------------------------------------------------ */
+  /* GENERIC FIELD UPDATE                                                     */
+  /* ------------------------------------------------------------------------ */
+
   const updateField = <
     K extends keyof CreateStaffDTO
   >(
@@ -1719,6 +2019,10 @@ function StaffModal({
     }));
   };
 
+  /* ------------------------------------------------------------------------ */
+  /* CONTACT UPDATE                                                           */
+  /* ------------------------------------------------------------------------ */
+
   const updateContact = (
     key:
       | 'phone'
@@ -1729,6 +2033,7 @@ function StaffModal({
   ) => {
     setForm((current) => ({
       ...current,
+
       contact: {
         ...(current.contact || {}),
         [key]: value,
@@ -1736,29 +2041,29 @@ function StaffModal({
     }));
   };
 
-  const updateEmployment = (
-    key:
-      | 'employeeNumber'
-      | 'jobTitle'
-      | 'departmentName'
-      | 'unitName'
-      | 'employmentType'
-      | 'contractType'
-      | 'hireDate'
-      | 'contractStartDate'
-      | 'contractEndDate'
-      | 'classification',
-    value: string
+  /* ------------------------------------------------------------------------ */
+  /* EMPLOYMENT UPDATE                                                        */
+  /* ------------------------------------------------------------------------ */
+
+  const updateEmployment = <
+    K extends keyof IEmployment
+  >(
+    key: K,
+    value: IEmployment[K]
   ) => {
     setForm((current) => ({
       ...current,
 
       employment: {
-        ...(current.employment || {}),
+        ...current.employment,
         [key]: value,
       },
     }));
   };
+
+  /* ------------------------------------------------------------------------ */
+  /* REGISTRATION UPDATE                                                      */
+  /* ------------------------------------------------------------------------ */
 
   const updateRegistration = (
     key:
@@ -1769,44 +2074,72 @@ function StaffModal({
   ) => {
     setForm((current) => {
       const existing =
-        current.professionalRegistrations?.[0] ||
-        {};
+        current.professionalRegistrations?.[0];
+
+      const nextRegistration: IProfessionalRegistration =
+        {
+          regulatoryBody:
+            key === 'regulatoryBody'
+              ? value
+              : existing?.regulatoryBody ||
+                '',
+
+          registrationNumber:
+            key === 'registrationNumber'
+              ? value
+              : existing?.registrationNumber ||
+                '',
+
+          registrationType:
+            existing?.registrationType,
+
+          issueDate:
+            existing?.issueDate,
+
+          expiryDate:
+            key === 'expiryDate'
+              ? value || undefined
+              : existing?.expiryDate,
+
+          status:
+            existing?.status ||
+            CredentialStatus.PENDING,
+
+          verificationDate:
+            existing?.verificationDate,
+
+          verifiedBy:
+            existing?.verifiedBy,
+
+          documentUrl:
+            existing?.documentUrl,
+
+          notes:
+            existing?.notes,
+        };
 
       return {
         ...current,
 
         professionalRegistrations: [
-          {
-            ...existing,
-
-            regulatoryBody:
-              key === 'regulatoryBody'
-                ? value
-                : existing.regulatoryBody ||
-                  existing.registrationBody ||
-                  '',
-
-            registrationNumber:
-              key === 'registrationNumber'
-                ? value
-                : existing.registrationNumber ||
-                  '',
-
-            expiryDate:
-              key === 'expiryDate'
-                ? value
-                : existing.expiryDate ||
-                  undefined,
-          },
+          nextRegistration,
         ],
       };
     });
   };
 
+  /* ------------------------------------------------------------------------ */
+  /* EMPLOYMENT TYPE                                                          */
+  /* ------------------------------------------------------------------------ */
+
   const selectedEmploymentType =
     normalizeEmploymentType(
-      form.employment?.employmentType
-    ) || '';
+      form.employment.employmentType
+    );
+
+  /* ------------------------------------------------------------------------ */
+  /* RENDER                                                                   */
+  /* ------------------------------------------------------------------------ */
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center p-4">
@@ -2038,7 +2371,7 @@ function StaffModal({
                   label="Employee Number"
                   value={
                     form.employment
-                      ?.employeeNumber ||
+                      .employeeNumber ||
                     ''
                   }
                   onChange={(value) =>
@@ -2053,7 +2386,7 @@ function StaffModal({
                   label="Job Title"
                   value={
                     form.employment
-                      ?.jobTitle || ''
+                      .jobTitle || ''
                   }
                   onChange={(value) =>
                     updateEmployment(
@@ -2064,35 +2397,34 @@ function StaffModal({
                 />
 
                 <Input
-                  label="Department"
+                  label="Department ID"
                   value={
                     form.employment
-                      ?.departmentName ||
-                    ''
+                      .departmentId || ''
                   }
                   onChange={(value) =>
                     updateEmployment(
-                      'departmentName',
+                      'departmentId',
                       value
                     )
                   }
                 />
 
                 <Input
-                  label="Unit"
+                  label="Unit ID"
                   value={
                     form.employment
-                      ?.unitName || ''
+                      .unitId || ''
                   }
                   onChange={(value) =>
                     updateEmployment(
-                      'unitName',
+                      'unitId',
                       value
                     )
                   }
                 />
 
-                {/* FIXED EMPLOYMENT TYPE */}
+                {/* EMPLOYMENT TYPE */}
 
                 <SelectField
                   label="Employment Type"
@@ -2102,43 +2434,39 @@ function StaffModal({
                   onChange={(value) =>
                     updateEmployment(
                       'employmentType',
-                      value
+                      value as EmploymentType
                     )
                   }
-                  options={[
-                    [
-                      '',
-                      'Select employment type',
-                    ],
-                    ...EMPLOYMENT_TYPE_OPTIONS,
-                  ]}
-                />
-
-                <Input
-                  label="Contract Type"
-                  placeholder="Permanent"
-                  value={
-                    form.employment
-                      ?.contractType || ''
-                  }
-                  onChange={(value) =>
-                    updateEmployment(
-                      'contractType',
-                      value
-                    )
+                  options={
+                    EMPLOYMENT_TYPE_OPTIONS
                   }
                 />
 
                 <Input
-                  label="Hire Date"
+                  label="Start Date"
                   type="date"
                   value={
                     form.employment
-                      ?.hireDate || ''
+                      .startDate || ''
                   }
                   onChange={(value) =>
                     updateEmployment(
-                      'hireDate',
+                      'startDate',
+                      value
+                    )
+                  }
+                />
+
+                <Input
+                  label="End Date"
+                  type="date"
+                  value={
+                    form.employment
+                      .endDate || ''
+                  }
+                  onChange={(value) =>
+                    updateEmployment(
+                      'endDate',
                       value
                     )
                   }
@@ -2149,7 +2477,7 @@ function StaffModal({
                   type="date"
                   value={
                     form.employment
-                      ?.contractStartDate ||
+                      .contractStartDate ||
                     ''
                   }
                   onChange={(value) =>
@@ -2165,7 +2493,7 @@ function StaffModal({
                   type="date"
                   value={
                     form.employment
-                      ?.contractEndDate ||
+                      .contractEndDate ||
                     ''
                   }
                   onChange={(value) =>
@@ -2176,8 +2504,6 @@ function StaffModal({
                   }
                 />
               </div>
-
-              {/* REQUIRED BACKEND CLASSIFICATION */}
 
               <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 px-4 py-3">
                 <div className="flex items-center justify-between gap-4">
@@ -2216,10 +2542,13 @@ function StaffModal({
                   onChange={(value) =>
                     setForm((current) => ({
                       ...current,
+
                       specialties: [
                         {
                           specialty: value,
+
                           isPrimary: true,
+
                           subSpecialty:
                             current
                               .specialties?.[0]
@@ -2239,14 +2568,16 @@ function StaffModal({
                   onChange={(value) =>
                     setForm((current) => ({
                       ...current,
+
                       specialties: [
                         {
                           specialty:
                             current
                               .specialties?.[0]
                               ?.specialty || '',
-                          subSpecialty:
-                            value,
+
+                          subSpecialty: value,
+
                           isPrimary: true,
                         },
                       ],
@@ -2256,7 +2587,7 @@ function StaffModal({
               </div>
             </FormSection>
 
-            {/* CREDENTIALS */}
+            {/* PROFESSIONAL REGISTRATION */}
 
             <FormSection
               title="Professional Registration"
@@ -2264,26 +2595,18 @@ function StaffModal({
             >
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-                {/* FIXED REGULATORY BODY */}
-
                 <Input
                   label="Regulatory Body"
                   placeholder="e.g. MDCN"
-                  required={
-                    Boolean(
-                      form
-                        .professionalRegistrations
-                        ?.length
-                    )
-                  }
+                  required={Boolean(
+                    form
+                      .professionalRegistrations
+                      ?.length
+                  )}
                   value={
                     form
                       .professionalRegistrations?.[0]
-                      ?.regulatoryBody ||
-                    form
-                      .professionalRegistrations?.[0]
-                      ?.registrationBody ||
-                    ''
+                      ?.regulatoryBody || ''
                   }
                   onChange={(value) =>
                     updateRegistration(
@@ -2298,7 +2621,8 @@ function StaffModal({
                   value={
                     form
                       .professionalRegistrations?.[0]
-                      ?.registrationNumber || ''
+                      ?.registrationNumber ||
+                    ''
                   }
                   onChange={(value) =>
                     updateRegistration(
@@ -2331,7 +2655,8 @@ function StaffModal({
                   <strong>
                     regulatoryBody
                   </strong>
-                  , which is required by the backend.
+                  , together with the required registration
+                  status.
                 </p>
               </div>
             </FormSection>
@@ -2459,7 +2784,7 @@ function SelectField({
   label: string;
   value: string;
   onChange: (value: string) => void;
-  options: string[][];
+  options: [string, string][];
 }) {
   return (
     <div>

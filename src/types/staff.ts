@@ -1,4 +1,24 @@
-import type { ReactNode } from 'react';
+/**
+ * Frontend Staff Types
+ *
+ * These types mirror:
+ * modules/staff/staff.types.ts
+ *
+ * Backend uses:
+ * - Date for dates
+ * - Types.ObjectId for MongoDB IDs
+ *
+ * Frontend/API transport uses:
+ * - string for serialized dates
+ * - string for serialized MongoDB ObjectIds
+ */
+
+export type ObjectIdString = string;
+export type ISODateString = string;
+
+/* =========================================================
+ * ENUMS
+ * ========================================================= */
 
 export enum StaffRole {
   DOCTOR = 'DOCTOR',
@@ -12,11 +32,9 @@ export enum StaffRole {
   DIETITIAN = 'DIETITIAN',
   PSYCHOLOGIST = 'PSYCHOLOGIST',
   HEALTHCARE_ASSISTANT = 'HEALTHCARE_ASSISTANT',
+  ADMINISTRATIVE = 'ADMINISTRATIVE',
   RECEPTIONIST = 'RECEPTIONIST',
   ACCOUNTANT = 'ACCOUNTANT',
-  ADMINISTRATOR = 'ADMINISTRATOR',
-  HR = 'HR',
-  IT = 'IT',
   OTHER = 'OTHER',
 }
 
@@ -24,15 +42,27 @@ export enum StaffCategory {
   CLINICAL = 'CLINICAL',
   ALLIED_HEALTH = 'ALLIED_HEALTH',
   ADMINISTRATIVE = 'ADMINISTRATIVE',
-  OPERATIONS = 'OPERATIONS',
   SUPPORT = 'SUPPORT',
 }
 
 export enum StaffClassification {
   CONSULTANT = 'CONSULTANT',
+  SPECIALIST = 'SPECIALIST',
   RESIDENT = 'RESIDENT',
   INTERN = 'INTERN',
+  SENIOR = 'SENIOR',
+  JUNIOR = 'JUNIOR',
   GENERAL = 'GENERAL',
+}
+
+export enum EmploymentType {
+  FULL_TIME = 'FULL_TIME',
+  PART_TIME = 'PART_TIME',
+  CONTRACT = 'CONTRACT',
+  LOCUM = 'LOCUM',
+  TEMPORARY = 'TEMPORARY',
+  INTERN = 'INTERN',
+  VOLUNTEER = 'VOLUNTEER',
 }
 
 export enum StaffStatus {
@@ -43,254 +73,499 @@ export enum StaffStatus {
   TERMINATED = 'TERMINATED',
 }
 
-export interface StaffSpecialty {
-  specialty: string;
-  subSpecialty?: string;
-  isPrimary?: boolean;
+export enum CredentialStatus {
+  PENDING = 'PENDING',
+  VERIFIED = 'VERIFIED',
+  EXPIRED = 'EXPIRED',
+  REJECTED = 'REJECTED',
 }
 
-export interface ProfessionalRegistration {
-  registrationBody?: string;
-  registrationNumber?: string;
-  registrationType?: string;
-  issueDate?: string;
-  expiryDate?: string;
-  verificationStatus?: string;
-  verifiedAt?: string;
-  verifiedBy?: string;
+export enum PrivilegeStatus {
+  ACTIVE = 'ACTIVE',
+  EXPIRED = 'EXPIRED',
+  SUSPENDED = 'SUSPENDED',
+  PENDING_RENEWAL = 'PENDING_RENEWAL',
 }
 
-export interface Qualification {
-  qualification?: string;
-  institution?: string;
-  fieldOfStudy?: string;
-  startDate?: string;
-  completionDate?: string;
+export enum TrainingStatus {
+  PENDING = 'PENDING',
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
+  EXPIRED = 'EXPIRED',
 }
 
-export interface Certification {
-  name?: string;
-  issuingOrganization?: string;
-  certificateNumber?: string;
-  issueDate?: string;
-  expiryDate?: string;
-  verificationStatus?: string;
+export enum LeaveStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  CANCELLED = 'CANCELLED',
 }
 
-export interface ProfessionalExperience {
-  organization?: string;
-  position?: string;
-  department?: string;
-  startDate?: string;
-  endDate?: string;
-  description?: string;
+export enum AttendanceStatus {
+  PRESENT = 'PRESENT',
+  ABSENT = 'ABSENT',
+  LATE = 'LATE',
+  HALF_DAY = 'HALF_DAY',
+  ON_LEAVE = 'ON_LEAVE',
 }
 
-export interface ClinicalPrivilege {
-  privilege?: string;
-  department?: string;
-  grantedDate?: string;
-  expiryDate?: string;
-  status?: string;
-  restrictions?: string;
+export enum AvailabilityStatus {
+  AVAILABLE = 'AVAILABLE',
+  UNAVAILABLE = 'UNAVAILABLE',
+  ON_CALL = 'ON_CALL',
+  ON_LEAVE = 'ON_LEAVE',
 }
 
-export interface TrainingRecord {
-  title?: string;
-  provider?: string;
-  category?: string;
-  completionDate?: string;
-  expiryDate?: string;
-  status?: string;
-  certificateNumber?: string;
-}
+/* =========================================================
+ * CONTACT
+ * ========================================================= */
 
-export interface PerformanceRecord {
-  reviewDate?: string;
-  reviewer?: string;
-  rating?: number;
-  comments?: string;
-  status?: string;
-}
-
-export interface AvailabilityRecord {
-  day?: string;
-  startTime?: string;
-  endTime?: string;
-  available?: boolean;
-}
-
-export interface OnCallAssignment {
-  date?: string;
-  shift?: string;
-  department?: string;
-  startTime?: string;
-  endTime?: string;
-  status?: string;
-}
-
-export interface LeaveRecord {
-  type?: string;
-  startDate?: string;
-  endDate?: string;
-  reason?: string;
-  status?: string;
-}
-
-export interface AttendanceRecord {
-  date?: string;
-  clockIn?: string;
-  clockOut?: string;
-  status?: string;
-  overtimeHours?: number;
-}
-
-export interface IncidentRecord {
-  date?: string;
-  type?: string;
-  description?: string;
-  severity?: string;
-  status?: string;
-}
-
-export interface StaffCommunication {
-  date?: string;
-  subject?: string;
-  message?: string;
-  type?: string;
-  status?: string;
-}
-
-export interface StaffContact {
+export interface IStaffContact {
   phone?: string;
+  alternatePhone?: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+}
+
+export interface IEmergencyContact {
+  name: string;
+  relationship: string;
+  phone: string;
   alternatePhone?: string;
   email?: string;
   address?: string;
 }
 
-export interface EmergencyContact {
-  name?: string;
-  relationship?: string;
-  phone?: string;
-  email?: string;
+/* =========================================================
+ * PROFESSIONAL REGISTRATION
+ * ========================================================= */
+
+export interface IProfessionalRegistration {
+  regulatoryBody: string;
+  registrationNumber: string;
+  registrationType?: string;
+  issueDate?: ISODateString;
+  expiryDate?: ISODateString;
+  status: CredentialStatus;
+  verificationDate?: ISODateString;
+  verifiedBy?: ObjectIdString;
+  documentUrl?: string;
+  notes?: string;
 }
 
-export interface StaffEmployment {
-  employeeNumber?: string;
-  jobTitle?: string;
-  departmentId?: string;
-  departmentName?: string;
-  unitId?: string;
-  unitName?: string;
-  employmentType?: string;
-  contractType?: string;
-  contractStartDate?: string;
-  contractEndDate?: string;
-  hireDate?: string;
-  terminationDate?: string;
+/* =========================================================
+ * QUALIFICATIONS
+ * ========================================================= */
+
+export interface IQualification {
+  qualification: string;
+  institution: string;
+  fieldOfStudy?: string;
+  startDate?: ISODateString;
+  completionDate?: ISODateString;
+  certificateNumber?: string;
+  documentUrl?: string;
+  verified: boolean;
+  verifiedAt?: ISODateString;
+  verifiedBy?: ObjectIdString;
 }
+
+/* =========================================================
+ * CERTIFICATIONS
+ * ========================================================= */
+
+export interface ICertification {
+  name: string;
+  issuingOrganization: string;
+  certificateNumber?: string;
+  issueDate?: ISODateString;
+  expiryDate?: ISODateString;
+  status: CredentialStatus;
+  documentUrl?: string;
+}
+
+/* =========================================================
+ * SPECIALTIES
+ * ========================================================= */
+
+export interface ISpecialty {
+  specialty: string;
+  subSpecialty?: string;
+  isPrimary: boolean;
+  yearsOfExperience?: number;
+}
+
+/**
+ * Backward-compatible alias if existing frontend components
+ * currently use StaffSpecialty.
+ */
+export type StaffSpecialty = ISpecialty;
+
+/* =========================================================
+ * PROFESSIONAL EXPERIENCE
+ * ========================================================= */
+
+export interface IProfessionalExperience {
+  organization: string;
+  position: string;
+  department?: string;
+  startDate: ISODateString;
+  endDate?: ISODateString;
+  responsibilities?: string;
+  reasonForLeaving?: string;
+}
+
+export type ProfessionalExperience = IProfessionalExperience;
+
+/* =========================================================
+ * CLINICAL PRIVILEGES
+ * ========================================================= */
+
+export interface IClinicalPrivilege {
+  privilege: string;
+  department?: string;
+  grantedDate?: ISODateString;
+  expiryDate?: ISODateString;
+  status: PrivilegeStatus;
+  grantedBy?: ObjectIdString;
+  notes?: string;
+}
+
+export type ClinicalPrivilege = IClinicalPrivilege;
+
+/* =========================================================
+ * EMPLOYMENT
+ * ========================================================= */
+
+export interface IEmployment {
+  employeeNumber?: string;
+  employmentType: EmploymentType;
+  classification: StaffClassification;
+  jobTitle?: string;
+  departmentId?: ObjectIdString;
+  unitId?: ObjectIdString;
+  startDate?: ISODateString;
+  endDate?: ISODateString;
+  contractStartDate?: ISODateString;
+  contractEndDate?: ISODateString;
+  salary?: number;
+  currency?: string;
+  supervisorId?: ObjectIdString;
+  contractDocumentUrl?: string;
+}
+
+/**
+ * Backward-compatible alias.
+ */
+export type StaffEmployment = IEmployment;
+
+/* =========================================================
+ * TRAINING
+ * ========================================================= */
+
+export interface ITrainingRecord {
+  name: string;
+  provider?: string;
+  category?: string;
+  completionDate?: ISODateString;
+  expiryDate?: ISODateString;
+  status: TrainingStatus;
+  certificateUrl?: string;
+  mandatory: boolean;
+  cpdPoints?: number;
+}
+
+export type TrainingRecord = ITrainingRecord;
+
+/* =========================================================
+ * PERFORMANCE
+ * ========================================================= */
+
+export interface IPerformanceRecord {
+  reviewDate: ISODateString;
+  reviewerId?: ObjectIdString;
+  score?: number;
+  rating?: string;
+  comments?: string;
+  goals?: string[];
+}
+
+export type PerformanceRecord = IPerformanceRecord;
+
+/* =========================================================
+ * AVAILABILITY
+ * ========================================================= */
+
+export interface IAvailability {
+  dayOfWeek: number;
+  startTime?: string;
+  endTime?: string;
+  status: AvailabilityStatus;
+}
+
+export type AvailabilityRecord = IAvailability;
+
+/* =========================================================
+ * ON CALL
+ * ========================================================= */
+
+export interface IOnCallAssignment {
+  date: ISODateString;
+  startTime?: string;
+  endTime?: string;
+  departmentId?: ObjectIdString;
+  unitId?: ObjectIdString;
+  notes?: string;
+}
+
+export type OnCallAssignment = IOnCallAssignment;
+
+/* =========================================================
+ * LEAVE
+ * ========================================================= */
+
+export interface ILeaveRecord {
+  leaveType: string;
+  startDate: ISODateString;
+  endDate: ISODateString;
+  reason?: string;
+  status: LeaveStatus;
+  approvedBy?: ObjectIdString;
+  approvedAt?: ISODateString;
+}
+
+export type LeaveRecord = ILeaveRecord;
+
+/* =========================================================
+ * ATTENDANCE
+ * ========================================================= */
+
+export interface IAttendanceRecord {
+  date: ISODateString;
+  clockIn?: ISODateString;
+  clockOut?: ISODateString;
+  status: AttendanceStatus;
+  overtimeHours?: number;
+  notes?: string;
+}
+
+export type AttendanceRecord = IAttendanceRecord;
+
+/* =========================================================
+ * INCIDENTS
+ * ========================================================= */
+
+export interface IIncidentRecord {
+  incidentType: string;
+  date: ISODateString;
+  description: string;
+  severity?: string;
+  status?: string;
+  reportedBy?: ObjectIdString;
+  resolution?: string;
+}
+
+export type IncidentRecord = IIncidentRecord;
+
+/* =========================================================
+ * COMMUNICATIONS
+ * ========================================================= */
+
+export interface IStaffCommunication {
+  subject: string;
+  message: string;
+  sentAt: ISODateString;
+  sentBy?: ObjectIdString;
+  readAt?: ISODateString;
+}
+
+export type StaffCommunication = IStaffCommunication;
+
+/* =========================================================
+ * STAFF
+ * ========================================================= */
 
 export interface IStaff {
-  _id: string;
-  hospitalId: string;
+  /**
+   * MongoDB document ID.
+   *
+   * This is present in API responses even though the backend
+   * IStaff interface itself inherits it through IStaffDocument.
+   */
+  _id: ObjectIdString;
 
+  hospitalId: ObjectIdString;
+
+  /**
+   * Internal hospital-wide staff identifier.
+   *
+   * Example:
+   * ST-000001
+   */
   staffId: string;
 
   firstName: string;
   middleName?: string;
   lastName: string;
 
+  title?: string;
+  profilePhotoUrl?: string;
+  dateOfBirth?: ISODateString;
+  gender?: string;
+
   role: StaffRole;
   category: StaffCategory;
   classification: StaffClassification;
 
-  specialties: StaffSpecialty[];
+  professionalTitle?: string;
+  jobTitle?: string;
 
-  professionalRegistrations: ProfessionalRegistration[];
-  qualifications: Qualification[];
-  certifications: Certification[];
-  professionalExperience: ProfessionalExperience[];
+  specialties: ISpecialty[];
 
-  clinicalPrivileges: ClinicalPrivilege[];
+  contact: IStaffContact;
+  emergencyContact?: IEmergencyContact;
 
-  employment?: StaffEmployment;
+  professionalRegistrations: IProfessionalRegistration[];
+  qualifications: IQualification[];
+  certifications: ICertification[];
+  professionalExperience: IProfessionalExperience[];
 
-  contact?: StaffContact;
-  emergencyContact?: EmergencyContact;
+  clinicalPrivileges: IClinicalPrivilege[];
 
-  trainingRecords: TrainingRecord[];
-  performanceRecords: PerformanceRecord[];
+  employment: IEmployment;
+
+  trainingRecords: ITrainingRecord[];
+  performanceRecords: IPerformanceRecord[];
+
+  availability: IAvailability[];
+  onCallAssignments: IOnCallAssignment[];
+
+  leaveRecords: ILeaveRecord[];
+  attendanceRecords: IAttendanceRecord[];
+
+  incidents: IIncidentRecord[];
+  communications: IStaffCommunication[];
 
   clinicalActivityCount: number;
   activePatientCaseload: number;
 
-  onCallAssignments: OnCallAssignment[];
-  leaveRecords: LeaveRecord[];
-  attendanceRecords: AttendanceRecord[];
-
-  availability: AvailabilityRecord[];
-
-  incidents: IncidentRecord[];
-  communications: StaffCommunication[];
-
   status: StaffStatus;
   isActive: boolean;
 
-  createdAt: string;
-  updatedAt: string;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
 }
+
+/* =========================================================
+ * CREATE STAFF DTO
+ * ========================================================= */
 
 export interface CreateStaffDTO {
   firstName: string;
   middleName?: string;
   lastName: string;
 
-  role: StaffRole;
+  title?: string;
+  profilePhotoUrl?: string;
+  dateOfBirth?: ISODateString;
+  gender?: string;
 
+  role: StaffRole;
   category?: StaffCategory;
   classification?: StaffClassification;
 
-  specialties?: StaffSpecialty[];
+  professionalTitle?: string;
+  jobTitle?: string;
 
-  professionalRegistrations?: ProfessionalRegistration[];
-  qualifications?: Qualification[];
-  certifications?: Certification[];
-  professionalExperience?: ProfessionalExperience[];
+  specialties?: ISpecialty[];
 
-  clinicalPrivileges?: ClinicalPrivilege[];
+  contact?: IStaffContact;
+  emergencyContact?: IEmergencyContact;
 
-  employment?: StaffEmployment;
+  professionalRegistrations?: IProfessionalRegistration[];
+  qualifications?: IQualification[];
+  certifications?: ICertification[];
+  professionalExperience?: IProfessionalExperience[];
 
-  contact?: StaffContact;
-  emergencyContact?: EmergencyContact;
+  clinicalPrivileges?: IClinicalPrivilege[];
 
-  trainingRecords?: TrainingRecord[];
-  performanceRecords?: PerformanceRecord[];
+  employment: IEmployment;
 
-  availability?: AvailabilityRecord[];
-  onCallAssignments?: OnCallAssignment[];
-  leaveRecords?: LeaveRecord[];
-  attendanceRecords?: AttendanceRecord[];
+  trainingRecords?: ITrainingRecord[];
+  performanceRecords?: IPerformanceRecord[];
 
-  incidents?: IncidentRecord[];
-  communications?: StaffCommunication[];
+  availability?: IAvailability[];
+  onCallAssignments?: IOnCallAssignment[];
+
+  leaveRecords?: ILeaveRecord[];
+  attendanceRecords?: IAttendanceRecord[];
+
+  incidents?: IIncidentRecord[];
+  communications?: IStaffCommunication[];
 }
 
-export interface UpdateStaffDTO extends Partial<CreateStaffDTO> {
-  isActive?: boolean;
-  status?: StaffStatus;
-}
+/* =========================================================
+ * UPDATE STAFF DTO
+ * ========================================================= */
+
+/**
+ * This mirrors the backend:
+ *
+ * type UpdateStaffDTO = Partial<
+ *   Omit<
+ *     IStaff,
+ *     | 'hospitalId'
+ *     | 'staffId'
+ *     | 'createdAt'
+ *     | 'updatedAt'
+ *     | 'clinicalActivityCount'
+ *     | 'activePatientCaseload'
+ *   >
+ * >;
+ *
+ * Therefore these fields cannot be updated:
+ *
+ * - hospitalId
+ * - staffId
+ * - createdAt
+ * - updatedAt
+ * - clinicalActivityCount
+ * - activePatientCaseload
+ */
+export type UpdateStaffDTO = Partial<
+  Omit<
+    IStaff,
+    | '_id'
+    | 'hospitalId'
+    | 'staffId'
+    | 'createdAt'
+    | 'updatedAt'
+    | 'clinicalActivityCount'
+    | 'activePatientCaseload'
+  >
+>;
+
+/* =========================================================
+ * STAFF LIST FILTERS
+ * ========================================================= */
 
 export interface StaffListFilters {
-  role?: StaffRole | string;
-  category?: StaffCategory | string;
-  classification?: StaffClassification | string;
+  role?: StaffRole;
+  category?: StaffCategory;
+  classification?: StaffClassification;
   departmentId?: string;
   unitId?: string;
-  status?: StaffStatus | string;
+  status?: StaffStatus;
+  isActive?: boolean;
   search?: string;
-  isActive?: boolean | string;
 }
+
+/* =========================================================
+ * DASHBOARD
+ * ========================================================= */
 
 export interface StaffDashboard {
   total: number;
@@ -303,6 +578,10 @@ export interface StaffDashboard {
   residents: number;
   interns: number;
 }
+
+/* =========================================================
+ * API RESPONSE
+ * ========================================================= */
 
 export interface StaffApiResponse<T> {
   success: boolean;
