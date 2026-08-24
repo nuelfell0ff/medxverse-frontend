@@ -772,6 +772,17 @@ export default function SurgeryCaseDetailsPage() {
   const startSurgery = async () => {
     if (!surgeryCase) return;
 
+    // A surgery can only be started once. Once it has reached recovery,
+    // completed, or cancelled, starting it again is permanently blocked.
+    if (
+      surgeryCase.status === SurgeryStatus.IN_PROGRESS ||
+      surgeryCase.status === SurgeryStatus.RECOVERY ||
+      surgeryCase.status === SurgeryStatus.COMPLETED ||
+      surgeryCase.status === SurgeryStatus.CANCELLED
+    ) {
+      return;
+    }
+
     setActionLoading(true);
     setActionError(null);
 
@@ -1059,22 +1070,41 @@ export default function SurgeryCaseDetailsPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              {surgeryCase.status !== SurgeryStatus.IN_PROGRESS &&
-                surgeryCase.status !== SurgeryStatus.COMPLETED &&
-                surgeryCase.status !== SurgeryStatus.CANCELLED && (
-                  <button
-                    disabled={actionLoading}
-                    onClick={startSurgery}
-                    className="px-4 py-2.5 bg-[#1b7b68] hover:bg-[#145f50] disabled:opacity-50 text-white text-xs font-bold rounded-2xl flex items-center gap-2"
-                  >
-                    {actionLoading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Activity className="w-4 h-4" />
-                    )}
-                    Start Surgery
-                  </button>
-                )}
+              {surgeryCase.status !== SurgeryStatus.IN_PROGRESS && (
+                <button
+                  type="button"
+                  disabled={
+                    actionLoading ||
+                    surgeryCase.status === SurgeryStatus.RECOVERY ||
+                    surgeryCase.status === SurgeryStatus.COMPLETED ||
+                    surgeryCase.status === SurgeryStatus.CANCELLED
+                  }
+                  onClick={startSurgery}
+                  className="px-4 py-2.5 bg-[#1b7b68] hover:bg-[#145f50] disabled:bg-slate-300 disabled:hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-70 text-white text-xs font-bold rounded-2xl flex items-center gap-2"
+                  title={
+                    surgeryCase.status === SurgeryStatus.RECOVERY
+                      ? 'This surgery has already ended and cannot be started again.'
+                      : surgeryCase.status === SurgeryStatus.COMPLETED
+                      ? 'This surgery is already completed.'
+                      : surgeryCase.status === SurgeryStatus.CANCELLED
+                      ? 'This surgery was cancelled.'
+                      : undefined
+                  }
+                >
+                  {actionLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Activity className="w-4 h-4" />
+                  )}
+                  {surgeryCase.status === SurgeryStatus.RECOVERY
+                    ? 'Surgery Ended'
+                    : surgeryCase.status === SurgeryStatus.COMPLETED
+                    ? 'Surgery Completed'
+                    : surgeryCase.status === SurgeryStatus.CANCELLED
+                    ? 'Surgery Cancelled'
+                    : 'Start Surgery'}
+                </button>
+              )}
 
               {surgeryCase.status === SurgeryStatus.IN_PROGRESS && (
                 <button
