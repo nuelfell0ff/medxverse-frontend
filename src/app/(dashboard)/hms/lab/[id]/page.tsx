@@ -1,4681 +1,2530 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ElementType } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import {
-  ArrowLeft,
-  RefreshCw,
-  CalendarDays,
-  Clock3,
-  User,
-  Users,
   Activity,
-  FileText,
-  Image as ImageIcon,
-  ShieldAlert,
-  AlertTriangle,
+  AlertCircle,
+  ArrowLeft,
+  Beaker,
+  Check,
   CheckCircle2,
-  XCircle,
-  Stethoscope,
-  ScanLine,
+  ChevronRight,
+  ClipboardCheck,
   ClipboardList,
-  Radio,
-  Brain,
-  Pill,
-  Baby,
-  Gauge,
-  Monitor,
-  Link2,
-  ExternalLink,
-  Save,
-  Send,
-  PenLine,
-  History,
-  Trash2,
-  Plus,
-  Search,
-  ChevronDown,
-  X,
+  Clock3,
+  FileText,
+  FlaskConical,
   Loader2,
-  CircleDot,
-  Info,
-  Zap,
+  MapPin,
+  PackageCheck,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  ScanLine,
+  ShieldCheck,
+  TestTube2,
+  Trash2,
+  User,
+  X,
+  XCircle,
 } from 'lucide-react';
-import { useRouter, useParams } from 'next/navigation';
 
-import {
-  RadiologyApiService,
-} from '@/services/radiology.service';
+/* =========================================================
+   CONFIG
+========================================================= */
 
-import {
-  RadiologyOrder,
-  RadiologyStaff,
-  RadiologyAssignment,
-  ImagingModality,
-  RadiologyOrderStatus,
-  PriorityLevel,
-  AssignmentRole,
-  ExaminationQueueStatus,
-  ReportStatus,
-  CriticalResultStatus,
-  PregnancyScreeningStatus,
-  ContrastStatus,
-  AIStudyPriority,
-} from '@/types/radiology';
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  'https://medxverse-backend.onrender.com';
 
-/* -------------------------------------------------------------------------- */
-/* Helpers                                                                    */
-/* -------------------------------------------------------------------------- */
+const LAB_API = `${API_URL}/api/v1/lab`;
 
-const formatLabel = (value?: string | null) => {
-  if (!value) return 'N/A';
+/* =========================================================
+   TYPES
+========================================================= */
 
-  return value
-    .replace(/_/g, ' ')
+type LabOrderStatus =
+  | 'PENDING'
+  | 'SAMPLE_SCHEDULED'
+  | 'SAMPLE_COLLECTED'
+  | 'SPECIMEN_RECEIVED'
+  | 'SAMPLE_REJECTED'
+  | 'RECOLLECTION_REQUIRED'
+  | 'IN_PROGRESS'
+  | 'RESULTS_RECORDED'
+  | 'VERIFIED'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | string;
+
+type ActiveTab = 'overview' | 'results' | 'workflow';
+
+interface PopulatedPerson {
+  _id?: string;
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  mrn?: string;
+  gender?: string;
+  dateOfBirth?: string;
+}
+
+interface LabResult {
+  parameterName: string;
+  value: string;
+  unit?: string;
+  referenceRange?: string;
+  ageSexSpecificRange?: string;
+  flag?: string;
+  previousValue?: string;
+  deltaPercentage?: number;
+  entryMethod?: string;
+  analyzerName?: string;
+  analyzerResultId?: string;
+  isRepeat?: boolean;
+  repeatReason?: string;
+  dilutionFactor?: number;
+}
+
+interface ChainOfCustody {
+  timestamp?: string;
+  action: string;
+  performedBy?: PopulatedPerson | string;
+  location?: string;
+  notes?: string;
+}
+
+interface Authorization {
+  level?: string;
+  authorizedBy?: PopulatedPerson | string;
+  authorizedAt?: string;
+  notes?: string;
+}
+
+interface RejectionInfo {
+  reason?: string;
+  quality?: string;
+  rejectionDate?: string;
+  recollectionRequested?: boolean;
+  recollectionScheduledAt?: string;
+}
+
+interface SampleRouting {
+  department?: string;
+  routedAt?: string;
+  receivedAt?: string;
+  location?: string;
+  status?: string;
+}
+
+interface LabOrder {
+  _id: string;
+  accessionNumber: string;
+
+  patientId?: PopulatedPerson;
+  doctorId?: PopulatedPerson;
+  phlebotomistId?: PopulatedPerson;
+  labTechnicianId?: PopulatedPerson;
+  verifierId?: PopulatedPerson;
+
+  testName: string;
+  testCategory: string;
+  panelName?: string;
+  sampleType: string;
+
+  priority: string;
+  isStat: boolean;
+  status: LabOrderStatus;
+
+  barcodeUrl?: string;
+  qrCodeUrl?: string;
+
+  sampleCollectionScheduledAt?: string;
+  sampleCollectedAt?: string;
+  specimenReceivedAt?: string;
+  verifiedAt?: string;
+  authorizedAt?: string;
+  completedAt?: string;
+
+  specimenQuality?: string;
+
+  sampleRouting?: SampleRouting;
+  rejectionInfo?: RejectionInfo;
+
+  results: LabResult[];
+  chainOfCustody: ChainOfCustody[];
+  authorizationHistory: Authorization[];
+
+  version?: number;
+  aiPatternAlerts?: string[];
+
+  criticalResultNotified?: boolean;
+  duplicateTestDetected?: boolean;
+  duplicateTestMessage?: string;
+
+  predictedTatMinutes?: number;
+
+  notes?: string;
+
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+const formatDate = (date?: string) => {
+  if (!date) return '—';
+
+  const parsedDate = new Date(date);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return '—';
+  }
+
+  return parsedDate.toLocaleString('en-NG', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+};
+
+const formatStatus = (status?: string) => {
+  if (!status) return 'Unknown';
+
+  return status
     .toLowerCase()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 };
 
-const getStaffName = (
-  staff?: RadiologyStaff | string | null
-): string => {
-  if (!staff) return 'Unknown';
+const getPersonName = (person?: PopulatedPerson | string) => {
+  if (!person) return '—';
 
-  if (typeof staff === 'string') return staff;
-
-  return `${staff.firstName || ''} ${staff.lastName || ''}`.trim() || 'Unknown';
-};
-
-const getPatientName = (
-  patient?: RadiologyOrder['patientId']
-): string => {
-  if (!patient) return 'Unknown Patient';
-
-  if (typeof patient === 'string') return patient;
-
-  return `${patient.firstName || ''} ${patient.lastName || ''}`.trim() ||
-    'Unknown Patient';
-};
-
-const getPatientMRN = (
-  patient?: RadiologyOrder['patientId']
-): string => {
-  if (!patient || typeof patient === 'string') return 'N/A';
-  return patient.mrn || 'No MRN';
-};
-
-const formatDate = (date?: string | null) => {
-  if (!date) return 'N/A';
-
-  const parsed = new Date(date);
-
-  if (Number.isNaN(parsed.getTime())) return 'N/A';
-
-  return parsed.toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-};
-
-const formatDateTime = (date?: string | null) => {
-  if (!date) return 'N/A';
-
-  const parsed = new Date(date);
-
-  if (Number.isNaN(parsed.getTime())) return 'N/A';
-
-  return parsed.toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
-
-const getAge = (dateOfBirth?: string) => {
-  if (!dateOfBirth) return null;
-
-  const dob = new Date(dateOfBirth);
-
-  if (Number.isNaN(dob.getTime())) return null;
-
-  const today = new Date();
-
-  let age = today.getFullYear() - dob.getFullYear();
-
-  const monthDiff = today.getMonth() - dob.getMonth();
-
-  if (
-    monthDiff < 0 ||
-    (monthDiff === 0 && today.getDate() < dob.getDate())
-  ) {
-    age--;
+  if (typeof person === 'string') {
+    return person;
   }
 
-  return age;
+  if (person.name) {
+    return person.name;
+  }
+
+  const fullName = `${person.firstName || ''} ${
+    person.lastName || ''
+  }`.trim();
+
+  return fullName || person.email || person.mrn || '—';
 };
 
-const getStatusClasses = (status?: RadiologyOrderStatus) => {
+const getStatusStyle = (status: string) => {
   switch (status) {
-    case RadiologyOrderStatus.REQUESTED:
-      return 'bg-blue-50 text-blue-700 border-blue-200';
+    case 'COMPLETED':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
 
-    case RadiologyOrderStatus.SCHEDULED:
-      return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+    case 'VERIFIED':
+      return 'border-[#1b7b68]/30 bg-[#1b7b68]/10 text-blue-700';
 
-    case RadiologyOrderStatus.PATIENT_ARRIVED:
-      return 'bg-cyan-50 text-cyan-700 border-cyan-200';
+    case 'RESULTS_RECORDED':
+      return 'border-purple-200 bg-purple-50 text-purple-700';
 
-    case RadiologyOrderStatus.PREPARING:
-      return 'bg-amber-50 text-amber-700 border-amber-200';
+    case 'IN_PROGRESS':
+      return 'border-indigo-200 bg-indigo-50 text-indigo-700';
 
-    case RadiologyOrderStatus.READY_FOR_EXAM:
-      return 'bg-violet-50 text-violet-700 border-violet-200';
+    case 'SAMPLE_COLLECTED':
+    case 'SPECIMEN_RECEIVED':
+      return 'border-cyan-200 bg-cyan-50 text-cyan-700';
 
-    case RadiologyOrderStatus.IN_PROGRESS:
-      return 'bg-orange-50 text-orange-700 border-orange-200';
+    case 'SAMPLE_REJECTED':
+    case 'RECOLLECTION_REQUIRED':
+      return 'border-red-200 bg-red-50 text-red-700';
 
-    case RadiologyOrderStatus.IMAGE_ACQUISITION_COMPLETE:
-      return 'bg-teal-50 text-teal-700 border-teal-200';
-
-    case RadiologyOrderStatus.REPORTING:
-      return 'bg-purple-50 text-purple-700 border-purple-200';
-
-    case RadiologyOrderStatus.REPORTED:
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-
-    case RadiologyOrderStatus.COMPLETED:
-      return 'bg-green-50 text-green-700 border-green-200';
-
-    case RadiologyOrderStatus.CANCELLED:
-      return 'bg-rose-50 text-rose-700 border-rose-200';
+    case 'CANCELLED':
+      return 'border-slate-200 bg-slate-100 text-slate-600';
 
     default:
-      return 'bg-slate-50 text-slate-600 border-slate-200';
+      return 'border-amber-200 bg-amber-50 text-amber-700';
   }
 };
 
-const getPriorityClasses = (priority?: PriorityLevel) => {
-  switch (priority) {
-    case PriorityLevel.STAT:
-      return 'bg-rose-50 text-rose-700 border-rose-200';
+const getPriorityStyle = (priority: string) => {
+  const normalized = priority?.toUpperCase();
 
-    case PriorityLevel.URGENT:
-      return 'bg-amber-50 text-amber-700 border-amber-200';
-
-    case PriorityLevel.ROUTINE:
-      return 'bg-slate-50 text-slate-600 border-slate-200';
-
-    default:
-      return 'bg-slate-50 text-slate-600 border-slate-200';
+  if (normalized === 'STAT') {
+    return 'bg-red-600 text-white ring-red-100';
   }
+
+  if (normalized === 'URGENT') {
+    return 'bg-orange-500 text-white ring-orange-100';
+  }
+
+  return 'bg-slate-100 text-slate-700 ring-slate-100';
 };
 
-const getQueueClasses = (status?: ExaminationQueueStatus) => {
-  switch (status) {
-    case ExaminationQueueStatus.WAITING:
-      return 'bg-amber-50 text-amber-700 border-amber-200';
+const createEmptyResult = (): LabResult => ({
+  parameterName: '',
+  value: '',
+  unit: '',
+  referenceRange: '',
+  flag: 'NORMAL',
+  entryMethod: 'MANUAL',
+});
 
-    case ExaminationQueueStatus.IN_PROGRESS:
-      return 'bg-blue-50 text-blue-700 border-blue-200';
+/* =========================================================
+   COMPONENT
+========================================================= */
 
-    case ExaminationQueueStatus.COMPLETED:
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-
-    case ExaminationQueueStatus.CANCELLED:
-      return 'bg-rose-50 text-rose-700 border-rose-200';
-
-    case ExaminationQueueStatus.ON_HOLD:
-      return 'bg-slate-100 text-slate-600 border-slate-200';
-
-    default:
-      return 'bg-slate-50 text-slate-500 border-slate-200';
-  }
-};
-
-const getReportStatusClasses = (status?: ReportStatus) => {
-  switch (status) {
-    case ReportStatus.FINAL:
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-
-    case ReportStatus.AMENDED:
-      return 'bg-amber-50 text-amber-700 border-amber-200';
-
-    case ReportStatus.DRAFT:
-      return 'bg-blue-50 text-blue-700 border-blue-200';
-
-    default:
-      return 'bg-slate-50 text-slate-500 border-slate-200';
-  }
-};
-
-/* -------------------------------------------------------------------------- */
-/* Reusable UI                                                               */
-/* -------------------------------------------------------------------------- */
-
-function SectionCard({
-  title,
-  subtitle,
-  icon,
-  children,
-  action,
-}: {
-  title: string;
-  subtitle?: string;
-  icon?: React.ReactNode;
-  children: React.ReactNode;
-  action?: React.ReactNode;
-}) {
-  return (
-    <section className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_3px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.04)] overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100/90 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          {icon && (
-            <div className="w-9 h-9 rounded-xl bg-[#1b7b68]/10 text-[#1b7b68] ring-1 ring-[#1b7b68]/10 flex items-center justify-center">
-              {icon}
-            </div>
-          )}
-
-          <div>
-            <h2 className="text-sm font-bold text-slate-900 tracking-tight">{title}</h2>
-
-            {subtitle && (
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                {subtitle}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {action}
-      </div>
-
-      <div className="p-5 md:p-6">{children}</div>
-    </section>
-  );
-}
-
-function Field({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value?: React.ReactNode;
-  icon?: React.ReactNode;
-}) {
-  return (
-    <div>
-      <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 mb-1.5">
-        {label}
-      </p>
-
-      <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-        {icon && (
-          <span className="text-slate-400 shrink-0">
-            {icon}
-          </span>
-        )}
-
-        <span>{value ?? 'N/A'}</span>
-      </div>
-    </div>
-  );
-}
-
-function StatusBadge({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-1 rounded-full border text-[10px] font-bold uppercase tracking-wide shadow-[0_1px_1px_rgba(15,23,42,0.03)] ${className}`}
-    >
-      {children}
-    </span>
-  );
-}
-
-function Modal({
-  open,
-  title,
-  subtitle,
-  onClose,
-  children,
-  width = 'max-w-lg',
-}: {
-  open: boolean;
-  title: string;
-  subtitle?: string;
-  onClose: () => void;
-  children: React.ReactNode;
-  width?: string;
-}) {
-  if (!open) return null;
-
-  return (
-    <div className="fixed inset-0 z-[100] bg-slate-950/45 backdrop-blur-[3px] flex items-center justify-center p-4">
-      <div
-        className={`bg-white w-full ${width} rounded-3xl shadow-[0_24px_80px_rgba(15,23,42,0.18)] border border-slate-200/80 overflow-hidden max-h-[90vh] flex flex-col`}
-      >
-        <div className="px-6 py-5 border-b border-slate-100/90 bg-slate-50/30 flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-bold text-slate-900">
-              {title}
-            </h3>
-
-            {subtitle && (
-              <p className="text-xs text-slate-400 mt-1">
-                {subtitle}
-              </p>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-9 h-9 rounded-xl border border-transparent hover:border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-700"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="p-6 overflow-y-auto">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function ModalActions({
-  onCancel,
-  onSubmit,
-  submitting,
-  submitLabel = 'Save Changes',
-}: {
-  onCancel: () => void;
-  onSubmit: () => void;
-  submitting: boolean;
-  submitLabel?: string;
-}) {
-  return (
-    <div className="flex items-center justify-end gap-2 pt-5 border-t border-slate-100 mt-6 bg-slate-50/30 -mx-1 px-1">
-      <button
-        type="button"
-        onClick={onCancel}
-        className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 shadow-sm hover:bg-slate-50 hover:bg-slate-50"
-      >
-        Cancel
-      </button>
-
-      <button
-        type="button"
-        onClick={onSubmit}
-        disabled={submitting}
-        className="px-4 py-2.5 rounded-xl bg-[#1b7b68] hover:bg-[#156354] shadow-sm shadow-[#1b7b68]/20 text-white text-xs font-bold disabled:opacity-50 flex items-center gap-2"
-      >
-        {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-        {submitLabel}
-      </button>
-    </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Page                                                                       */
-/* -------------------------------------------------------------------------- */
-
-export default function RadiologyOrderDetailsPage() {
-  const router = useRouter();
+export default function LabOrderDetailsPage() {
   const params = useParams();
+  const router = useRouter();
 
-  const orderId =
-    typeof params?.id === 'string'
-      ? params.id
-      : Array.isArray(params?.id)
-        ? params.id[0]
-        : '';
+  const rawOrderId = params?.id;
 
-  const [order, setOrder] = useState<RadiologyOrder | null>(null);
+  const orderId = Array.isArray(rawOrderId)
+    ? rawOrderId[0]
+    : rawOrderId;
+
+  const [order, setOrder] = useState<LabOrder | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
-  const [activeTab, setActiveTab] = useState<
-    'overview' | 'workflow' | 'report' | 'pacs' | 'ai'
-  >('overview');
+  const [activeTab, setActiveTab] =
+    useState<ActiveTab>('overview');
 
-  /* ---------------------------------------------------------------------- */
-  /* Modal states                                                           */
-  /* ---------------------------------------------------------------------- */
+  const [showResultForm, setShowResultForm] = useState(false);
+  const [showRejectForm, setShowRejectForm] = useState(false);
+  const [showRepeatForm, setShowRepeatForm] = useState(false);
 
-  const [showStatusModal, setShowStatusModal] = useState(false);
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [showStaffModal, setShowStaffModal] = useState(false);
-  const [showQueueModal, setShowQueueModal] = useState(false);
-  const [showContrastModal, setShowContrastModal] = useState(false);
-  const [showPregnancyModal, setShowPregnancyModal] = useState(false);
-  const [showRadiationModal, setShowRadiationModal] = useState(false);
-  const [showPacsModal, setShowPacsModal] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [showAmendModal, setShowAmendModal] = useState(false);
-  const [showCriticalModal, setShowCriticalModal] = useState(false);
-  const [showAIModal, setShowAIModal] = useState(false);
-  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [newResults, setNewResults] = useState<LabResult[]>([
+    createEmptyResult(),
+  ]);
 
-  /* ---------------------------------------------------------------------- */
-  /* Form state                                                             */
-  /* ---------------------------------------------------------------------- */
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectQuality, setRejectQuality] =
+    useState('UNSATISFACTORY');
+  const [requestRecollection, setRequestRecollection] =
+    useState(true);
 
-  const [statusForm, setStatusForm] = useState({
-    status: RadiologyOrderStatus.REQUESTED,
-    notes: '',
-  });
+  const [repeatReason, setRepeatReason] = useState('');
+  const [repeatParameters, setRepeatParameters] = useState('');
 
-  const [scheduleForm, setScheduleForm] = useState({
-    scheduledDate: '',
-    scheduledStartTime: '',
-    scheduledEndTime: '',
-    estimatedDurationMinutes: '',
-    modalityId: '',
-    theatreOrRoom: '',
-  });
+  /* =========================================================
+     API HELPER
+  ========================================================= */
 
-  const [staffForm, setStaffForm] = useState({
-    userId: '',
-    role: AssignmentRole.RADIOLOGIST,
-    notes: '',
-  });
+  const getToken = () => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
 
-  const [queueForm, setQueueForm] = useState({
-    queuePosition: '',
-    queueStatus: ExaminationQueueStatus.WAITING,
-  });
+    return (
+      localStorage.getItem('token') ||
+      localStorage.getItem('accessToken') ||
+      localStorage.getItem('authToken')
+    );
+  };
 
-  const [contrastForm, setContrastForm] = useState({
-    status: ContrastStatus.NOT_REQUIRED,
-    contrastName: '',
-    contrastType: '',
-    dose: '',
-    doseUnit: '',
-    route: '',
-    reactionObserved: false,
-    reactionDescription: '',
-    notes: '',
-  });
+  const apiRequest = async (
+    endpoint: string,
+    options: RequestInit = {}
+  ) => {
+    const token = getToken();
 
-  const [pregnancyForm, setPregnancyForm] = useState({
-    status: PregnancyScreeningStatus.NOT_REQUIRED,
-    testType: '',
-    testResult: '',
-    notes: '',
-  });
+    const response = await fetch(`${LAB_API}${endpoint}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : {}),
+        ...(options.headers || {}),
+      },
+    });
 
-  const [radiationForm, setRadiationForm] = useState({
-    dose: '',
-    doseUnit: '',
-    doseAreaProduct: '',
-    doseAreaProductUnit: '',
-    ctDoseIndex: '',
-    doseLengthProduct: '',
-    notes: '',
-  });
+    const data = await response.json().catch(() => null);
 
-  const [pacsForm, setPacsForm] = useState({
-    studyInstanceUid: '',
-    seriesInstanceUid: '',
-    accessionNumber: '',
-    studyId: '',
-    studyDate: '',
-    imageCount: '',
-    seriesCount: '',
-    modality: '',
-    dicomViewerUrl: '',
-    storageLocation: '',
-    storageStatus: 'PENDING',
-    sharedLink: '',
-    sharedLinkExpiresAt: '',
-    exportEnabled: true,
-  });
+    if (!response.ok) {
+      throw new Error(
+        data?.message ||
+          data?.error ||
+          'Something went wrong. Please try again.'
+      );
+    }
 
-  const [reportForm, setReportForm] = useState({
-    findings: '',
-    impression: '',
-    radiologistNotes: '',
-    templateId: '',
-    criticalResultStatus: CriticalResultStatus.NOT_APPLICABLE,
-    criticalFinding: '',
-    notifiedUserId: '',
-    notificationMethod: 'IN_APP' as
-      | 'PHONE'
-      | 'SMS'
-      | 'EMAIL'
-      | 'IN_APP',
-    notificationNotes: '',
-  });
+    return data;
+  };
 
-  const [amendForm, setAmendForm] = useState({
-    findings: '',
-    impression: '',
-    radiologistNotes: '',
-    amendmentReason: '',
-  });
+  /* =========================================================
+     FETCH ORDER
+  ========================================================= */
 
-  const [criticalForm, setCriticalForm] = useState({
-    status: CriticalResultStatus.PENDING,
-    finding: '',
-    notifiedUserId: '',
-    notificationMethod: 'IN_APP' as
-      | 'PHONE'
-      | 'SMS'
-      | 'EMAIL'
-      | 'IN_APP',
-    notificationNotes: '',
-  });
+  const fetchOrder = async (showRefresh = false) => {
+    try {
+      setError('');
 
-  const [aiForm, setAIForm] = useState({
-    enabled: true,
-    modelName: '',
-    modelVersion: '',
-    priority: AIStudyPriority.NOT_PROCESSED,
-    confidence: '',
-    findings: '',
-    recommendations: '',
-    qualityPassed: true,
-    qualityNotes: '',
-    measurements: '',
-  });
-
-  const [cancelReason, setCancelReason] = useState('');
-
-  const [submitting, setSubmitting] = useState(false);
-
-  /* ---------------------------------------------------------------------- */
-  /* Staff search                                                           */
-  /* ---------------------------------------------------------------------- */
-
-  const [staffSearch, setStaffSearch] = useState('');
-  const [staffResults, setStaffResults] = useState<RadiologyStaff[]>([]);
-  const [staffLoading, setStaffLoading] = useState(false);
-
-  const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    'https://medxverse-backend.onrender.com';
-
-  const getAuthHeaders = useCallback((): HeadersInit => {
-    const token =
-      typeof window !== 'undefined'
-        ? localStorage.getItem('token')
-        : null;
-
-    return {
-      'Content-Type': 'application/json',
-      ...(token
-        ? {
-            Authorization: `Bearer ${token}`,
-          }
-        : {}),
-    };
-  }, []);
-
-  const searchStaff = useCallback(
-    async (query = '') => {
-      try {
-        setStaffLoading(true);
-
-        const params = new URLSearchParams();
-
-        if (query.trim()) {
-          params.set('search', query.trim());
-        }
-
-        params.set('isActive', 'true');
-
-        const response = await fetch(
-          `${API_BASE_URL}/api/v1/staff?${params.toString()}`,
-          {
-            headers: getAuthHeaders(),
-          }
-        );
-
-        if (!response.ok) {
-          setStaffResults([]);
-          return;
-        }
-
-        const json = await response.json();
-
-        const data = Array.isArray(json?.data)
-          ? json.data
-          : Array.isArray(json)
-            ? json
-            : [];
-
-        setStaffResults(data);
-      } catch (err) {
-        console.error('Failed to search staff:', err);
-        setStaffResults([]);
-      } finally {
-        setStaffLoading(false);
+      if (showRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
       }
-    },
-    [API_BASE_URL, getAuthHeaders]
-  );
+
+      const data = await apiRequest(`/${orderId}`);
+
+      const labOrder = data?.data || data?.order || data;
+
+      setOrder(labOrder);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to load laboratory order.'
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    if (!showStaffModal) return;
+    if (!orderId) {
+      setLoading(false);
+      setError('No laboratory order ID was provided.');
+      return;
+    }
 
-    const timer = setTimeout(() => {
-      searchStaff(staffSearch);
-    }, 300);
+    fetchOrder();
+  }, [orderId]);
 
-    return () => clearTimeout(timer);
-  }, [showStaffModal, staffSearch, searchStaff]);
-
-  /* ---------------------------------------------------------------------- */
-  /* Load order                                                             */
-  /* ---------------------------------------------------------------------- */
-
-  const loadOrder = useCallback(
-    async (isRefresh = false) => {
-      if (!orderId) return;
-
-      try {
-        if (isRefresh) {
-          setRefreshing(true);
-        } else {
-          setLoading(true);
-        }
-
-        setError(null);
-
-        const result = await RadiologyApiService.getOrder(orderId);
-
-        setOrder(result);
-      } catch (err: any) {
-        setError(
-          err?.message ||
-            'Failed to load radiology examination.'
-        );
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [orderId]
-  );
-
-  useEffect(() => {
-    loadOrder();
-  }, [loadOrder]);
-
-  /* ---------------------------------------------------------------------- */
-  /* Sync forms when order loads                                            */
-  /* ---------------------------------------------------------------------- */
-
-  useEffect(() => {
-    if (!order) return;
-
-    setStatusForm({
-      status: order.status,
-      notes: '',
-    });
-
-    setScheduleForm({
-      scheduledDate:
-        order.scheduling?.scheduledDate?.split('T')[0] || '',
-      scheduledStartTime:
-        order.scheduling?.scheduledStartTime || '',
-      scheduledEndTime:
-        order.scheduling?.scheduledEndTime || '',
-      estimatedDurationMinutes:
-        order.scheduling?.estimatedDurationMinutes?.toString() || '',
-      modalityId:
-        order.scheduling?.modalityId || '',
-      theatreOrRoom:
-        order.scheduling?.theatreOrRoom || '',
-    });
-
-    setQueueForm({
-      queuePosition:
-        order.queuePosition?.toString() || '',
-      queueStatus:
-        order.queueStatus || ExaminationQueueStatus.WAITING,
-    });
-
-    setContrastForm({
-      status:
-        order.contrast?.status ||
-        ContrastStatus.NOT_REQUIRED,
-      contrastName:
-        order.contrast?.contrastName || '',
-      contrastType:
-        order.contrast?.contrastType || '',
-      dose:
-        order.contrast?.dose?.toString() || '',
-      doseUnit:
-        order.contrast?.doseUnit || '',
-      route:
-        order.contrast?.route || '',
-      reactionObserved:
-        order.contrast?.reactionObserved || false,
-      reactionDescription:
-        order.contrast?.reactionDescription || '',
-      notes:
-        order.contrast?.notes || '',
-    });
-
-    setPregnancyForm({
-      status:
-        order.pregnancyScreening?.status ||
-        PregnancyScreeningStatus.NOT_REQUIRED,
-      testType:
-        order.pregnancyScreening?.testType || '',
-      testResult:
-        order.pregnancyScreening?.testResult || '',
-      notes:
-        order.pregnancyScreening?.notes || '',
-    });
-
-    setRadiationForm({
-      dose:
-        order.radiationExposure?.dose?.toString() || '',
-      doseUnit:
-        order.radiationExposure?.doseUnit || '',
-      doseAreaProduct:
-        order.radiationExposure?.doseAreaProduct?.toString() || '',
-      doseAreaProductUnit:
-        order.radiationExposure?.doseAreaProductUnit || '',
-      ctDoseIndex:
-        order.radiationExposure?.ctDoseIndex?.toString() || '',
-      doseLengthProduct:
-        order.radiationExposure?.doseLengthProduct?.toString() || '',
-      notes:
-        order.radiationExposure?.notes || '',
-    });
-
-    setPacsForm({
-      studyInstanceUid:
-        order.pacsMetadata?.studyInstanceUid || '',
-      seriesInstanceUid:
-        order.pacsMetadata?.seriesInstanceUid || '',
-      accessionNumber:
-        order.pacsMetadata?.accessionNumber ||
-        order.accessionNumber ||
-        '',
-      studyId:
-        order.pacsMetadata?.studyId || '',
-      studyDate:
-        order.pacsMetadata?.studyDate?.split('T')[0] || '',
-      imageCount:
-        order.pacsMetadata?.imageCount?.toString() || '',
-      seriesCount:
-        order.pacsMetadata?.seriesCount?.toString() || '',
-      modality:
-        order.pacsMetadata?.modality || order.modality,
-      dicomViewerUrl:
-        order.pacsMetadata?.dicomViewerUrl || '',
-      storageLocation:
-        order.pacsMetadata?.storageLocation || '',
-      storageStatus:
-        order.pacsMetadata?.storageStatus || 'PENDING',
-      sharedLink:
-        order.pacsMetadata?.sharedLink || '',
-      sharedLinkExpiresAt:
-        order.pacsMetadata?.sharedLinkExpiresAt || '',
-      exportEnabled:
-        order.pacsMetadata?.exportEnabled ?? true,
-    });
-
-    setReportForm({
-      findings:
-        order.report?.findings ||
-        order.findings ||
-        '',
-      impression:
-        order.report?.impression ||
-        order.impression ||
-        '',
-      radiologistNotes:
-        order.report?.radiologistNotes ||
-        order.radiologistNotes ||
-        '',
-      templateId:
-        order.report?.templateId || '',
-      criticalResultStatus:
-        order.report?.criticalResult?.status ||
-        CriticalResultStatus.NOT_APPLICABLE,
-      criticalFinding:
-        order.report?.criticalResult?.finding || '',
-      notifiedUserId:
-        typeof order.report?.criticalResult?.notifiedUserId === 'string'
-          ? order.report.criticalResult.notifiedUserId
-          : order.report?.criticalResult?.notifiedUserId?._id || '',
-      notificationMethod:
-        order.report?.criticalResult?.notificationMethod ||
-        'IN_APP',
-      notificationNotes:
-        order.report?.criticalResult?.notificationNotes || '',
-    });
-
-    setAmendForm({
-      findings:
-        order.report?.findings ||
-        order.findings ||
-        '',
-      impression:
-        order.report?.impression ||
-        order.impression ||
-        '',
-      radiologistNotes:
-        order.report?.radiologistNotes ||
-        order.radiologistNotes ||
-        '',
-      amendmentReason: '',
-    });
-
-    setCriticalForm({
-      status:
-        order.report?.criticalResult?.status ||
-        CriticalResultStatus.PENDING,
-      finding:
-        order.report?.criticalResult?.finding || '',
-      notifiedUserId:
-        typeof order.report?.criticalResult?.notifiedUserId === 'string'
-          ? order.report.criticalResult.notifiedUserId
-          : order.report?.criticalResult?.notifiedUserId?._id || '',
-      notificationMethod:
-        order.report?.criticalResult?.notificationMethod ||
-        'IN_APP',
-      notificationNotes:
-        order.report?.criticalResult?.notificationNotes || '',
-    });
-
-    setAIForm({
-      enabled:
-        order.aiAnalysis?.enabled ?? true,
-      modelName:
-        order.aiAnalysis?.modelName || '',
-      modelVersion:
-        order.aiAnalysis?.modelVersion || '',
-      priority:
-        order.aiAnalysis?.priority ||
-        AIStudyPriority.NOT_PROCESSED,
-      confidence:
-        order.aiAnalysis?.confidence?.toString() || '',
-      findings:
-        order.aiAnalysis?.findings?.join('\n') || '',
-      recommendations:
-        order.aiAnalysis?.recommendations?.join('\n') || '',
-      qualityPassed:
-        order.aiAnalysis?.qualityPassed ?? true,
-      qualityNotes:
-        order.aiAnalysis?.qualityNotes || '',
-      measurements: order.aiAnalysis?.measurements
-        ? Object.entries(order.aiAnalysis.measurements)
-            .map(([key, value]) => `${key}=${value}`)
-            .join('\n')
-        : '',
-    });
-  }, [order]);
-
-  /* ---------------------------------------------------------------------- */
-  /* Action helper                                                          */
-  /* ---------------------------------------------------------------------- */
+  /* =========================================================
+     ACTION HANDLER
+  ========================================================= */
 
   const runAction = async (
-    action: () => Promise<RadiologyOrder>,
-    message: string
+    endpoint: string,
+    method: 'POST' | 'PATCH' | 'PUT' = 'POST',
+    body?: Record<string, unknown>
   ) => {
     try {
-      setSubmitting(true);
-      setActionError(null);
-      setSuccessMessage(null);
+      setActionLoading(true);
+      setError('');
 
-      const updated = await action();
+      const data = await apiRequest(endpoint, {
+        method,
+        body: body ? JSON.stringify(body) : undefined,
+      });
 
-      setOrder(updated);
+      const updatedOrder =
+        data?.data ||
+        data?.order ||
+        null;
 
-      setSuccessMessage(message);
-
-      setTimeout(() => {
-        setSuccessMessage(null);
-      }, 3500);
+      if (updatedOrder && updatedOrder._id) {
+        setOrder(updatedOrder);
+      } else {
+        await fetchOrder(true);
+      }
 
       return true;
-    } catch (err: any) {
-      setActionError(
-        err?.message || 'The requested action failed.'
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to complete this action.'
       );
 
       return false;
     } finally {
-      setSubmitting(false);
+      setActionLoading(false);
     }
   };
 
-  /* ---------------------------------------------------------------------- */
-  /* Actions                                                                */
-  /* ---------------------------------------------------------------------- */
+  /* =========================================================
+     WORKFLOW ACTIONS
+  ========================================================= */
 
-  const handleStatusUpdate = async () => {
-    if (!order) return;
-
-    const success = await runAction(
-      () =>
-        RadiologyApiService.updateStatus(order._id, {
-          status: statusForm.status,
-          notes: statusForm.notes || undefined,
-        }),
-      'Examination status updated successfully.'
-    );
-
-    if (success) setShowStatusModal(false);
+  const handleCollectSample = async () => {
+    await runAction(`/${orderId}/collect`, 'POST');
   };
 
-  const handleSchedule = async () => {
-    if (!order || !scheduleForm.scheduledDate) return;
-
-    const success = await runAction(
-      () =>
-        RadiologyApiService.scheduleOrder(order._id, {
-          scheduledDate: scheduleForm.scheduledDate,
-          scheduledStartTime:
-            scheduleForm.scheduledStartTime || undefined,
-          scheduledEndTime:
-            scheduleForm.scheduledEndTime || undefined,
-          estimatedDurationMinutes:
-            scheduleForm.estimatedDurationMinutes
-              ? Number(scheduleForm.estimatedDurationMinutes)
-              : undefined,
-          modalityId:
-            scheduleForm.modalityId || undefined,
-          theatreOrRoom:
-            scheduleForm.theatreOrRoom || undefined,
-        }),
-      'Radiology examination scheduled successfully.'
-    );
-
-    if (success) setShowScheduleModal(false);
+  const handleAccession = async () => {
+    await runAction(`/${orderId}/accession`, 'POST', {
+      location: 'Central Laboratory',
+    });
   };
 
-  const handleAssignStaff = async () => {
-    if (!order || !staffForm.userId) return;
-
-    const success = await runAction(
-      () =>
-        RadiologyApiService.assignStaff(order._id, {
-          userId: staffForm.userId,
-          role: staffForm.role,
-          notes: staffForm.notes || undefined,
-        }),
-      'Staff member assigned successfully.'
-    );
-
-    if (success) {
-      setShowStaffModal(false);
-      setStaffForm({
-        userId: '',
-        role: AssignmentRole.RADIOLOGIST,
-        notes: '',
-      });
-      setStaffSearch('');
-      setStaffResults([]);
-    }
+  const handleRecollect = async () => {
+    await runAction(`/${orderId}/recollect`, 'POST');
   };
 
-  const handleRemoveStaff = async (
-    userId: string,
-    role: AssignmentRole
-  ) => {
-    if (!order) return;
-
-    const confirmed = window.confirm(
-      'Remove this staff assignment?'
-    );
-
-    if (!confirmed) return;
-
-    await runAction(
-      () =>
-        RadiologyApiService.removeStaff(
-          order._id,
-          userId,
-          role
-        ),
-      'Staff assignment removed.'
-    );
+  const handleVerify = async () => {
+    await runAction(`/${orderId}/verify`, 'POST');
   };
 
-  const handleQueueUpdate = async () => {
-    if (!order) return;
-
-    const success = await runAction(
-      () =>
-        RadiologyApiService.updateQueue(order._id, {
-          queuePosition: queueForm.queuePosition
-            ? Number(queueForm.queuePosition)
-            : undefined,
-          queueStatus: queueForm.queueStatus,
-        }),
-      'Examination queue updated.'
-    );
-
-    if (success) setShowQueueModal(false);
+  const handleAuthorize = async () => {
+    await runAction(`/${orderId}/authorize`, 'POST');
   };
 
-  const handleContrastUpdate = async () => {
-    if (!order) return;
-
-    const success = await runAction(
-      () =>
-        RadiologyApiService.updateContrast(order._id, {
-          status: contrastForm.status,
-          contrastName:
-            contrastForm.contrastName || undefined,
-          contrastType:
-            contrastForm.contrastType || undefined,
-          dose: contrastForm.dose
-            ? Number(contrastForm.dose)
-            : undefined,
-          doseUnit:
-            contrastForm.doseUnit || undefined,
-          route:
-            contrastForm.route || undefined,
-          reactionObserved:
-            contrastForm.reactionObserved,
-          reactionDescription:
-            contrastForm.reactionDescription || undefined,
-          notes:
-            contrastForm.notes || undefined,
-        }),
-      'Contrast documentation updated.'
-    );
-
-    if (success) setShowContrastModal(false);
-  };
-
-  const handlePregnancyUpdate = async () => {
-    if (!order) return;
-
-    const success = await runAction(
-      () =>
-        RadiologyApiService.updatePregnancyScreening(
-          order._id,
-          {
-            status: pregnancyForm.status,
-            testType:
-              pregnancyForm.testType || undefined,
-            testResult:
-              pregnancyForm.testResult || undefined,
-            notes:
-              pregnancyForm.notes || undefined,
-          }
-        ),
-      'Pregnancy screening updated.'
-    );
-
-    if (success) setShowPregnancyModal(false);
-  };
-
-  const handleRadiationUpdate = async () => {
-    if (!order) return;
-
-    const success = await runAction(
-      () =>
-        RadiologyApiService.updateRadiation(order._id, {
-          dose: radiationForm.dose
-            ? Number(radiationForm.dose)
-            : undefined,
-          doseUnit:
-            radiationForm.doseUnit || undefined,
-          doseAreaProduct:
-            radiationForm.doseAreaProduct
-              ? Number(radiationForm.doseAreaProduct)
-              : undefined,
-          doseAreaProductUnit:
-            radiationForm.doseAreaProductUnit || undefined,
-          ctDoseIndex:
-            radiationForm.ctDoseIndex
-              ? Number(radiationForm.ctDoseIndex)
-              : undefined,
-          doseLengthProduct:
-            radiationForm.doseLengthProduct
-              ? Number(radiationForm.doseLengthProduct)
-              : undefined,
-          notes:
-            radiationForm.notes || undefined,
-        }),
-      'Radiation exposure documentation updated.'
-    );
-
-    if (success) setShowRadiationModal(false);
-  };
-
-  const handlePacsUpdate = async () => {
-    if (!order) return;
-
-    const success = await runAction(
-      () =>
-        RadiologyApiService.updatePacs(order._id, {
-          studyInstanceUid:
-            pacsForm.studyInstanceUid || undefined,
-          seriesInstanceUid:
-            pacsForm.seriesInstanceUid || undefined,
-          accessionNumber:
-            pacsForm.accessionNumber || undefined,
-          studyId:
-            pacsForm.studyId || undefined,
-          studyDate:
-            pacsForm.studyDate || undefined,
-          imageCount:
-            pacsForm.imageCount
-              ? Number(pacsForm.imageCount)
-              : undefined,
-          seriesCount:
-            pacsForm.seriesCount
-              ? Number(pacsForm.seriesCount)
-              : undefined,
-          modality:
-            pacsForm.modality || undefined,
-          dicomViewerUrl:
-            pacsForm.dicomViewerUrl || undefined,
-          storageLocation:
-            pacsForm.storageLocation || undefined,
-          storageStatus:
-            pacsForm.storageStatus || undefined,
-          sharedLink:
-            pacsForm.sharedLink || undefined,
-          sharedLinkExpiresAt:
-            pacsForm.sharedLinkExpiresAt || undefined,
-          exportEnabled:
-            pacsForm.exportEnabled,
-        }),
-      'PACS information updated.'
-    );
-
-    if (success) setShowPacsModal(false);
-  };
-
-  const handleCompleteReport = async () => {
-    if (!order) return;
-
-    if (!reportForm.findings.trim()) {
-      setActionError('Please enter the radiology findings.');
-      return;
-    }
-
-    if (!reportForm.impression.trim()) {
-      setActionError('Please enter the radiology impression.');
-      return;
-    }
-
-    const success = await runAction(
-      () =>
-        RadiologyApiService.completeReport(order._id, {
-          findings: reportForm.findings,
-          impression: reportForm.impression,
-          radiologistNotes:
-            reportForm.radiologistNotes || undefined,
-          templateId:
-            reportForm.templateId || undefined,
-          criticalResult: {
-            status:
-              reportForm.criticalResultStatus,
-            finding:
-              reportForm.criticalFinding || undefined,
-            notifiedUserId:
-              reportForm.notifiedUserId || undefined,
-            notificationMethod:
-              reportForm.notificationMethod,
-            notificationNotes:
-              reportForm.notificationNotes || undefined,
-          },
-        }),
-      'Radiology report saved successfully.'
-    );
-
-    if (success) setShowReportModal(false);
-  };
-
-  const handleSignReport = async () => {
-    if (!order) return;
-
-    const confirmed = window.confirm(
-      'Sign and finalize this radiology report?'
-    );
-
-    if (!confirmed) return;
-
-    await runAction(
-      () => RadiologyApiService.signReport(order._id),
-      'Radiology report signed successfully.'
-    );
-  };
-
-  const handleAmendReport = async () => {
-    if (!order) return;
-
-    if (!amendForm.amendmentReason.trim()) {
-      setActionError(
-        'Please provide a reason for the amendment.'
+  const handleReject = async () => {
+    if (!rejectReason.trim()) {
+      setError(
+        'Please provide a reason for rejecting the sample.'
       );
       return;
     }
 
     const success = await runAction(
-      () =>
-        RadiologyApiService.amendReport(order._id, {
-          findings: amendForm.findings,
-          impression: amendForm.impression,
-          radiologistNotes:
-            amendForm.radiologistNotes || undefined,
-          amendmentReason:
-            amendForm.amendmentReason,
-        }),
-      'Radiology report amended successfully.'
+      `/${orderId}/reject`,
+      'POST',
+      {
+        reason: rejectReason,
+        quality: rejectQuality,
+        requestRecollection,
+      }
     );
 
-    if (success) setShowAmendModal(false);
+    if (success) {
+      setShowRejectForm(false);
+      setRejectReason('');
+    }
   };
 
-  const handleCriticalResult = async () => {
-    if (!order) return;
-
-    const success = await runAction(
-      () =>
-        RadiologyApiService.updateCriticalResult(
-          order._id,
-          {
-            status: criticalForm.status,
-            finding:
-              criticalForm.finding || undefined,
-            notifiedUserId:
-              criticalForm.notifiedUserId || undefined,
-            notificationMethod:
-              criticalForm.notificationMethod,
-            notificationNotes:
-              criticalForm.notificationNotes || undefined,
-          }
-        ),
-      'Critical result status updated.'
+  const handleRecordResults = async () => {
+    const validResults = newResults.filter(
+      (result) =>
+        result.parameterName.trim() &&
+        result.value.trim()
     );
 
-    if (success) setShowCriticalModal(false);
-  };
-
-  const handleAIUpdate = async () => {
-    if (!order) return;
-
-    const measurements: Record<string, number> = {};
-
-    aiForm.measurements
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .forEach((line) => {
-        const [key, value] = line.split('=');
-
-        if (key && value && !Number.isNaN(Number(value))) {
-          measurements[key.trim()] = Number(value);
-        }
-      });
-
-    const success = await runAction(
-      () =>
-        RadiologyApiService.updateAIAnalysis(
-          order._id,
-          {
-            enabled: aiForm.enabled,
-            modelName:
-              aiForm.modelName || undefined,
-            modelVersion:
-              aiForm.modelVersion || undefined,
-            priority: aiForm.priority,
-            confidence: aiForm.confidence
-              ? Number(aiForm.confidence)
-              : undefined,
-            findings: aiForm.findings
-              .split('\n')
-              .map((item) => item.trim())
-              .filter(Boolean),
-            measurements,
-            recommendations:
-              aiForm.recommendations
-                .split('\n')
-                .map((item) => item.trim())
-                .filter(Boolean),
-            qualityPassed:
-              aiForm.qualityPassed,
-            qualityNotes:
-              aiForm.qualityNotes || undefined,
-          }
-        ),
-      'AI analysis updated successfully.'
-    );
-
-    if (success) setShowAIModal(false);
-  };
-
-  const handleCancel = async () => {
-    if (!order) return;
-
-    if (!cancelReason.trim()) {
-      setActionError(
-        'Please provide a cancellation reason.'
+    if (!validResults.length) {
+      setError(
+        'Please add at least one complete laboratory result.'
       );
       return;
     }
 
     const success = await runAction(
-      () =>
-        RadiologyApiService.cancelOrder(
-          order._id,
-          cancelReason.trim()
-        ),
-      'Radiology order cancelled.'
+      `/${orderId}/results`,
+      'POST',
+      {
+        results: validResults,
+        specimenQuality:
+          order?.specimenQuality || 'SATISFACTORY',
+      }
     );
 
     if (success) {
-      setShowCancelModal(false);
-      setCancelReason('');
+      setShowResultForm(false);
+      setNewResults([createEmptyResult()]);
+      setActiveTab('results');
     }
   };
 
-  /* ---------------------------------------------------------------------- */
-  /* Derived data                                                           */
-  /* ---------------------------------------------------------------------- */
+  const handleRepeatTest = async () => {
+    if (!repeatReason.trim()) {
+      setError(
+        'Please provide a reason for repeating the test.'
+      );
+      return;
+    }
 
-  const patient =
-    order && typeof order.patientId !== 'string'
-      ? order.patientId
-      : null;
+    const success = await runAction(
+      `/${orderId}/repeat`,
+      'POST',
+      {
+        reason: repeatReason,
+        parameterNames: repeatParameters
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean),
+      }
+    );
 
-  const orderingDoctor =
-    order &&
-    typeof order.orderingDoctorId !== 'string'
-      ? order.orderingDoctorId
-      : null;
+    if (success) {
+      setShowRepeatForm(false);
+      setRepeatReason('');
+      setRepeatParameters('');
+    }
+  };
 
-  const radiologist =
-    order?.radiologistId &&
-    typeof order.radiologistId !== 'string'
-      ? order.radiologistId
-      : null;
+  /* =========================================================
+     COMPUTED DATA
+  ========================================================= */
 
-  const age = patient
-    ? getAge(patient.dateOfBirth)
-    : null;
-
-  const assignments = order?.assignments || [];
-
-  const isCancelled =
-    order?.status === RadiologyOrderStatus.CANCELLED;
-
-  const isFinalReport =
-    order?.report?.status === ReportStatus.FINAL;
-
-  const hasCriticalResult =
-    order?.report?.criticalResult &&
-    order.report.criticalResult.status !==
-      CriticalResultStatus.NOT_APPLICABLE;
-
-  const aiConfidence =
-    order?.aiAnalysis?.confidence !== undefined
-      ? `${Math.round(order.aiAnalysis.confidence * 100)}%`
-      : 'N/A';
-
-  const reportVersions = useMemo(
-    () => order?.report?.versions || [],
-    [order?.report?.versions]
+  const patientName = useMemo(
+    () => getPersonName(order?.patientId),
+    [order]
   );
 
-  /* ---------------------------------------------------------------------- */
-  /* Loading                                                                */
-  /* ---------------------------------------------------------------------- */
+  const workflowSteps = useMemo(() => {
+    if (!order) {
+      return [];
+    }
+
+    return [
+      {
+        title: 'Order Created',
+        description: 'Laboratory requisition created.',
+        complete: true,
+        active: false,
+        icon: FileText,
+      },
+      {
+        title: 'Sample Collection',
+        description: order.sampleCollectedAt
+          ? `Collected ${formatDate(
+              order.sampleCollectedAt
+            )}`
+          : 'Awaiting specimen collection',
+        complete: Boolean(order.sampleCollectedAt),
+        active: [
+          'PENDING',
+          'SAMPLE_SCHEDULED',
+          'RECOLLECTION_REQUIRED',
+        ].includes(order.status),
+        icon: TestTube2,
+      },
+      {
+        title: 'Specimen Received',
+        description: order.specimenReceivedAt
+          ? `Received ${formatDate(
+              order.specimenReceivedAt
+            )}`
+          : 'Awaiting laboratory accessioning',
+        complete: Boolean(order.specimenReceivedAt),
+        active: order.status === 'SAMPLE_COLLECTED',
+        icon: PackageCheck,
+      },
+      {
+        title: 'Results Recorded',
+        description: order.results?.length
+          ? `${order.results.length} parameter(s) recorded`
+          : 'Awaiting test results',
+        complete: Boolean(order.results?.length),
+        active: [
+          'SPECIMEN_RECEIVED',
+          'IN_PROGRESS',
+        ].includes(order.status),
+        icon: ClipboardCheck,
+      },
+      {
+        title: 'Results Verified',
+        description: order.verifiedAt
+          ? `Verified ${formatDate(order.verifiedAt)}`
+          : 'Awaiting verification',
+        complete: Boolean(order.verifiedAt),
+        active: order.status === 'RESULTS_RECORDED',
+        icon: ShieldCheck,
+      },
+      {
+        title: 'Results Released',
+        description: order.completedAt
+          ? `Released ${formatDate(order.completedAt)}`
+          : 'Awaiting authorization',
+        complete: order.status === 'COMPLETED',
+        active: order.status === 'VERIFIED',
+        icon: CheckCircle2,
+      },
+    ];
+  }, [order]);
+
+  const progressPercentage = useMemo(() => {
+    if (!workflowSteps.length) {
+      return 0;
+    }
+
+    const completedSteps = workflowSteps.filter(
+      (step) => step.complete
+    ).length;
+
+    return Math.round(
+      (completedSteps / workflowSteps.length) * 100
+    );
+  }, [workflowSteps]);
+
+  const currentStep = useMemo(() => {
+    if (!workflowSteps.length) {
+      return null;
+    }
+
+    return (
+      workflowSteps.find((step) => step.active) ||
+      workflowSteps[workflowSteps.length - 1]
+    );
+  }, [workflowSteps]);
+
+  const tabs = [
+    {
+      id: 'overview' as ActiveTab,
+      label: 'Overview',
+      icon: ClipboardList,
+    },
+    {
+      id: 'results' as ActiveTab,
+      label: 'Results',
+      icon: Beaker,
+      count: order?.results?.length || 0,
+    },
+    {
+      id: 'workflow' as ActiveTab,
+      label: 'Workflow',
+      icon: Clock3,
+      count: order?.chainOfCustody?.length || 0,
+    },
+  ];
+
+  /* =========================================================
+     LOADING
+  ========================================================= */
 
   if (loading) {
     return (
-      <div className="px-6 py-5 max-w-7xl mx-auto">
-        <div className="animate-pulse space-y-6">
-          <div className="h-10 bg-slate-100 rounded-xl w-2/3" />
+      <div className="min-h-screen bg-slate-50">
+        <div className="flex min-h-[70vh] items-center justify-center">
+          <div className="flex flex-col items-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-[#1b7b68] shadow-lg shadow-slate-900/10">
+              <Loader2 className="h-7 w-7 animate-spin text-white" />
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map((item) => (
-              <div
-                key={item}
-                className="h-28 bg-slate-100 rounded-2xl"
-              />
-            ))}
+            <h2 className="mt-5 font-bold text-slate-900">
+              Loading laboratory order
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Retrieving specimen and workflow information...
+            </p>
           </div>
-
-          <div className="h-96 bg-slate-100 rounded-2xl" />
         </div>
       </div>
     );
   }
 
-  /* ---------------------------------------------------------------------- */
-  /* Error                                                                  */
-  /* ---------------------------------------------------------------------- */
+  /* =========================================================
+     ERROR
+  ========================================================= */
 
-  if (error || !order) {
+  if (!order) {
     return (
-      <div className="px-6 py-5 max-w-7xl mx-auto">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-800 mb-6"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Radiology
-        </button>
+      <div className="min-h-screen bg-slate-50 p-4 sm:p-6">
+        <div className="mx-auto flex min-h-[70vh] max-w-2xl items-center">
+          <div className="w-full rounded-3xl border border-red-100 bg-white p-8 text-center shadow-lg shadow-slate-200/40">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-red-50">
+              <AlertCircle className="h-8 w-8 text-red-500" />
+            </div>
 
-        <div className="bg-white rounded-3xl border border-rose-100 p-12 text-center shadow-sm">
-          <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-4">
-            <AlertTriangle className="w-7 h-7" />
+            <h2 className="mt-5 text-xl font-bold text-slate-900">
+              Unable to Load Laboratory Order
+            </h2>
+
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+              {error ||
+                'The requested laboratory order could not be found.'}
+            </p>
+
+            <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+              <button
+                onClick={() => router.push('/hms/lab')}
+                className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Back to Laboratory
+              </button>
+
+              <button
+                onClick={() => fetchOrder()}
+                className="rounded-xl bg-[#1b7b68] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#155f50]"
+              >
+                Try Again
+              </button>
+            </div>
           </div>
-
-          <h2 className="text-lg font-bold text-slate-900">
-            Unable to load examination
-          </h2>
-
-          <p className="text-sm text-slate-500 mt-2">
-            {error || 'Radiology order not found.'}
-          </p>
-
-          <button
-            type="button"
-            onClick={() => loadOrder()}
-            className="mt-6 px-4 py-2.5 rounded-xl bg-[#1b7b68] text-white text-xs font-bold"
-          >
-            Try Again
-          </button>
         </div>
       </div>
     );
   }
 
-  /* ---------------------------------------------------------------------- */
-  /* Render                                                                 */
-  /* ---------------------------------------------------------------------- */
+  /* =========================================================
+     PAGE
+  ========================================================= */
 
   return (
-    <div className="min-h-screen bg-slate-50/70">
-      <div className="px-6 py-5 max-w-7xl mx-auto space-y-5 font-sans pb-14">
-      {/* ---------------------------------------------------------------- */}
-      {/* Header                                                           */}
-      {/* ---------------------------------------------------------------- */}
+    <div className="min-h-screen bg-slate-50 pb-10">
+      {/* =====================================================
+          TOP HEADER
+      ====================================================== */}
 
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="w-9 h-9 mt-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center text-slate-500"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-                Radiology Examination
-              </h1>
-
-              <StatusBadge
-                className={getStatusClasses(order.status)}
-              >
-                {formatLabel(order.status)}
-              </StatusBadge>
-
-              <StatusBadge
-                className={getPriorityClasses(order.priority)}
-              >
-                {order.priority}
-              </StatusBadge>
-            </div>
-
-            <p className="text-sm text-slate-500 mt-1">
-              {order.procedureName} •{' '}
-              {formatLabel(order.modality)} •{' '}
-              {order.bodyPart}
-            </p>
-
-            <p className="text-[11px] text-slate-400 mt-1 font-mono">
-              Order ID: {order._id}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => loadOrder(true)}
-            disabled={refreshing}
-            className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 shadow-sm text-xs font-bold text-slate-600 flex items-center gap-2 disabled:opacity-50"
-          >
-            <RefreshCw
-              className={`w-3.5 h-3.5 ${
-                refreshing ? 'animate-spin' : ''
-              }`}
-            />
-            Refresh
-          </button>
-
-          {!isCancelled && (
-            <>
-              <button
-                type="button"
-                onClick={() => setShowStatusModal(true)}
-                className="px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold"
-              >
-                Update Status
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowCancelModal(true)}
-                className="px-3 py-2.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold"
-              >
-                Cancel Order
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* ---------------------------------------------------------------- */}
-      {/* Notifications                                                   */}
-      {/* ---------------------------------------------------------------- */}
-
-      {(actionError || successMessage) && (
-        <div
-          className={`rounded-2xl border p-4 flex items-start gap-3 ${
-            actionError
-              ? 'bg-rose-50 border-rose-200 text-rose-700'
-              : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-          }`}
-        >
-          {actionError ? (
-            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-          ) : (
-            <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
-          )}
-
-          <div className="flex-1">
-            <p className="text-xs font-semibold">
-              {actionError || successMessage}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              setActionError(null);
-              setSuccessMessage(null);
-            }}
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {/* ---------------------------------------------------------------- */}
-      {/* Patient / Procedure summary                                      */}
-      {/* ---------------------------------------------------------------- */}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        <div className="bg-white border border-slate-200/80 shadow-[0_1px_3px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.035)] rounded-2xl p-5 hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-              <User className="w-4 h-4" />
-            </div>
-
-            <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
-              Patient
-            </span>
-          </div>
-
-          <h3 className="text-base font-bold text-slate-900">
-            {getPatientName(order.patientId)}
-          </h3>
-
-          <p className="text-xs text-slate-400 mt-1">
-            MRN: {getPatientMRN(order.patientId)}
-          </p>
-
-          <div className="flex gap-4 mt-3 text-[11px] text-slate-500">
-            {patient?.gender && (
-              <span>{formatLabel(patient.gender)}</span>
-            )}
-
-            {age !== null && <span>{age} years</span>}
-          </div>
-        </div>
-
-        <div className="bg-white border border-slate-200/80 shadow-[0_1px_3px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.035)] rounded-2xl p-5 hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-9 h-9 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center">
-              <ScanLine className="w-4 h-4" />
-            </div>
-
-            <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
-              Examination
-            </span>
-          </div>
-
-          <h3 className="text-base font-bold text-slate-900">
-            {order.procedureName}
-          </h3>
-
-          <p className="text-xs text-slate-500 mt-1">
-            {formatLabel(order.modality)} • {order.bodyPart}
-          </p>
-
-          <p className="text-[11px] text-slate-400 mt-3">
-            Accession: {order.accessionNumber || 'Not assigned'}
-          </p>
-        </div>
-
-        <div className="bg-white border border-slate-200/80 shadow-[0_1px_3px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.035)] rounded-2xl p-5 hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <Stethoscope className="w-4 h-4" />
-            </div>
-
-            <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
-              Ordering Clinician
-            </span>
-          </div>
-
-          <h3 className="text-base font-bold text-slate-900">
-            {orderingDoctor
-              ? getStaffName(orderingDoctor)
-              : typeof order.orderingDoctorId === 'string'
-                ? order.orderingDoctorId
-                : 'Not assigned'}
-          </h3>
-
-          <p className="text-xs text-slate-400 mt-1">
-            {orderingDoctor?.role
-              ? formatLabel(orderingDoctor.role)
-              : 'Ordering clinician'}
-          </p>
-        </div>
-
-        <div className="bg-white border border-slate-200/80 shadow-[0_1px_3px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.035)] rounded-2xl p-5 hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-              <Clock3 className="w-4 h-4" />
-            </div>
-
-            <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
-              Scheduled
-            </span>
-          </div>
-
-          {order.scheduling?.scheduledDate ? (
-            <>
-              <h3 className="text-base font-bold text-slate-900">
-                {formatDate(
-                  order.scheduling.scheduledDate
-                )}
-              </h3>
-
-              <p className="text-xs text-slate-500 mt-1">
-                {order.scheduling.scheduledStartTime ||
-                  'Time not set'}
-                {order.scheduling.scheduledEndTime
-                  ? ` – ${order.scheduling.scheduledEndTime}`
-                  : ''}
-              </p>
-            </>
-          ) : (
-            <>
-              <h3 className="text-base font-bold text-slate-500">
-                Not scheduled
-              </h3>
-
-              <button
-                type="button"
-                onClick={() => setShowScheduleModal(true)}
-                className="text-xs font-bold text-[#1b7b68] mt-2 hover:underline"
-              >
-                Schedule examination
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* ---------------------------------------------------------------- */}
-      {/* Navigation                                                       */}
-      {/* ---------------------------------------------------------------- */}
-
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-1.5 flex items-center gap-1 overflow-x-auto no-scrollbar">
-        {[
-          {
-            id: 'overview',
-            label: 'Overview',
-            icon: ClipboardList,
-          },
-          {
-            id: 'workflow',
-            label: 'Workflow',
-            icon: Activity,
-          },
-          {
-            id: 'report',
-            label: 'Reporting',
-            icon: FileText,
-          },
-          {
-            id: 'pacs',
-            label: 'PACS',
-            icon: ImageIcon,
-          },
-          {
-            id: 'ai',
-            label: 'AI Analysis',
-            icon: Brain,
-          },
-        ].map((tab) => {
-          const Icon = tab.icon;
-
-          return (
+      <div className="border-b border-slate-200/80 bg-white">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <div className="mb-5 flex items-center justify-between gap-4">
             <button
-              key={tab.id}
-              type="button"
-              onClick={() =>
-                setActiveTab(
-                  tab.id as
-                    | 'overview'
-                    | 'workflow'
-                    | 'report'
-                    | 'pacs'
-                    | 'ai'
-                )
-              }
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap flex items-center gap-2 transition-all ${
-                activeTab === tab.id
-                  ? 'bg-[#1b7b68] text-white shadow-sm shadow-[#1b7b68]/20'
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-              }`}
+              onClick={() => router.push('/hms/lab')}
+              className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900"
             >
-              <Icon className="w-3.5 h-3.5" />
-              {tab.label}
+              <ArrowLeft className="h-4 w-4" />
+              Laboratory Orders
             </button>
-          );
-        })}
-      </div>
 
-      {/* ================================================================== */}
-      {/* OVERVIEW                                                           */}
-      {/* ================================================================== */}
-
-      {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2 space-y-6">
-            {/* Clinical information */}
-            <SectionCard
-              title="Clinical Information"
-              subtitle="Information provided with the imaging request"
-              icon={<Stethoscope className="w-4 h-4" />}
+            <button
+              onClick={() => fetchOrder(true)}
+              disabled={refreshing}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Field
-                  label="Procedure"
-                  value={order.procedureName}
-                />
+              <RefreshCw
+                className={`h-4 w-4 ${
+                  refreshing ? 'animate-spin' : ''
+                }`}
+              />
 
-                <Field
-                  label="Body Part"
-                  value={order.bodyPart}
-                />
-
-                <Field
-                  label="Modality"
-                  value={formatLabel(order.modality)}
-                />
-
-                <Field
-                  label="Priority"
-                  value={
-                    <StatusBadge
-                      className={getPriorityClasses(
-                        order.priority
-                      )}
-                    >
-                      {order.priority}
-                    </StatusBadge>
-                  }
-                />
-
-                <div className="md:col-span-2">
-                  <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 mb-2">
-                    Clinical Indication
-                  </p>
-
-                  <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-4 text-sm leading-6 text-slate-700">
-                    {order.clinicalIndication ||
-                      'No clinical indication provided.'}
-                  </div>
-                </div>
-              </div>
-            </SectionCard>
-
-            {/* Scheduling */}
-            <SectionCard
-              title="Scheduling"
-              subtitle="Appointment and modality scheduling information"
-              icon={<CalendarDays className="w-4 h-4" />}
-              action={
-                !isCancelled && (
-                  <button
-                    type="button"
-                    onClick={() => setShowScheduleModal(true)}
-                    className="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-[11px] font-bold shadow-sm"
-                  >
-                    Edit Schedule
-                  </button>
-                )
-              }
-            >
-              {order.scheduling?.scheduledDate ? (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
-                  <Field
-                    label="Date"
-                    value={formatDate(
-                      order.scheduling.scheduledDate
-                    )}
-                  />
-
-                  <Field
-                    label="Start"
-                    value={
-                      order.scheduling.scheduledStartTime ||
-                      'Not set'
-                    }
-                  />
-
-                  <Field
-                    label="End"
-                    value={
-                      order.scheduling.scheduledEndTime ||
-                      'Not set'
-                    }
-                  />
-
-                  <Field
-                    label="Duration"
-                    value={
-                      order.scheduling
-                        .estimatedDurationMinutes
-                        ? `${order.scheduling.estimatedDurationMinutes} min`
-                        : 'Not set'
-                    }
-                  />
-
-                  <Field
-                    label="Room / Theatre"
-                    value={
-                      order.scheduling.theatreOrRoom ||
-                      'Not assigned'
-                    }
-                  />
-
-                  <Field
-                    label="Modality ID"
-                    value={
-                      order.scheduling.modalityId ||
-                      'Not assigned'
-                    }
-                  />
-
-                  <Field
-                    label="Scheduled By"
-                    value={
-                      order.scheduling.scheduledBy ||
-                      'N/A'
-                    }
-                  />
-                </div>
-              ) : (
-                <div className="py-8 text-center">
-                  <CalendarDays className="w-8 h-8 text-slate-300 mx-auto" />
-
-                  <p className="text-sm font-semibold text-slate-600 mt-3">
-                    Examination has not been scheduled
-                  </p>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowScheduleModal(true)}
-                    className="mt-3 px-4 py-2 rounded-xl bg-[#1b7b68] text-white text-xs font-bold"
-                  >
-                    Schedule Examination
-                  </button>
-                </div>
-              )}
-            </SectionCard>
-
-            {/* Preparation */}
-            <SectionCard
-              title="Patient Preparation"
-              subtitle="Preparation instructions and completion"
-              icon={<ClipboardList className="w-4 h-4" />}
-            >
-              {order.patientPreparation ? (
-                <div className="space-y-5">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
-                    <Field
-                      label="Fasting Required"
-                      value={
-                        order.patientPreparation
-                          .fastingRequired
-                          ? 'Yes'
-                          : 'No'
-                      }
-                    />
-
-                    <Field
-                      label="Fasting Hours"
-                      value={
-                        order.patientPreparation
-                          .fastingHours
-                          ? `${order.patientPreparation.fastingHours} hours`
-                          : 'N/A'
-                      }
-                    />
-
-                    <Field
-                      label="Hydration Required"
-                      value={
-                        order.patientPreparation
-                          .hydrationRequired
-                          ? 'Yes'
-                          : 'No'
-                      }
-                    />
-
-                    <Field
-                      label="Preparation Completed"
-                      value={
-                        order.patientPreparation
-                          .preparationCompleted
-                          ? 'Yes'
-                          : 'No'
-                      }
-                    />
-                  </div>
-
-                  {order.patientPreparation.instructions && (
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 mb-2">
-                        Instructions
-                      </p>
-
-                      <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-100/80 border border-slate-100 text-sm text-slate-700 leading-6">
-                        {order.patientPreparation.instructions}
-                      </div>
-                    </div>
-                  )}
-
-                  {order.patientPreparation
-                    .medicationInstructions && (
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 mb-2">
-                        Medication Instructions
-                      </p>
-
-                      <p className="text-sm text-slate-700">
-                        {
-                          order.patientPreparation
-                            .medicationInstructions
-                        }
-                      </p>
-                    </div>
-                  )}
-
-                  {order.patientPreparation.preparationNotes && (
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 mb-2">
-                        Notes
-                      </p>
-
-                      <p className="text-sm text-slate-700">
-                        {
-                          order.patientPreparation
-                            .preparationNotes
-                        }
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="py-8 text-center text-sm text-slate-400">
-                  No preparation information recorded.
-                </div>
-              )}
-            </SectionCard>
+              <span className="hidden sm:inline">
+                Refresh
+              </span>
+            </button>
           </div>
 
-          {/* Right column */}
-          <div className="space-y-6">
-            {/* Queue */}
-            <SectionCard
-              title="Examination Queue"
-              subtitle="Current queue position"
-              icon={<Gauge className="w-4 h-4" />}
-              action={
-                !isCancelled && (
-                  <button
-                    type="button"
-                    onClick={() => setShowQueueModal(true)}
-                    className="text-[11px] font-bold text-[#1b7b68] hover:underline"
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="flex h-15 w-15 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1b7b68] to-[#155f50] text-white shadow-lg shadow-slate-900/10 sm:h-16 sm:w-16">
+                <FlaskConical className="h-7 w-7 sm:h-8 sm:w-8" />
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
+                    {order.testName}
+                  </h1>
+
+                  <span
+                    className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wide ${getStatusStyle(
+                      order.status
+                    )}`}
                   >
-                    Edit
-                  </button>
-                )
-              }
-            >
-              <div className="text-center py-2">
-                <div className="w-16 h-16 rounded-2xl bg-[#1b7b68]/10 text-[#1b7b68] mx-auto flex items-center justify-center">
-                  <span className="text-xl font-black">
-                    {order.queuePosition ?? '—'}
+                    {formatStatus(order.status)}
+                  </span>
+
+                  <span
+                    className={`inline-flex rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wide ring-1 ${getPriorityStyle(
+                      order.priority
+                    )}`}
+                  >
+                    {order.priority}
                   </span>
                 </div>
 
-                <p className="text-xs text-slate-400 mt-3">
-                  Queue Position
+                <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-500">
+                  <span className="rounded-lg bg-slate-100 px-2.5 py-1 font-mono text-xs font-bold text-slate-700">
+                    {order.accessionNumber}
+                  </span>
+
+                  <span className="inline-flex items-center gap-1.5">
+                    <User className="h-4 w-4 text-[#1b7b68]" />
+                    {patientName}
+                  </span>
+
+                  <span className="inline-flex items-center gap-1.5">
+                    <Beaker className="h-4 w-4 text-[#1b7b68]" />
+                    {formatStatus(order.testCategory)}
+                  </span>
+
+                  <span className="inline-flex items-center gap-1.5">
+                    <TestTube2 className="h-4 w-4 text-[#1b7b68]" />
+                    {order.sampleType}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {order.isStat && (
+                <div className="inline-flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+                  <Activity className="h-4 w-4" />
+                  STAT REQUEST
+                </div>
+              )}
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Predicted TAT
                 </p>
 
-                {order.queueStatus && (
-                  <StatusBadge
-                    className={`mt-3 ${getQueueClasses(
-                      order.queueStatus
-                    )}`}
-                  >
-                    {formatLabel(order.queueStatus)}
-                  </StatusBadge>
-                )}
+                <p className="mt-0.5 text-sm font-bold text-slate-900">
+                  {order.predictedTatMinutes
+                    ? `${order.predictedTatMinutes} min`
+                    : '—'}
+                </p>
               </div>
-            </SectionCard>
-
-            {/* Staff */}
-            <SectionCard
-              title="Assigned Staff"
-              subtitle="Radiology team assigned to this examination"
-              icon={<Users className="w-4 h-4" />}
-              action={
-                !isCancelled && (
-                  <button
-                    type="button"
-                    onClick={() => setShowStaffModal(true)}
-                    className="w-7 h-7 rounded-lg bg-[#1b7b68] text-white flex items-center justify-center"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
-                )
-              }
-            >
-              <div className="space-y-3">
-                {assignments.length === 0 ? (
-                  <div className="py-5 text-center">
-                    <Users className="w-7 h-7 text-slate-300 mx-auto" />
-
-                    <p className="text-xs text-slate-400 mt-2">
-                      No staff assigned
-                    </p>
-                  </div>
-                ) : (
-                  assignments.map(
-                    (
-                      assignment: RadiologyAssignment,
-                      index
-                    ) => {
-                      const userId =
-                        typeof assignment.userId === 'string'
-                          ? assignment.userId
-                          : assignment.userId._id;
-
-                      return (
-                        <div
-                          key={`${userId}-${assignment.role}-${index}`}
-                          className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/60 hover:bg-white transition-colors"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-lg bg-white border border-slate-100 flex items-center justify-center text-slate-500">
-                                <User className="w-3.5 h-3.5" />
-                              </div>
-
-                              <div>
-                                <p className="text-xs font-bold text-slate-800">
-                                  {getStaffName(
-                                    assignment.userId
-                                  )}
-                                </p>
-
-                                <p className="text-[10px] text-[#1b7b68] font-semibold mt-0.5">
-                                  {formatLabel(
-                                    assignment.role
-                                  )}
-                                </p>
-                              </div>
-                            </div>
-
-                            {!isCancelled && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleRemoveStaff(
-                                    userId,
-                                    assignment.role
-                                  )
-                                }
-                                className="text-slate-300 hover:text-rose-600"
-                                title="Remove assignment"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-
-                          {assignment.notes && (
-                            <p className="text-[10px] text-slate-400 mt-2 pl-10">
-                              {assignment.notes}
-                            </p>
-                          )}
-                        </div>
-                      );
-                    }
-                  )
-                )}
-              </div>
-            </SectionCard>
-
-            {/* Safety alerts */}
-            <SectionCard
-              title="Safety & Screening"
-              subtitle="Patient safety checks"
-              icon={<ShieldAlert className="w-4 h-4" />}
-            >
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50">
-                  <div className="flex items-center gap-2">
-                    <Pill className="w-4 h-4 text-slate-400" />
-
-                    <span className="text-xs font-semibold text-slate-700">
-                      Contrast
-                    </span>
-                  </div>
-
-                  <StatusBadge
-                    className={
-                      order.contrast?.status ===
-                      ContrastStatus.CONTRAINDICATED
-                        ? 'bg-rose-50 text-rose-700 border-rose-200'
-                        : 'bg-slate-100 text-slate-600 border-slate-200'
-                    }
-                  >
-                    {formatLabel(
-                      order.contrast?.status ||
-                        ContrastStatus.NOT_REQUIRED
-                    )}
-                  </StatusBadge>
-                </div>
-
-                <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50">
-                  <div className="flex items-center gap-2">
-                    <Baby className="w-4 h-4 text-slate-400" />
-
-                    <span className="text-xs font-semibold text-slate-700">
-                      Pregnancy
-                    </span>
-                  </div>
-
-                  <StatusBadge
-                    className={
-                      order.pregnancyScreening?.status ===
-                      PregnancyScreeningStatus.POSITIVE
-                        ? 'bg-rose-50 text-rose-700 border-rose-200'
-                        : order.pregnancyScreening?.status ===
-                            PregnancyScreeningStatus.NEGATIVE
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-slate-100 text-slate-600 border-slate-200'
-                    }
-                  >
-                    {formatLabel(
-                      order.pregnancyScreening?.status ||
-                        PregnancyScreeningStatus.NOT_REQUIRED
-                    )}
-                  </StatusBadge>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowContrastModal(true)}
-                    className="py-2 rounded-xl border border-slate-200 text-[10px] font-bold text-slate-600 hover:bg-slate-50"
-                  >
-                    Contrast
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setShowPregnancyModal(true)
-                    }
-                    className="py-2 rounded-xl border border-slate-200 text-[10px] font-bold text-slate-600 hover:bg-slate-50"
-                  >
-                    Pregnancy
-                  </button>
-                </div>
-              </div>
-            </SectionCard>
+            </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* ================================================================== */}
-      {/* WORKFLOW                                                           */}
-      {/* ================================================================== */}
+      {/* =====================================================
+          PAGE CONTENT
+      ====================================================== */}
 
-      {activeTab === 'workflow' && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          <SectionCard
-            title="Examination Workflow"
-            subtitle="Track the patient's imaging journey"
-            icon={<Activity className="w-4 h-4" />}
-          >
-            <div className="space-y-1">
-              {[
-                RadiologyOrderStatus.REQUESTED,
-                RadiologyOrderStatus.SCHEDULED,
-                RadiologyOrderStatus.PATIENT_ARRIVED,
-                RadiologyOrderStatus.PREPARING,
-                RadiologyOrderStatus.READY_FOR_EXAM,
-                RadiologyOrderStatus.IN_PROGRESS,
-                RadiologyOrderStatus.IMAGE_ACQUISITION_COMPLETE,
-                RadiologyOrderStatus.REPORTING,
-                RadiologyOrderStatus.REPORTED,
-                RadiologyOrderStatus.COMPLETED,
-              ].map((status, index) => {
-                const currentIndex = [
-                  RadiologyOrderStatus.REQUESTED,
-                  RadiologyOrderStatus.SCHEDULED,
-                  RadiologyOrderStatus.PATIENT_ARRIVED,
-                  RadiologyOrderStatus.PREPARING,
-                  RadiologyOrderStatus.READY_FOR_EXAM,
-                  RadiologyOrderStatus.IN_PROGRESS,
-                  RadiologyOrderStatus.IMAGE_ACQUISITION_COMPLETE,
-                  RadiologyOrderStatus.REPORTING,
-                  RadiologyOrderStatus.REPORTED,
-                  RadiologyOrderStatus.COMPLETED,
-                ].indexOf(order.status);
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        {/* ===================================================
+            ERROR ALERT
+        ==================================================== */}
 
-                const done = index < currentIndex;
-                const current = status === order.status;
+        {error && (
+          <div className="mb-6 flex items-start justify-between gap-4 rounded-2xl border border-red-100 bg-red-50 p-4">
+            <div className="flex gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-100">
+                <AlertCircle className="h-4 w-4 text-red-600" />
+              </div>
 
-                return (
-                  <div
-                    key={status}
-                    className="flex items-center gap-4"
-                  >
-                    <div className="flex flex-col items-center">
-                      <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${
-                          current
-                            ? 'border-[#1b7b68] bg-[#1b7b68] text-white'
-                            : done
-                              ? 'border-emerald-500 bg-emerald-50 text-emerald-600'
-                              : 'border-slate-200 bg-white text-slate-300'
-                        }`}
-                      >
-                        {done ? (
-                          <CheckCircle2 className="w-4 h-4" />
-                        ) : (
-                          <CircleDot className="w-4 h-4" />
-                        )}
-                      </div>
+              <div>
+                <p className="text-sm font-bold text-red-800">
+                  Action could not be completed
+                </p>
 
-                      {index < 9 && (
-                        <div
-                          className={`w-px h-7 ${
-                            done
-                              ? 'bg-emerald-300'
-                              : 'bg-slate-200'
-                          }`}
-                        />
-                      )}
-                    </div>
-
-                    <div className="pb-5">
-                      <p
-                        className={`text-xs font-bold ${
-                          current
-                            ? 'text-[#1b7b68]'
-                            : done
-                              ? 'text-slate-700'
-                              : 'text-slate-400'
-                        }`}
-                      >
-                        {formatLabel(status)}
-                      </p>
-
-                      {current && (
-                        <p className="text-[10px] text-slate-400 mt-1">
-                          Current examination status
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+                <p className="mt-1 text-sm text-red-600">
+                  {error}
+                </p>
+              </div>
             </div>
 
             <button
-              type="button"
-              onClick={() => setShowStatusModal(true)}
-              disabled={isCancelled}
-              className="w-full mt-3 py-2.5 rounded-xl bg-[#1b7b68] text-white text-xs font-bold disabled:opacity-50"
+              onClick={() => setError('')}
+              className="rounded-lg p-1 text-red-400 transition hover:bg-red-100 hover:text-red-600"
+              aria-label="Close error"
             >
-              Update Workflow Status
+              <X className="h-5 w-5" />
             </button>
-          </SectionCard>
-
-          <div className="space-y-6">
-            <SectionCard
-              title="Queue Management"
-              subtitle="Radiology department queue"
-              icon={<Gauge className="w-4 h-4" />}
-              action={
-                <button
-                  type="button"
-                  onClick={() => setShowQueueModal(true)}
-                  className="text-[11px] font-bold text-[#1b7b68]"
-                >
-                  Manage
-                </button>
-              }
-            >
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-100/80 border border-slate-100 text-center">
-                  <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
-                    Position
-                  </p>
-
-                  <p className="text-2xl font-black text-slate-900 mt-1">
-                    {order.queuePosition ?? '—'}
-                  </p>
-                </div>
-
-                <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-100/80 border border-slate-100 text-center">
-                  <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
-                    Queue Status
-                  </p>
-
-                  <StatusBadge
-                    className={`mt-2 ${getQueueClasses(
-                      order.queueStatus
-                    )}`}
-                  >
-                    {formatLabel(
-                      order.queueStatus ||
-                        ExaminationQueueStatus.WAITING
-                    )}
-                  </StatusBadge>
-                </div>
-              </div>
-            </SectionCard>
-
-            <SectionCard
-              title="Radiation Exposure"
-              subtitle="Radiation dose documentation"
-              icon={<Radio className="w-4 h-4" />}
-              action={
-                <button
-                  type="button"
-                  onClick={() => setShowRadiationModal(true)}
-                  className="text-[11px] font-bold text-[#1b7b68]"
-                >
-                  Edit
-                </button>
-              }
-            >
-              {order.radiationExposure ? (
-                <div className="grid grid-cols-2 gap-4">
-                  <Field
-                    label="Dose"
-                    value={
-                      order.radiationExposure.dose !== undefined
-                        ? `${order.radiationExposure.dose} ${
-                            order.radiationExposure.doseUnit || ''
-                          }`
-                        : 'N/A'
-                    }
-                  />
-
-                  <Field
-                    label="Dose Area Product"
-                    value={
-                      order.radiationExposure
-                        .doseAreaProduct !== undefined
-                        ? `${order.radiationExposure.doseAreaProduct} ${
-                            order.radiationExposure
-                              .doseAreaProductUnit || ''
-                          }`
-                        : 'N/A'
-                    }
-                  />
-
-                  <Field
-                    label="CT Dose Index"
-                    value={
-                      order.radiationExposure.ctDoseIndex ??
-                      'N/A'
-                    }
-                  />
-
-                  <Field
-                    label="Dose Length Product"
-                    value={
-                      order.radiationExposure
-                        .doseLengthProduct ?? 'N/A'
-                    }
-                  />
-                </div>
-              ) : (
-                <div className="text-center py-6 text-sm text-slate-400">
-                  No radiation exposure recorded.
-                </div>
-              )}
-            </SectionCard>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ================================================================== */}
-      {/* REPORT                                                             */}
-      {/* ================================================================== */}
+        {/* ===================================================
+            CLINICAL ALERTS
+        ==================================================== */}
 
-      {activeTab === 'report' && (
-        <div className="space-y-6">
-          <SectionCard
-            title="Radiology Report"
-            subtitle="Diagnostic findings and radiologist impression"
-            icon={<FileText className="w-4 h-4" />}
-            action={
-              <div className="flex items-center gap-2">
-                {order.report?.status && (
-                  <StatusBadge
-                    className={getReportStatusClasses(
-                      order.report.status
-                    )}
-                  >
-                    {formatLabel(order.report.status)}
-                  </StatusBadge>
-                )}
-
-                {!isCancelled && (
-                  <button
-                    type="button"
-                    onClick={() => setShowReportModal(true)}
-                    className="px-3 py-2 rounded-xl bg-[#1b7b68] hover:bg-[#156354] text-white text-[11px] font-bold shadow-sm shadow-[#1b7b68]/20 flex items-center gap-1.5"
-                  >
-                    <PenLine className="w-3 h-3" />
-                    {order.report?.findings
-                      ? 'Edit Report'
-                      : 'Write Report'}
-                  </button>
-                )}
-              </div>
-            }
-          >
-            <div className="space-y-6">
-              <div>
-                <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-2">
-                  Findings
-                </p>
-
-                <div className="min-h-32 rounded-xl bg-slate-50 border border-slate-100 p-4 text-sm text-slate-700 leading-7 whitespace-pre-wrap">
-                  {order.report?.findings ||
-                    order.findings ||
-                    'No findings documented yet.'}
+        {(order.criticalResultNotified ||
+          order.duplicateTestDetected ||
+          order.aiPatternAlerts?.length) && (
+          <div className="mb-6 space-y-3">
+            {order.criticalResultNotified && (
+              <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-100">
+                  <Activity className="h-5 w-5 text-red-600" />
                 </div>
-              </div>
 
-              <div>
-                <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-2">
-                  Impression
-                </p>
-
-                <div className="rounded-xl bg-slate-50 border border-slate-100 p-4 text-sm text-slate-700 leading-7 whitespace-pre-wrap">
-                  {order.report?.impression ||
-                    order.impression ||
-                    'No impression documented yet.'}
-                </div>
-              </div>
-
-              {(order.report?.radiologistNotes ||
-                order.radiologistNotes) && (
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-2">
-                    Radiologist Notes
+                  <p className="text-sm font-bold text-red-900">
+                    Critical Result Notification
                   </p>
 
-                  <p className="text-sm text-slate-600 leading-6">
-                    {order.report?.radiologistNotes ||
-                      order.radiologistNotes}
+                  <p className="mt-1 text-sm leading-6 text-red-700">
+                    A critical laboratory result has been identified
+                    and notification has been recorded.
                   </p>
                 </div>
-              )}
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-5 pt-3 border-t border-slate-100">
-                <Field
-                  label="Version"
-                  value={order.report?.version ?? 'N/A'}
-                />
-
-                <Field
-                  label="Drafted"
-                  value={formatDateTime(
-                    order.report?.draftedAt
-                  )}
-                />
-
-                <Field
-                  label="Signed"
-                  value={formatDateTime(
-                    order.report?.signedAt
-                  )}
-                />
-
-                <Field
-                  label="Signed By"
-                  value={getStaffName(
-                    order.report?.signedBy
-                  )}
-                />
               </div>
-            </div>
-          </SectionCard>
-
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <SectionCard
-              title="Critical Result"
-              subtitle="Critical finding communication"
-              icon={<AlertTriangle className="w-4 h-4" />}
-              action={
-                <button
-                  type="button"
-                  onClick={() => setShowCriticalModal(true)}
-                  className="text-[11px] font-bold text-[#1b7b68]"
-                >
-                  Manage
-                </button>
-              }
-            >
-              {order.report?.criticalResult ? (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-600">
-                      Status
-                    </span>
-
-                    <StatusBadge
-                      className={
-                        order.report.criticalResult.status ===
-                        CriticalResultStatus.NOTIFIED
-                          ? 'bg-amber-50 text-amber-700 border-amber-200'
-                          : order.report.criticalResult.status ===
-                              CriticalResultStatus.ACKNOWLEDGED
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-slate-100 text-slate-600 border-slate-200'
-                      }
-                    >
-                      {formatLabel(
-                        order.report.criticalResult.status
-                      )}
-                    </StatusBadge>
-                  </div>
-
-                  {order.report.criticalResult.finding && (
-                    <div className="p-4 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800 leading-6">
-                      {order.report.criticalResult.finding}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field
-                      label="Notification Method"
-                      value={formatLabel(
-                        order.report.criticalResult
-                          .notificationMethod
-                      )}
-                    />
-
-                    <Field
-                      label="Notified At"
-                      value={formatDateTime(
-                        order.report.criticalResult
-                          .notifiedAt
-                      )}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="py-8 text-center text-sm text-slate-400">
-                  No critical result recorded.
-                </div>
-              )}
-            </SectionCard>
-
-            <SectionCard
-              title="Report History"
-              subtitle="Previous report versions and amendments"
-              icon={<History className="w-4 h-4" />}
-            >
-              {reportVersions.length > 0 ? (
-                <div className="space-y-3">
-                  {reportVersions.map((version) => (
-                    <div
-                      key={`${version.version}-${version.createdAt}`}
-                      className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/70"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-xs font-bold text-slate-800">
-                            Version {version.version}
-                          </p>
-
-                          <p className="text-[10px] text-slate-400 mt-1">
-                            {formatDateTime(
-                              version.createdAt
-                            )}
-                          </p>
-                        </div>
-
-                        <StatusBadge
-                          className={getReportStatusClasses(
-                            version.status
-                          )}
-                        >
-                          {formatLabel(version.status)}
-                        </StatusBadge>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="py-8 text-center">
-                  <History className="w-7 h-7 text-slate-300 mx-auto" />
-
-                  <p className="text-xs text-slate-400 mt-2">
-                    No previous report versions.
-                  </p>
-                </div>
-              )}
-            </SectionCard>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {!isFinalReport && order.report?.findings && (
-              <button
-                type="button"
-                onClick={handleSignReport}
-                disabled={submitting}
-                className="px-4 py-2.5 rounded-xl bg-[#1b7b68] text-white text-xs font-bold flex items-center gap-2 disabled:opacity-50"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                Sign & Finalize Report
-              </button>
             )}
 
-            {isFinalReport && (
-              <button
-                type="button"
-                onClick={() => setShowAmendModal(true)}
-                className="px-4 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-xs font-bold flex items-center gap-2"
-              >
-                <PenLine className="w-3.5 h-3.5" />
-                Amend Report
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ================================================================== */}
-      {/* PACS                                                               */}
-      {/* ================================================================== */}
-
-      {activeTab === 'pacs' && (
-        <div className="space-y-6">
-          <SectionCard
-            title="PACS Study"
-            subtitle="Picture Archiving and Communication System information"
-            icon={<ImageIcon className="w-4 h-4" />}
-            action={
-              <button
-                type="button"
-                onClick={() => setShowPacsModal(true)}
-                className="px-3 py-2 rounded-xl bg-[#1b7b68] hover:bg-[#156354] text-white text-[11px] font-bold shadow-sm shadow-[#1b7b68]/20"
-              >
-                Edit PACS
-              </button>
-            }
-          >
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              <Field
-                label="Accession Number"
-                value={
-                  order.pacsMetadata?.accessionNumber ||
-                  order.accessionNumber
-                }
-              />
-
-              <Field
-                label="Study ID"
-                value={order.pacsMetadata?.studyId}
-              />
-
-              <Field
-                label="Study Date"
-                value={formatDate(
-                  order.pacsMetadata?.studyDate
-                )}
-              />
-
-              <Field
-                label="Modality"
-                value={formatLabel(
-                  order.pacsMetadata?.modality ||
-                    order.modality
-                )}
-              />
-
-              <Field
-                label="Images"
-                value={
-                  order.pacsMetadata?.imageCount ?? 'N/A'
-                }
-              />
-
-              <Field
-                label="Series"
-                value={
-                  order.pacsMetadata?.seriesCount ?? 'N/A'
-                }
-              />
-
-              <Field
-                label="Storage"
-                value={
-                  order.pacsMetadata?.storageStatus
-                    ? formatLabel(
-                        order.pacsMetadata.storageStatus
-                      )
-                    : 'N/A'
-                }
-              />
-
-              <Field
-                label="Export"
-                value={
-                  order.pacsMetadata?.exportEnabled
-                    ? 'Enabled'
-                    : 'Disabled'
-                }
-              />
-            </div>
-          </SectionCard>
-
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <SectionCard
-              title="DICOM Identifiers"
-              subtitle="Study and series identifiers"
-              icon={<ScanLine className="w-4 h-4" />}
-            >
-              <div className="space-y-4">
-                <div>
-                  <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1">
-                    Study Instance UID
-                  </p>
-
-                  <p className="font-mono text-xs text-slate-700 break-all">
-                    {order.pacsMetadata
-                      ?.studyInstanceUid || 'Not available'}
-                  </p>
+            {order.duplicateTestDetected && (
+              <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100">
+                  <AlertCircle className="h-5 w-5 text-amber-600" />
                 </div>
 
                 <div>
-                  <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1">
-                    Series Instance UID
+                  <p className="text-sm font-bold text-amber-900">
+                    Duplicate Test Alert
                   </p>
 
-                  <p className="font-mono text-xs text-slate-700 break-all">
-                    {order.pacsMetadata
-                      ?.seriesInstanceUid || 'Not available'}
+                  <p className="mt-1 text-sm leading-6 text-amber-700">
+                    {order.duplicateTestMessage ||
+                      'A similar laboratory test may already be active for this patient.'}
                   </p>
                 </div>
               </div>
-            </SectionCard>
+            )}
 
-            <SectionCard
-              title="Image Access"
-              subtitle="Web viewer and sharing"
-              icon={<Monitor className="w-4 h-4" />}
-            >
-              <div className="space-y-3">
-                {order.pacsMetadata?.dicomViewerUrl ? (
-                  <a
-                    href={
-                      order.pacsMetadata.dicomViewerUrl
-                    }
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full py-3 rounded-xl bg-[#1b7b68] text-white text-xs font-bold flex items-center justify-center gap-2"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Open DICOM Viewer
-                  </a>
+            {order.aiPatternAlerts?.map((alert, index) => (
+              <div
+                key={`${alert}-${index}`}
+                className="flex items-start gap-3 rounded-2xl border border-purple-200 bg-purple-50 p-4"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-100">
+                  <Activity className="h-5 w-5 text-purple-600" />
+                </div>
+
+                <div>
+                  <p className="text-sm font-bold text-purple-900">
+                    Clinical Pattern Alert
+                  </p>
+
+                  <p className="mt-1 text-sm leading-6 text-purple-700">
+                    {alert}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ===================================================
+            WORKFLOW ACTION CENTER
+        ==================================================== */}
+
+        <section className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-5 p-4 sm:p-5 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#1b7b68]/10 text-[#1b7b68]">
+                {currentStep ? (
+                  <currentStep.icon className="h-5 w-5" />
                 ) : (
-                  <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-100/80 border border-slate-100 text-center text-xs text-slate-400">
-                    No DICOM viewer URL configured.
-                  </div>
-                )}
-
-                {order.pacsMetadata?.sharedLink && (
-                  <a
-                    href={order.pacsMetadata.sharedLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full py-3 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold flex items-center justify-center gap-2 hover:bg-slate-50"
-                  >
-                    <Link2 className="w-3.5 h-3.5" />
-                    Open Shared Study Link
-                  </a>
-                )}
-
-                {order.pacsMetadata
-                  ?.sharedLinkExpiresAt && (
-                  <p className="text-[10px] text-slate-400 text-center">
-                    Link expires{' '}
-                    {formatDateTime(
-                      order.pacsMetadata
-                        .sharedLinkExpiresAt
-                    )}
-                  </p>
-                )}
-              </div>
-            </SectionCard>
-          </div>
-
-          {order.pacsMetadata?.keyImageIds &&
-            order.pacsMetadata.keyImageIds.length > 0 && (
-              <SectionCard
-                title="Key Images"
-                subtitle="Images marked as clinically significant"
-                icon={<ImageIcon className="w-4 h-4" />}
-              >
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {order.pacsMetadata.keyImageIds.map(
-                    (imageId) => (
-                      <div
-                        key={imageId}
-                        className="aspect-video rounded-xl bg-slate-900 flex items-center justify-center text-slate-500"
-                      >
-                        <div className="text-center">
-                          <ImageIcon className="w-6 h-6 mx-auto" />
-
-                          <p className="text-[9px] mt-2 font-mono px-2 truncate">
-                            {imageId}
-                          </p>
-                        </div>
-                      </div>
-                    )
-                  )}
-                </div>
-              </SectionCard>
-            )}
-        </div>
-      )}
-
-      {/* ================================================================== */}
-      {/* AI                                                                 */}
-      {/* ================================================================== */}
-
-      {activeTab === 'ai' && (
-        <div className="space-y-6">
-          <SectionCard
-            title="MedxVerse AI Analysis"
-            subtitle="AI-assisted radiology analysis and quality control"
-            icon={<Brain className="w-4 h-4" />}
-            action={
-              <button
-                type="button"
-                onClick={() => setShowAIModal(true)}
-                className="px-3 py-2 rounded-xl bg-[#1b7b68] hover:bg-[#156354] text-white text-[11px] font-bold shadow-sm shadow-[#1b7b68]/20"
-              >
-                Update AI Analysis
-              </button>
-            }
-          >
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-100">
-                <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
-                  Enabled
-                </p>
-
-                <p className="text-sm font-bold text-slate-800 mt-2">
-                  {order.aiAnalysis?.enabled
-                    ? 'Yes'
-                    : 'No'}
-                </p>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-100">
-                <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
-                  Priority
-                </p>
-
-                <StatusBadge
-                  className={`mt-2 ${
-                    order.aiAnalysis?.priority ===
-                    AIStudyPriority.CRITICAL
-                      ? 'bg-rose-50 text-rose-700 border-rose-200'
-                      : order.aiAnalysis?.priority ===
-                          AIStudyPriority.HIGH
-                        ? 'bg-amber-50 text-amber-700 border-amber-200'
-                        : 'bg-slate-100 text-slate-600 border-slate-200'
-                  }`}
-                >
-                  {formatLabel(
-                    order.aiAnalysis?.priority ||
-                      AIStudyPriority.NOT_PROCESSED
-                  )}
-                </StatusBadge>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-100">
-                <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
-                  Confidence
-                </p>
-
-                <p className="text-xl font-black text-slate-900 mt-1">
-                  {aiConfidence}
-                </p>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-100">
-                <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
-                  Quality
-                </p>
-
-                <p
-                  className={`text-sm font-bold mt-2 ${
-                    order.aiAnalysis?.qualityPassed
-                      ? 'text-emerald-600'
-                      : 'text-rose-600'
-                  }`}
-                >
-                  {order.aiAnalysis?.qualityPassed
-                    ? 'Passed'
-                    : 'Needs Review'}
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-              <div>
-                <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-2">
-                  Model
-                </p>
-
-                <p className="text-sm font-semibold text-slate-800">
-                  {order.aiAnalysis?.modelName ||
-                    'No model recorded'}
-                </p>
-
-                {order.aiAnalysis?.modelVersion && (
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Version {order.aiAnalysis.modelVersion}
-                  </p>
+                  <ClipboardCheck className="h-5 w-5" />
                 )}
               </div>
 
               <div>
-                <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-2">
-                  Processed
+                <p className="text-xs font-bold uppercase tracking-wider text-[#1b7b68]">
+                  Current workflow stage
                 </p>
 
-                <p className="text-sm font-semibold text-slate-800">
-                  {formatDateTime(
-                    order.aiAnalysis?.processedAt
-                  )}
+                <h2 className="mt-1 font-bold text-slate-900">
+                  {currentStep?.title || 'Laboratory Workflow'}
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  {currentStep?.description ||
+                    'Continue this specimen through the laboratory workflow.'}
                 </p>
               </div>
             </div>
-          </SectionCard>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <SectionCard
-              title="AI Findings"
-              subtitle="Potential abnormalities detected by AI"
-              icon={<Zap className="w-4 h-4" />}
-            >
-              {order.aiAnalysis?.findings &&
-              order.aiAnalysis.findings.length > 0 ? (
-                <div className="space-y-2">
-                  {order.aiAnalysis.findings.map(
-                    (finding, index) => (
-                      <div
-                        key={`${finding}-${index}`}
-                        className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/70 text-sm text-slate-700"
-                      >
-                        {finding}
-                      </div>
-                    )
-                  )}
-                </div>
-              ) : (
-                <div className="py-7 text-center text-sm text-slate-400">
-                  No AI findings recorded.
-                </div>
-              )}
-            </SectionCard>
-
-            <SectionCard
-              title="AI Recommendations"
-              subtitle="Suggested next steps"
-              icon={<Brain className="w-4 h-4" />}
-            >
-              {order.aiAnalysis?.recommendations &&
-              order.aiAnalysis.recommendations.length > 0 ? (
-                <div className="space-y-2">
-                  {order.aiAnalysis.recommendations.map(
-                    (recommendation, index) => (
-                      <div
-                        key={`${recommendation}-${index}`}
-                        className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/70 text-sm text-slate-700"
-                      >
-                        {recommendation}
-                      </div>
-                    )
-                  )}
-                </div>
-              ) : (
-                <div className="py-7 text-center text-sm text-slate-400">
-                  No AI recommendations recorded.
-                </div>
-              )}
-            </SectionCard>
-          </div>
-
-          {order.aiAnalysis?.measurements &&
-            Object.keys(order.aiAnalysis.measurements).length >
-              0 && (
-              <SectionCard
-                title="AI Measurements"
-                subtitle="Quantitative measurements produced by the model"
-                icon={<Gauge className="w-4 h-4" />}
-              >
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {Object.entries(
-                    order.aiAnalysis.measurements
-                  ).map(([key, value]) => (
-                    <div
-                      key={key}
-                      className="p-4 rounded-xl bg-slate-50/80 border border-slate-100"
-                    >
-                      <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
-                        {formatLabel(key)}
-                      </p>
-
-                      <p className="text-lg font-black text-slate-900 mt-1">
-                        {value}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </SectionCard>
-            )}
-
-          {order.aiAnalysis?.qualityNotes && (
-            <SectionCard
-              title="Quality Control Notes"
-              icon={<ShieldAlert className="w-4 h-4" />}
-            >
-              <p className="text-sm text-slate-700 leading-6">
-                {order.aiAnalysis.qualityNotes}
-              </p>
-            </SectionCard>
-          )}
-        </div>
-      )}
-
-      {/* ================================================================== */}
-      {/* STATUS MODAL                                                       */}
-      {/* ================================================================== */}
-
-      <Modal
-        open={showStatusModal}
-        title="Update Examination Status"
-        subtitle="Move this examination through the radiology workflow."
-        onClose={() => setShowStatusModal(false)}
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Status
-            </label>
-
-            <select
-              value={statusForm.status}
-              onChange={(e) =>
-                setStatusForm({
-                  ...statusForm,
-                  status:
-                    e.target.value as RadiologyOrderStatus,
-                })
-              }
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] focus:outline-none focus:border-[#1b7b68]"
-            >
-              {Object.values(RadiologyOrderStatus).map(
-                (status) => (
-                  <option key={status} value={status}>
-                    {formatLabel(status)}
-                  </option>
-                )
-              )}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Notes
-            </label>
-
-            <textarea
-              rows={4}
-              value={statusForm.notes}
-              onChange={(e) =>
-                setStatusForm({
-                  ...statusForm,
-                  notes: e.target.value,
-                })
-              }
-              placeholder="Optional workflow note..."
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] resize-none focus:outline-none focus:border-[#1b7b68]"
-            />
-          </div>
-
-          <ModalActions
-            onCancel={() => setShowStatusModal(false)}
-            onSubmit={handleStatusUpdate}
-            submitting={submitting}
-            submitLabel="Update Status"
-          />
-        </div>
-      </Modal>
-
-      {/* ================================================================== */}
-      {/* SCHEDULE MODAL                                                     */}
-      {/* ================================================================== */}
-
-      <Modal
-        open={showScheduleModal}
-        title="Schedule Examination"
-        subtitle="Assign a date, time and imaging room."
-        onClose={() => setShowScheduleModal(false)}
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Scheduled Date *
-            </label>
-
-            <input
-              type="date"
-              value={scheduleForm.scheduledDate}
-              onChange={(e) =>
-                setScheduleForm({
-                  ...scheduleForm,
-                  scheduledDate: e.target.value,
-                })
-              }
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] focus:outline-none focus:border-[#1b7b68]"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-                Start Time
-              </label>
-
-              <input
-                type="time"
-                value={scheduleForm.scheduledStartTime}
-                onChange={(e) =>
-                  setScheduleForm({
-                    ...scheduleForm,
-                    scheduledStartTime: e.target.value,
-                  })
-                }
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-                End Time
-              </label>
-
-              <input
-                type="time"
-                value={scheduleForm.scheduledEndTime}
-                onChange={(e) =>
-                  setScheduleForm({
-                    ...scheduleForm,
-                    scheduledEndTime: e.target.value,
-                  })
-                }
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-                Duration (minutes)
-              </label>
-
-              <input
-                type="number"
-                min="1"
-                value={
-                  scheduleForm.estimatedDurationMinutes
-                }
-                onChange={(e) =>
-                  setScheduleForm({
-                    ...scheduleForm,
-                    estimatedDurationMinutes:
-                      e.target.value,
-                  })
-                }
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-                Modality ID
-              </label>
-
-              <input
-                value={scheduleForm.modalityId}
-                onChange={(e) =>
-                  setScheduleForm({
-                    ...scheduleForm,
-                    modalityId: e.target.value,
-                  })
-                }
-                placeholder="e.g. CT-01"
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Room / Theatre
-            </label>
-
-            <input
-              value={scheduleForm.theatreOrRoom}
-              onChange={(e) =>
-                setScheduleForm({
-                  ...scheduleForm,
-                  theatreOrRoom: e.target.value,
-                })
-              }
-              placeholder="e.g. CT Room 1"
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-          </div>
-
-          <ModalActions
-            onCancel={() => setShowScheduleModal(false)}
-            onSubmit={handleSchedule}
-            submitting={submitting}
-            submitLabel="Schedule Examination"
-          />
-        </div>
-      </Modal>
-
-      {/* ================================================================== */}
-      {/* STAFF MODAL                                                        */}
-      {/* ================================================================== */}
-
-      <Modal
-        open={showStaffModal}
-        title="Assign Radiology Staff"
-        subtitle="Search your hospital staff and assign them to this examination."
-        onClose={() => setShowStaffModal(false)}
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Staff Member *
-            </label>
-
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-
-              <input
-                value={staffSearch}
-                onChange={(e) =>
-                  setStaffSearch(e.target.value)
-                }
-                placeholder="Search by name, role or department..."
-                className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-[#1b7b68]"
-              />
-            </div>
-          </div>
-
-          <div className="max-h-52 overflow-y-auto space-y-2">
-            {staffLoading ? (
-              <div className="py-8 text-center text-xs text-slate-400">
-                <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
-                Searching staff...
-              </div>
-            ) : staffResults.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-400">
-                No staff found.
-              </div>
-            ) : (
-              staffResults.map((staff) => (
-                <button
-                  type="button"
-                  key={staff._id}
-                  onClick={() =>
-                    setStaffForm({
-                      ...staffForm,
-                      userId: staff._id,
-                    })
-                  }
-                  className={`w-full p-3 rounded-xl border text-left flex items-center gap-3 transition-all ${
-                    staffForm.userId === staff._id
-                      ? 'border-[#1b7b68] bg-[#1b7b68]/5'
-                      : 'border-slate-100 hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500">
-                    <User className="w-3.5 h-3.5" />
-                  </div>
-
-                  <div className="flex-1">
-                    <p className="text-xs font-bold text-slate-800">
-                      {getStaffName(staff)}
-                    </p>
-
-                    <p className="text-[10px] text-slate-400 mt-0.5">
-                      {formatLabel(staff.role)}{' '}
-                      {staff.department
-                        ? `• ${staff.department}`
-                        : ''}
-                    </p>
-                  </div>
-
-                  {staffForm.userId === staff._id && (
-                    <CheckCircle2 className="w-4 h-4 text-[#1b7b68]" />
-                  )}
-                </button>
-              ))
-            )}
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Assignment Role *
-            </label>
-
-            <select
-              value={staffForm.role}
-              onChange={(e) =>
-                setStaffForm({
-                  ...staffForm,
-                  role: e.target.value as AssignmentRole,
-                })
-              }
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            >
-              {Object.values(AssignmentRole).map((role) => (
-                <option key={role} value={role}>
-                  {formatLabel(role)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Notes
-            </label>
-
-            <textarea
-              rows={3}
-              value={staffForm.notes}
-              onChange={(e) =>
-                setStaffForm({
-                  ...staffForm,
-                  notes: e.target.value,
-                })
-              }
-              placeholder="Optional assignment notes..."
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] resize-none"
-            />
-          </div>
-
-          <ModalActions
-            onCancel={() => setShowStaffModal(false)}
-            onSubmit={handleAssignStaff}
-            submitting={submitting}
-            submitLabel="Assign Staff"
-          />
-        </div>
-      </Modal>
-
-      {/* ================================================================== */}
-      {/* QUEUE MODAL                                                        */}
-      {/* ================================================================== */}
-
-      <Modal
-        open={showQueueModal}
-        title="Manage Examination Queue"
-        subtitle="Set the patient's queue position and current queue state."
-        onClose={() => setShowQueueModal(false)}
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Queue Position
-            </label>
-
-            <input
-              type="number"
-              min="1"
-              value={queueForm.queuePosition}
-              onChange={(e) =>
-                setQueueForm({
-                  ...queueForm,
-                  queuePosition: e.target.value,
-                })
-              }
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Queue Status
-            </label>
-
-            <select
-              value={queueForm.queueStatus}
-              onChange={(e) =>
-                setQueueForm({
-                  ...queueForm,
-                  queueStatus:
-                    e.target.value as ExaminationQueueStatus,
-                })
-              }
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            >
-              {Object.values(
-                ExaminationQueueStatus
-              ).map((status) => (
-                <option key={status} value={status}>
-                  {formatLabel(status)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <ModalActions
-            onCancel={() => setShowQueueModal(false)}
-            onSubmit={handleQueueUpdate}
-            submitting={submitting}
-            submitLabel="Update Queue"
-          />
-        </div>
-      </Modal>
-
-      {/* ================================================================== */}
-      {/* CONTRAST MODAL                                                     */}
-      {/* ================================================================== */}
-
-      <Modal
-        open={showContrastModal}
-        title="Contrast Documentation"
-        subtitle="Record contrast administration and reactions."
-        onClose={() => setShowContrastModal(false)}
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Status
-            </label>
-
-            <select
-              value={contrastForm.status}
-              onChange={(e) =>
-                setContrastForm({
-                  ...contrastForm,
-                  status: e.target.value as ContrastStatus,
-                })
-              }
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            >
-              {Object.values(ContrastStatus).map((status) => (
-                <option key={status} value={status}>
-                  {formatLabel(status)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              placeholder="Contrast name"
-              value={contrastForm.contrastName}
-              onChange={(e) =>
-                setContrastForm({
-                  ...contrastForm,
-                  contrastName: e.target.value,
-                })
-              }
-              className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-
-            <input
-              placeholder="Contrast type"
-              value={contrastForm.contrastType}
-              onChange={(e) =>
-                setContrastForm({
-                  ...contrastForm,
-                  contrastType: e.target.value,
-                })
-              }
-              className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <input
-              type="number"
-              placeholder="Dose"
-              value={contrastForm.dose}
-              onChange={(e) =>
-                setContrastForm({
-                  ...contrastForm,
-                  dose: e.target.value,
-                })
-              }
-              className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-
-            <input
-              placeholder="Unit"
-              value={contrastForm.doseUnit}
-              onChange={(e) =>
-                setContrastForm({
-                  ...contrastForm,
-                  doseUnit: e.target.value,
-                })
-              }
-              className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-
-            <input
-              placeholder="Route"
-              value={contrastForm.route}
-              onChange={(e) =>
-                setContrastForm({
-                  ...contrastForm,
-                  route: e.target.value,
-                })
-              }
-              className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-          </div>
-
-          <label className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={contrastForm.reactionObserved}
-              onChange={(e) =>
-                setContrastForm({
-                  ...contrastForm,
-                  reactionObserved: e.target.checked,
-                })
-              }
-            />
-
-            <span className="text-xs font-semibold text-slate-700">
-              Reaction observed
-            </span>
-          </label>
-
-          {contrastForm.reactionObserved && (
-            <textarea
-              rows={3}
-              placeholder="Describe reaction..."
-              value={contrastForm.reactionDescription}
-              onChange={(e) =>
-                setContrastForm({
-                  ...contrastForm,
-                  reactionDescription:
-                    e.target.value,
-                })
-              }
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] resize-none"
-            />
-          )}
-
-          <textarea
-            rows={3}
-            placeholder="Additional notes..."
-            value={contrastForm.notes}
-            onChange={(e) =>
-              setContrastForm({
-                ...contrastForm,
-                notes: e.target.value,
-              })
-            }
-            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] resize-none"
-          />
-
-          <ModalActions
-            onCancel={() => setShowContrastModal(false)}
-            onSubmit={handleContrastUpdate}
-            submitting={submitting}
-            submitLabel="Save Contrast"
-          />
-        </div>
-      </Modal>
-
-      {/* ================================================================== */}
-      {/* PREGNANCY MODAL                                                    */}
-      {/* ================================================================== */}
-
-      <Modal
-        open={showPregnancyModal}
-        title="Pregnancy Screening"
-        subtitle="Record pregnancy screening information."
-        onClose={() => setShowPregnancyModal(false)}
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Screening Status
-            </label>
-
-            <select
-              value={pregnancyForm.status}
-              onChange={(e) =>
-                setPregnancyForm({
-                  ...pregnancyForm,
-                  status:
-                    e.target.value as PregnancyScreeningStatus,
-                })
-              }
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            >
-              {Object.values(
-                PregnancyScreeningStatus
-              ).map((status) => (
-                <option key={status} value={status}>
-                  {formatLabel(status)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <input
-            placeholder="Test type"
-            value={pregnancyForm.testType}
-            onChange={(e) =>
-              setPregnancyForm({
-                ...pregnancyForm,
-                testType: e.target.value,
-              })
-            }
-            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-          />
-
-          <input
-            placeholder="Test result"
-            value={pregnancyForm.testResult}
-            onChange={(e) =>
-              setPregnancyForm({
-                ...pregnancyForm,
-                testResult: e.target.value,
-              })
-            }
-            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-          />
-
-          <textarea
-            rows={3}
-            placeholder="Notes..."
-            value={pregnancyForm.notes}
-            onChange={(e) =>
-              setPregnancyForm({
-                ...pregnancyForm,
-                notes: e.target.value,
-              })
-            }
-            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] resize-none"
-          />
-
-          <ModalActions
-            onCancel={() =>
-              setShowPregnancyModal(false)
-            }
-            onSubmit={handlePregnancyUpdate}
-            submitting={submitting}
-            submitLabel="Save Screening"
-          />
-        </div>
-      </Modal>
-
-      {/* ================================================================== */}
-      {/* RADIATION MODAL                                                    */}
-      {/* ================================================================== */}
-
-      <Modal
-        open={showRadiationModal}
-        title="Radiation Exposure"
-        subtitle="Document radiation dose measurements for the study."
-        onClose={() => setShowRadiationModal(false)}
-      >
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              type="number"
-              placeholder="Dose"
-              value={radiationForm.dose}
-              onChange={(e) =>
-                setRadiationForm({
-                  ...radiationForm,
-                  dose: e.target.value,
-                })
-              }
-              className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-
-            <input
-              placeholder="Dose unit"
-              value={radiationForm.doseUnit}
-              onChange={(e) =>
-                setRadiationForm({
-                  ...radiationForm,
-                  doseUnit: e.target.value,
-                })
-              }
-              className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              type="number"
-              placeholder="Dose Area Product"
-              value={radiationForm.doseAreaProduct}
-              onChange={(e) =>
-                setRadiationForm({
-                  ...radiationForm,
-                  doseAreaProduct: e.target.value,
-                })
-              }
-              className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-
-            <input
-              placeholder="DAP unit"
-              value={
-                radiationForm.doseAreaProductUnit
-              }
-              onChange={(e) =>
-                setRadiationForm({
-                  ...radiationForm,
-                  doseAreaProductUnit:
-                    e.target.value,
-                })
-              }
-              className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              type="number"
-              placeholder="CT Dose Index"
-              value={radiationForm.ctDoseIndex}
-              onChange={(e) =>
-                setRadiationForm({
-                  ...radiationForm,
-                  ctDoseIndex: e.target.value,
-                })
-              }
-              className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-
-            <input
-              type="number"
-              placeholder="Dose Length Product"
-              value={
-                radiationForm.doseLengthProduct
-              }
-              onChange={(e) =>
-                setRadiationForm({
-                  ...radiationForm,
-                  doseLengthProduct:
-                    e.target.value,
-                })
-              }
-              className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-          </div>
-
-          <textarea
-            rows={3}
-            placeholder="Radiation notes..."
-            value={radiationForm.notes}
-            onChange={(e) =>
-              setRadiationForm({
-                ...radiationForm,
-                notes: e.target.value,
-              })
-            }
-            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] resize-none"
-          />
-
-          <ModalActions
-            onCancel={() =>
-              setShowRadiationModal(false)
-            }
-            onSubmit={handleRadiationUpdate}
-            submitting={submitting}
-            submitLabel="Save Radiation Data"
-          />
-        </div>
-      </Modal>
-
-      {/* ================================================================== */}
-      {/* PACS MODAL                                                         */}
-      {/* ================================================================== */}
-
-      <Modal
-        open={showPacsModal}
-        title="PACS Study Information"
-        subtitle="Update DICOM and image repository information."
-        onClose={() => setShowPacsModal(false)}
-        width="max-w-2xl"
-      >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[
-            ['studyInstanceUid', 'Study Instance UID'],
-            ['seriesInstanceUid', 'Series Instance UID'],
-            ['accessionNumber', 'Accession Number'],
-            ['studyId', 'Study ID'],
-            ['studyDate', 'Study Date'],
-            ['imageCount', 'Image Count'],
-            ['seriesCount', 'Series Count'],
-            ['modality', 'Modality'],
-            ['dicomViewerUrl', 'DICOM Viewer URL'],
-            ['storageLocation', 'Storage Location'],
-            ['sharedLink', 'Shared Link'],
-            ['sharedLinkExpiresAt', 'Shared Link Expiry'],
-          ].map(([key, label]) => (
-            <div key={key}>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-                {label}
-              </label>
-
-              <input
-                type={
-                  key === 'studyDate'
-                    ? 'date'
-                    : key === 'imageCount' ||
-                        key === 'seriesCount'
-                      ? 'number'
-                      : 'text'
-                }
-                value={
-                  pacsForm[
-                    key as keyof typeof pacsForm
-                  ] as string
-                }
-                onChange={(e) =>
-                  setPacsForm({
-                    ...pacsForm,
-                    [key]: e.target.value,
-                  })
-                }
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] focus:outline-none focus:border-[#1b7b68]"
-              />
-            </div>
-          ))}
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Storage Status
-            </label>
-
-            <select
-              value={pacsForm.storageStatus}
-              onChange={(e) =>
-                setPacsForm({
-                  ...pacsForm,
-                  storageStatus: e.target.value,
-                })
-              }
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            >
+            <div className="flex flex-wrap gap-2">
               {[
                 'PENDING',
-                'STORED',
-                'ARCHIVED',
-                'FAILED',
-              ].map((status) => (
-                <option key={status} value={status}>
-                  {formatLabel(status)}
-                </option>
-              ))}
-            </select>
+                'SAMPLE_SCHEDULED',
+              ].includes(order.status) && (
+                <ActionButton
+                  onClick={handleCollectSample}
+                  disabled={actionLoading}
+                  icon={TestTube2}
+                  loading={actionLoading}
+                >
+                  Collect Sample
+                </ActionButton>
+              )}
+
+              {order.status === 'SAMPLE_COLLECTED' && (
+                <>
+                  <ActionButton
+                    onClick={handleAccession}
+                    disabled={actionLoading}
+                    icon={PackageCheck}
+                    loading={actionLoading}
+                    variant="blue"
+                  >
+                    Accession Specimen
+                  </ActionButton>
+
+                  <ActionButton
+                    onClick={() => setShowRejectForm(true)}
+                    disabled={actionLoading}
+                    icon={XCircle}
+                    variant="danger-outline"
+                  >
+                    Reject Sample
+                  </ActionButton>
+                </>
+              )}
+
+              {order.status === 'RECOLLECTION_REQUIRED' && (
+                <ActionButton
+                  onClick={handleRecollect}
+                  disabled={actionLoading}
+                  icon={RotateCcw}
+                  loading={actionLoading}
+                  variant="orange"
+                >
+                  Recollect Sample
+                </ActionButton>
+              )}
+
+              {[
+                'SPECIMEN_RECEIVED',
+                'IN_PROGRESS',
+              ].includes(order.status) && (
+                <>
+                  <ActionButton
+                    onClick={() =>
+                      setShowResultForm(!showResultForm)
+                    }
+                    icon={ClipboardCheck}
+                  >
+                    {showResultForm
+                      ? 'Close Result Entry'
+                      : 'Record Results'}
+                  </ActionButton>
+
+                  <ActionButton
+                    onClick={() =>
+                      setShowRepeatForm(!showRepeatForm)
+                    }
+                    icon={RotateCcw}
+                    variant="secondary"
+                  >
+                    Repeat Test
+                  </ActionButton>
+                </>
+              )}
+
+              {order.status === 'RESULTS_RECORDED' && (
+                <ActionButton
+                  onClick={handleVerify}
+                  disabled={actionLoading}
+                  icon={ShieldCheck}
+                  loading={actionLoading}
+                  variant="blue"
+                >
+                  Verify Results
+                </ActionButton>
+              )}
+
+              {order.status === 'VERIFIED' && (
+                <ActionButton
+                  onClick={handleAuthorize}
+                  disabled={actionLoading}
+                  icon={CheckCircle2}
+                  loading={actionLoading}
+                  variant="success"
+                >
+                  Authorize & Release
+                </ActionButton>
+              )}
+
+              {[
+                'COMPLETED',
+                'CANCELLED',
+                'SAMPLE_REJECTED',
+              ].includes(order.status) && (
+                <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-500">
+                  <Check className="h-4 w-4" />
+                  No workflow actions available
+                </div>
+              )}
+            </div>
           </div>
+        </section>
 
-          <label className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-50 self-end cursor-pointer">
-            <input
-              type="checkbox"
-              checked={pacsForm.exportEnabled}
-              onChange={(e) =>
-                setPacsForm({
-                  ...pacsForm,
-                  exportEnabled: e.target.checked,
-                })
-              }
-            />
+        {/* ===================================================
+            RESULT ENTRY FORM
+        ==================================================== */}
 
-            <span className="text-xs font-semibold text-slate-700">
-              Enable study export
-            </span>
-          </label>
-        </div>
+        {showResultForm && (
+          <section className="mb-6 overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm">
+            <div className="flex flex-col justify-between gap-4 border-b border-blue-100 bg-[#1b7b68]/10/40 px-5 py-5 sm:flex-row sm:items-center sm:px-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#1b7b68] text-white">
+                  <ClipboardCheck className="h-5 w-5" />
+                </div>
 
-        <ModalActions
-          onCancel={() => setShowPacsModal(false)}
-          onSubmit={handlePacsUpdate}
-          submitting={submitting}
-          submitLabel="Save PACS Data"
-        />
-      </Modal>
+                <div>
+                  <h2 className="font-bold text-slate-900">
+                    Record Laboratory Results
+                  </h2>
 
-      {/* ================================================================== */}
-      {/* REPORT MODAL                                                       */}
-      {/* ================================================================== */}
+                  <p className="mt-1 text-sm text-slate-500">
+                    Enter measured values and clinical flags.
+                  </p>
+                </div>
+              </div>
 
-      <Modal
-        open={showReportModal}
-        title="Radiology Reporting Workspace"
-        subtitle="Draft or update the diagnostic report."
-        onClose={() => setShowReportModal(false)}
-        width="max-w-3xl"
-      >
-        <div className="space-y-5">
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Report Template ID
-            </label>
-
-            <input
-              value={reportForm.templateId}
-              onChange={(e) =>
-                setReportForm({
-                  ...reportForm,
-                  templateId: e.target.value,
-                })
-              }
-              placeholder="Optional template ID"
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Findings *
-            </label>
-
-            <textarea
-              rows={9}
-              value={reportForm.findings}
-              onChange={(e) =>
-                setReportForm({
-                  ...reportForm,
-                  findings: e.target.value,
-                })
-              }
-              placeholder="Describe the imaging findings..."
-              className="w-full px-3 py-3 rounded-xl border border-slate-200 bg-white text-sm shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] leading-6 resize-y focus:outline-none focus:border-[#1b7b68]"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Impression *
-            </label>
-
-            <textarea
-              rows={5}
-              value={reportForm.impression}
-              onChange={(e) =>
-                setReportForm({
-                  ...reportForm,
-                  impression: e.target.value,
-                })
-              }
-              placeholder="Provide the diagnostic impression..."
-              className="w-full px-3 py-3 rounded-xl border border-slate-200 bg-white text-sm shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] leading-6 resize-y focus:outline-none focus:border-[#1b7b68]"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Radiologist Notes
-            </label>
-
-            <textarea
-              rows={3}
-              value={reportForm.radiologistNotes}
-              onChange={(e) =>
-                setReportForm({
-                  ...reportForm,
-                  radiologistNotes: e.target.value,
-                })
-              }
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] resize-none"
-            />
-          </div>
-
-          <div className="border border-rose-100 rounded-2xl p-4 bg-rose-50/50">
-            <div className="flex items-center gap-2 mb-4">
-              <AlertTriangle className="w-4 h-4 text-rose-600" />
-
-              <h4 className="text-xs font-bold text-rose-800">
-                Critical Result
-              </h4>
+              <span className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-slate-500 shadow-sm ring-1 ring-slate-100">
+                {newResults.length} parameter
+                {newResults.length !== 1 ? 's' : ''}
+              </span>
             </div>
 
-            <div className="space-y-3">
-              <select
-                value={reportForm.criticalResultStatus}
-                onChange={(e) =>
-                  setReportForm({
-                    ...reportForm,
-                    criticalResultStatus:
-                      e.target.value as CriticalResultStatus,
-                  })
-                }
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] bg-white"
-              >
-                {Object.values(
-                  CriticalResultStatus
-                ).map((status) => (
-                  <option key={status} value={status}>
-                    {formatLabel(status)}
-                  </option>
+            <div className="p-4 sm:p-6">
+              <div className="space-y-3">
+                {newResults.map((result, index) => (
+                  <div
+                    key={index}
+                    className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4"
+                  >
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#1b7b68] text-xs font-bold text-white">
+                        {index + 1}
+                      </span>
+
+                      {newResults.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setNewResults(
+                              newResults.filter(
+                                (_, itemIndex) =>
+                                  itemIndex !== index
+                              )
+                            )
+                          }
+                          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-red-500 transition hover:bg-red-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Remove
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                      <FormInput
+                        label="Parameter"
+                        value={result.parameterName}
+                        placeholder="e.g. Haemoglobin"
+                        onChange={(value) => {
+                          const updated = [...newResults];
+                          updated[index].parameterName = value;
+                          setNewResults(updated);
+                        }}
+                      />
+
+                      <FormInput
+                        label="Result"
+                        value={result.value}
+                        placeholder="Enter value"
+                        onChange={(value) => {
+                          const updated = [...newResults];
+                          updated[index].value = value;
+                          setNewResults(updated);
+                        }}
+                      />
+
+                      <FormInput
+                        label="Unit"
+                        value={result.unit || ''}
+                        placeholder="e.g. g/dL"
+                        onChange={(value) => {
+                          const updated = [...newResults];
+                          updated[index].unit = value;
+                          setNewResults(updated);
+                        }}
+                      />
+
+                      <FormInput
+                        label="Reference Range"
+                        value={result.referenceRange || ''}
+                        placeholder="e.g. 12 - 16"
+                        onChange={(value) => {
+                          const updated = [...newResults];
+                          updated[index].referenceRange =
+                            value;
+                          setNewResults(updated);
+                        }}
+                      />
+
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-slate-500">
+                          Clinical Flag
+                        </label>
+
+                        <select
+                          value={result.flag || 'NORMAL'}
+                          onChange={(event) => {
+                            const updated = [...newResults];
+                            updated[index].flag =
+                              event.target.value;
+                            setNewResults(updated);
+                          }}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-[#1b7b68] focus:ring-4 focus:ring-[#1b7b68]/10"
+                        >
+                          <option value="NORMAL">
+                            Normal
+                          </option>
+                          <option value="ABNORMAL">
+                            Abnormal
+                          </option>
+                          <option value="HIGH">
+                            High
+                          </option>
+                          <option value="LOW">
+                            Low
+                          </option>
+                          <option value="CRITICAL">
+                            Critical
+                          </option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
                 ))}
-              </select>
+              </div>
 
-              <textarea
-                rows={3}
-                value={reportForm.criticalFinding}
-                onChange={(e) =>
-                  setReportForm({
-                    ...reportForm,
-                    criticalFinding: e.target.value,
-                  })
+              <button
+                type="button"
+                onClick={() =>
+                  setNewResults([
+                    ...newResults,
+                    createEmptyResult(),
+                  ])
                 }
-                placeholder="Critical finding..."
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] resize-none"
-              />
+                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-dashed border-[#2e7fc1]/40 bg-[#1b7b68]/10/30 px-4 py-2.5 text-sm font-semibold text-[#1b7b68] transition hover:bg-[#1b7b68]/10"
+              >
+                <Plus className="h-4 w-4" />
+                Add Parameter
+              </button>
 
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  value={reportForm.notifiedUserId}
-                  onChange={(e) =>
-                    setReportForm({
-                      ...reportForm,
-                      notifiedUserId: e.target.value,
-                    })
+              <div className="mt-6 flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+                <button
+                  onClick={() => setShowResultForm(false)}
+                  className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  onClick={handleRecordResults}
+                  disabled={actionLoading}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#155f50] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {actionLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+
+                  Save Results
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ===================================================
+            REJECTION FORM
+        ==================================================== */}
+
+        {showRejectForm && (
+          <section className="mb-6 overflow-hidden rounded-2xl border border-red-100 bg-white shadow-sm">
+            <div className="flex items-start gap-3 border-b border-red-100 bg-red-50 px-5 py-5 sm:px-6">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-100">
+                <XCircle className="h-5 w-5 text-red-600" />
+              </div>
+
+              <div>
+                <h2 className="font-bold text-red-800">
+                  Reject Specimen
+                </h2>
+
+                <p className="mt-1 text-sm text-red-600">
+                  Document why this specimen cannot proceed.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-5 p-5 sm:p-6">
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-500">
+                  Reason for Rejection
+                </label>
+
+                <textarea
+                  value={rejectReason}
+                  onChange={(event) =>
+                    setRejectReason(event.target.value)
                   }
-                  placeholder="Notified user ID"
-                  className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
+                  placeholder="Describe the reason for specimen rejection..."
+                  rows={4}
+                  className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-red-300 focus:ring-4 focus:ring-red-50"
                 />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-500">
+                  Specimen Quality
+                </label>
 
                 <select
-                  value={reportForm.notificationMethod}
-                  onChange={(e) =>
-                    setReportForm({
-                      ...reportForm,
-                      notificationMethod:
-                        e.target.value as
-                          | 'PHONE'
-                          | 'SMS'
-                          | 'EMAIL'
-                          | 'IN_APP',
-                    })
+                  value={rejectQuality}
+                  onChange={(event) =>
+                    setRejectQuality(event.target.value)
                   }
-                  className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-red-300 focus:ring-4 focus:ring-red-50"
                 >
-                  <option value="IN_APP">
-                    In App
+                  <option value="UNSATISFACTORY">
+                    Unsatisfactory
                   </option>
-                  <option value="PHONE">Phone</option>
-                  <option value="SMS">SMS</option>
-                  <option value="EMAIL">Email</option>
+                  <option value="HEMOLYZED">
+                    Hemolyzed
+                  </option>
+                  <option value="CLOTTED">
+                    Clotted
+                  </option>
+                  <option value="INSUFFICIENT">
+                    Insufficient
+                  </option>
+                  <option value="CONTAMINATED">
+                    Contaminated
+                  </option>
                 </select>
               </div>
 
-              <textarea
-                rows={2}
-                value={reportForm.notificationNotes}
-                onChange={(e) =>
-                  setReportForm({
-                    ...reportForm,
-                    notificationNotes:
-                      e.target.value,
-                  })
-                }
-                placeholder="Notification notes..."
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] resize-none"
-              />
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-4 transition hover:bg-slate-50">
+                <input
+                  type="checkbox"
+                  checked={requestRecollection}
+                  onChange={(event) =>
+                    setRequestRecollection(
+                      event.target.checked
+                    )
+                  }
+                  className="h-4 w-4 rounded border-slate-300 accent-[#08345a]"
+                />
+
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">
+                    Request specimen recollection
+                  </p>
+
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Create a new recollection workflow for this
+                    patient.
+                  </p>
+                </div>
+              </label>
+
+              <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+                <button
+                  onClick={() => setShowRejectForm(false)}
+                  className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  onClick={handleReject}
+                  disabled={actionLoading}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+                >
+                  {actionLoading && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+
+                  Confirm Rejection
+                </button>
+              </div>
             </div>
-          </div>
+          </section>
+        )}
 
-          <ModalActions
-            onCancel={() => setShowReportModal(false)}
-            onSubmit={handleCompleteReport}
-            submitting={submitting}
-            submitLabel="Save Report"
-          />
+        {/* ===================================================
+            REPEAT FORM
+        ==================================================== */}
+
+        {showRepeatForm && (
+          <section className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-start gap-3 border-b border-slate-100 bg-slate-50 px-5 py-5 sm:px-6">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#1b7b68]/10 text-[#1b7b68]">
+                <RotateCcw className="h-5 w-5" />
+              </div>
+
+              <div>
+                <h2 className="font-bold text-slate-900">
+                  Repeat Test
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Document why this analysis needs to be
+                  repeated.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-5 p-5 sm:p-6">
+              <FormInput
+                label="Reason for Repeat"
+                value={repeatReason}
+                placeholder="e.g. Analyzer error, quality control issue..."
+                onChange={setRepeatReason}
+              />
+
+              <FormInput
+                label="Parameters to Repeat"
+                value={repeatParameters}
+                placeholder="Separate multiple parameters with commas"
+                onChange={setRepeatParameters}
+              />
+
+              <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+                <button
+                  onClick={() => setShowRepeatForm(false)}
+                  className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  onClick={handleRepeatTest}
+                  disabled={actionLoading}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1b7b68] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#155f50] disabled:opacity-60"
+                >
+                  {actionLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-4 w-4" />
+                  )}
+
+                  Start Repeat
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ===================================================
+            MAIN GRID
+        ==================================================== */}
+
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_350px]">
+          <main className="min-w-0">
+            {/* =================================================
+                TABS
+            ================================================= */}
+
+            <div className="mb-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
+              <div className="flex min-w-max gap-1">
+                {tabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                        isActive
+                          ? 'bg-[#1b7b68] text-white shadow-sm'
+                          : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+
+                      {tab.label}
+
+                      {typeof tab.count === 'number' &&
+                        tab.count > 0 && (
+                          <span
+                            className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold ${
+                              isActive
+                                ? 'bg-white/20 text-white'
+                                : 'bg-slate-100 text-slate-500'
+                            }`}
+                          >
+                            {tab.count}
+                          </span>
+                        )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* =================================================
+                OVERVIEW TAB
+            ================================================= */}
+
+            {activeTab === 'overview' && (
+              <div className="space-y-6">
+                {/* Test Information */}
+
+                <SectionCard
+                  icon={FlaskConical}
+                  title="Test Information"
+                  subtitle="Core details for this laboratory investigation"
+                >
+                  <div className="grid gap-x-6 gap-y-7 sm:grid-cols-2 lg:grid-cols-3">
+                    <InfoItem
+                      label="Test Name"
+                      value={order.testName}
+                      prominent
+                    />
+
+                    <InfoItem
+                      label="Department"
+                      value={formatStatus(order.testCategory)}
+                    />
+
+                    <InfoItem
+                      label="Sample Type"
+                      value={order.sampleType}
+                    />
+
+                    <InfoItem
+                      label="Panel"
+                      value={order.panelName || '—'}
+                    />
+
+                    <InfoItem
+                      label="Predicted TAT"
+                      value={
+                        order.predictedTatMinutes
+                          ? `${order.predictedTatMinutes} minutes`
+                          : '—'
+                      }
+                    />
+
+                    <InfoItem
+                      label="Specimen Quality"
+                      value={
+                        order.specimenQuality
+                          ? formatStatus(
+                              order.specimenQuality
+                            )
+                          : 'Not assessed'
+                      }
+                    />
+                  </div>
+                </SectionCard>
+
+                {/* Patient */}
+
+                <SectionCard
+                  icon={User}
+                  title="Patient & Request"
+                  subtitle="Patient identification and requesting clinician"
+                >
+                  <div className="grid gap-x-6 gap-y-7 sm:grid-cols-2">
+                    <InfoItem
+                      label="Patient"
+                      value={patientName}
+                      prominent
+                    />
+
+                    <InfoItem
+                      label="MRN"
+                      value={order.patientId?.mrn || '—'}
+                    />
+
+                    <InfoItem
+                      label="Requesting Doctor"
+                      value={getPersonName(order.doctorId)}
+                    />
+
+                    <InfoItem
+                      label="Order Created"
+                      value={formatDate(order.createdAt)}
+                    />
+
+                    <InfoItem
+                      label="Phlebotomist"
+                      value={getPersonName(
+                        order.phlebotomistId
+                      )}
+                    />
+
+                    <InfoItem
+                      label="Laboratory Technician"
+                      value={getPersonName(
+                        order.labTechnicianId
+                      )}
+                    />
+                  </div>
+                </SectionCard>
+
+                {/* Routing */}
+
+                <SectionCard
+                  icon={PackageCheck}
+                  title="Specimen Routing"
+                  subtitle="Current routing and laboratory location information"
+                >
+                  <div className="grid gap-x-6 gap-y-7 sm:grid-cols-2">
+                    <InfoItem
+                      label="Department"
+                      value={
+                        order.sampleRouting?.department
+                          ? formatStatus(
+                              order.sampleRouting.department
+                            )
+                          : 'Not routed'
+                      }
+                    />
+
+                    <InfoItem
+                      label="Routing Status"
+                      value={
+                        order.sampleRouting?.status
+                          ? formatStatus(
+                              order.sampleRouting.status
+                            )
+                          : 'Pending'
+                      }
+                    />
+
+                    <InfoItem
+                      label="Location"
+                      value={
+                        order.sampleRouting?.location || '—'
+                      }
+                    />
+
+                    <InfoItem
+                      label="Routed At"
+                      value={formatDate(
+                        order.sampleRouting?.routedAt
+                      )}
+                    />
+
+                    <InfoItem
+                      label="Received At"
+                      value={formatDate(
+                        order.sampleRouting?.receivedAt
+                      )}
+                    />
+
+                    <InfoItem
+                      label="Last Updated"
+                      value={formatDate(order.updatedAt)}
+                    />
+                  </div>
+                </SectionCard>
+
+                {/* Notes */}
+
+                {order.notes && (
+                  <SectionCard
+                    icon={FileText}
+                    title="Clinical Notes"
+                    subtitle="Additional instructions or information"
+                  >
+                    <div className="rounded-xl bg-slate-50 p-4">
+                      <p className="whitespace-pre-wrap text-sm leading-7 text-slate-600">
+                        {order.notes}
+                      </p>
+                    </div>
+                  </SectionCard>
+                )}
+              </div>
+            )}
+
+            {/* =================================================
+                RESULTS TAB
+            ================================================= */}
+
+            {activeTab === 'results' && (
+              <div className="space-y-6">
+                <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <div className="flex flex-col justify-between gap-4 border-b border-slate-100 px-5 py-5 sm:flex-row sm:items-center sm:px-6">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#1b7b68]/10 text-[#1b7b68]">
+                        <Beaker className="h-5 w-5" />
+                      </div>
+
+                      <div>
+                        <h2 className="font-bold text-slate-900">
+                          Laboratory Results
+                        </h2>
+
+                        <p className="mt-1 text-sm text-slate-500">
+                          Version {order.version || 1} ·{' '}
+                          {order.results?.length || 0}{' '}
+                          parameter
+                          {order.results?.length === 1
+                            ? ''
+                            : 's'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {order.status === 'COMPLETED' ? (
+                      <span className="inline-flex items-center gap-2 self-start rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 sm:self-auto">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        FINAL RESULTS
+                      </span>
+                    ) : order.results?.length ? (
+                      <span className="inline-flex items-center gap-2 self-start rounded-full border border-blue-100 bg-[#1b7b68]/10 px-3 py-1.5 text-xs font-bold text-blue-700 sm:self-auto">
+                        <Clock3 className="h-3.5 w-3.5" />
+                        PENDING RELEASE
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {order.results?.length ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[760px] text-left">
+                        <thead className="border-b border-slate-100 bg-slate-50">
+                          <tr className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                            <th className="px-6 py-4">
+                              Parameter
+                            </th>
+
+                            <th className="px-6 py-4">
+                              Result
+                            </th>
+
+                            <th className="px-6 py-4">
+                              Unit
+                            </th>
+
+                            <th className="px-6 py-4">
+                              Reference Range
+                            </th>
+
+                            <th className="px-6 py-4">
+                              Flag
+                            </th>
+                          </tr>
+                        </thead>
+
+                        <tbody className="divide-y divide-slate-100">
+                          {order.results.map(
+                            (result, index) => (
+                              <tr
+                                key={`${result.parameterName}-${index}`}
+                                className="transition hover:bg-slate-50/70"
+                              >
+                                <td className="px-6 py-4 text-sm font-bold text-slate-900">
+                                  {result.parameterName}
+                                </td>
+
+                                <td className="px-6 py-4 text-sm font-bold text-slate-800">
+                                  {result.value}
+                                </td>
+
+                                <td className="px-6 py-4 text-sm text-slate-500">
+                                  {result.unit || '—'}
+                                </td>
+
+                                <td className="px-6 py-4 text-sm text-slate-500">
+                                  {result.ageSexSpecificRange ||
+                                    result.referenceRange ||
+                                    '—'}
+                                </td>
+
+                                <td className="px-6 py-4">
+                                  <ResultFlagBadge
+                                    flag={
+                                      result.flag || 'NORMAL'
+                                    }
+                                  />
+                                </td>
+                              </tr>
+                            )
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={Beaker}
+                      title="No Results Recorded"
+                      description="Laboratory results will appear here once testing has been completed."
+                    />
+                  )}
+                </section>
+
+                <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-5 sm:px-6">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                      <ShieldCheck className="h-5 w-5" />
+                    </div>
+
+                    <div>
+                      <h2 className="font-bold text-slate-900">
+                        Authorization History
+                      </h2>
+
+                      <p className="mt-1 text-sm text-slate-500">
+                        Verification and result authorization
+                        records
+                      </p>
+                    </div>
+                  </div>
+
+                  {order.authorizationHistory?.length ? (
+                    <div className="divide-y divide-slate-100">
+                      {order.authorizationHistory.map(
+                        (authorization, index) => (
+                          <div
+                            key={index}
+                            className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6"
+                          >
+                            <div className="flex gap-3">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                                <CheckCircle2 className="h-4 w-4" />
+                              </div>
+
+                              <div>
+                                <p className="text-sm font-bold text-slate-900">
+                                  {formatStatus(
+                                    authorization.level
+                                  )}
+                                </p>
+
+                                <p className="mt-1 text-sm text-slate-500">
+                                  {getPersonName(
+                                    authorization.authorizedBy
+                                  )}
+                                </p>
+
+                                {authorization.notes && (
+                                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                                    {authorization.notes}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            <span className="pl-12 text-xs text-slate-400 sm:pl-0">
+                              {formatDate(
+                                authorization.authorizedAt
+                              )}
+                            </span>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={ShieldCheck}
+                      title="No Authorization History"
+                      description="Verification and authorization actions will be recorded here."
+                    />
+                  )}
+                </section>
+              </div>
+            )}
+
+            {/* =================================================
+                WORKFLOW TAB
+            ================================================= */}
+
+            {activeTab === 'workflow' && (
+              <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-5 sm:px-6">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#1b7b68]/10 text-[#1b7b68]">
+                    <Clock3 className="h-5 w-5" />
+                  </div>
+
+                  <div>
+                    <h2 className="font-bold text-slate-900">
+                      Complete Chain of Custody
+                    </h2>
+
+                    <p className="mt-1 text-sm text-slate-500">
+                      A chronological record of every important
+                      specimen event.
+                    </p>
+                  </div>
+                </div>
+
+                {order.chainOfCustody?.length ? (
+                  <div className="divide-y divide-slate-100">
+                    {order.chainOfCustody.map(
+                      (item, index) => (
+                        <div
+                          key={`${item.action}-${index}`}
+                          className="flex gap-4 px-5 py-5 sm:px-6"
+                        >
+                          <div className="flex flex-col items-center">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1b7b68]/10 text-[#1b7b68] ring-4 ring-[#1b7b68]/10">
+                              <Clock3 className="h-4 w-4" />
+                            </div>
+
+                            {index <
+                              order.chainOfCustody.length -
+                                1 && (
+                              <div className="mt-2 min-h-8 flex-1 w-px bg-slate-200" />
+                            )}
+                          </div>
+
+                          <div className="min-w-0 flex-1 pb-2">
+                            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                              <p className="font-bold text-slate-900">
+                                {formatStatus(item.action)}
+                              </p>
+
+                              <span className="text-xs text-slate-400">
+                                {formatDate(item.timestamp)}
+                              </span>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-500">
+                              {item.performedBy && (
+                                <span className="inline-flex items-center gap-1.5">
+                                  <User className="h-4 w-4 text-slate-400" />
+                                  {getPersonName(
+                                    item.performedBy
+                                  )}
+                                </span>
+                              )}
+
+                              {item.location && (
+                                <span className="inline-flex items-center gap-1.5">
+                                  <MapPin className="h-4 w-4 text-slate-400" />
+                                  {item.location}
+                                </span>
+                              )}
+                            </div>
+
+                            {item.notes && (
+                              <div className="mt-3 rounded-xl bg-slate-50 px-4 py-3">
+                                <p className="text-sm leading-6 text-slate-600">
+                                  {item.notes}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    )}
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={Clock3}
+                    title="No Workflow History"
+                    description="Chain of custody events will appear here as the specimen progresses."
+                  />
+                )}
+              </section>
+            )}
+          </main>
+
+          {/* ===================================================
+              SIDEBAR
+          =================================================== */}
+
+          <aside className="space-y-6">
+            {/* Patient Snapshot */}
+
+            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-100 px-5 py-4">
+                <h2 className="font-bold text-slate-900">
+                  Patient Snapshot
+                </h2>
+              </div>
+
+              <div className="p-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#1b7b68] text-sm font-bold text-white">
+                    {patientName !== '—'
+                      ? patientName.charAt(0).toUpperCase()
+                      : <User className="h-5 w-5" />}
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-slate-900">
+                      {patientName}
+                    </p>
+
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      MRN:{' '}
+                      {order.patientId?.mrn || '—'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid grid-cols-2 gap-3 border-t border-slate-100 pt-5">
+                  <SidebarStat
+                    label="Sample"
+                    value={order.sampleType}
+                  />
+
+                  <SidebarStat
+                    label="Priority"
+                    value={order.priority}
+                  />
+
+                  <SidebarStat
+                    label="Category"
+                    value={formatStatus(order.testCategory)}
+                  />
+
+                  <SidebarStat
+                    label="Results"
+                    value={`${order.results?.length || 0}`}
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* Workflow Progress */}
+
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="font-bold text-slate-900">
+                    Workflow Progress
+                  </h2>
+
+                  <p className="mt-1 text-sm text-slate-500">
+                    Specimen processing status
+                  </p>
+                </div>
+
+                <span className="rounded-lg bg-[#1b7b68]/10 px-2.5 py-1 text-xs font-bold text-[#1b7b68]">
+                  {progressPercentage}%
+                </span>
+              </div>
+
+              <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-[#1b7b68] transition-all duration-500"
+                  style={{
+                    width: `${progressPercentage}%`,
+                  }}
+                />
+              </div>
+
+              <div className="mt-6 space-y-1">
+                {workflowSteps.map((step, index) => {
+                  const Icon = step.icon;
+
+                  return (
+                    <div
+                      key={step.title}
+                      className="flex gap-3"
+                    >
+                      <div className="flex flex-col items-center">
+                        <div
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition ${
+                            step.complete
+                              ? 'bg-emerald-500 text-white'
+                              : step.active
+                              ? 'bg-[#1b7b68] text-white ring-4 ring-blue-50'
+                              : 'bg-slate-100 text-slate-400'
+                          }`}
+                        >
+                          {step.complete ? (
+                            <Check className="h-4 w-4" />
+                          ) : (
+                            <Icon className="h-4 w-4" />
+                          )}
+                        </div>
+
+                        {index <
+                          workflowSteps.length - 1 && (
+                          <div
+                            className={`my-1 h-7 w-px ${
+                              step.complete
+                                ? 'bg-emerald-300'
+                                : 'bg-slate-200'
+                            }`}
+                          />
+                        )}
+                      </div>
+
+                      <div className="min-w-0 pb-5">
+                        <p
+                          className={`text-sm font-semibold ${
+                            step.active || step.complete
+                              ? 'text-slate-900'
+                              : 'text-slate-400'
+                          }`}
+                        >
+                          {step.title}
+                        </p>
+
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          {step.description}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* Timeline */}
+
+            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
+                <Clock3 className="h-4 w-4 text-[#1b7b68]" />
+
+                <h2 className="font-bold text-slate-900">
+                  Sample Timeline
+                </h2>
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                <TimelineItem
+                  label="Order Created"
+                  value={formatDate(order.createdAt)}
+                />
+
+                <TimelineItem
+                  label="Collection"
+                  value={formatDate(
+                    order.sampleCollectedAt
+                  )}
+                />
+
+                <TimelineItem
+                  label="Specimen Received"
+                  value={formatDate(
+                    order.specimenReceivedAt
+                  )}
+                />
+
+                <TimelineItem
+                  label="Verified"
+                  value={formatDate(order.verifiedAt)}
+                />
+
+                <TimelineItem
+                  label="Released"
+                  value={formatDate(order.completedAt)}
+                />
+              </div>
+            </section>
+
+            {/* QR / Barcode */}
+
+            {(order.qrCodeUrl || order.barcodeUrl) && (
+              <section className="rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-sm">
+                <div className="flex justify-center">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-[#1b7b68]">
+                    <ScanLine className="h-5 w-5" />
+                  </div>
+                </div>
+
+                <h2 className="mt-3 font-bold text-slate-900">
+                  Specimen Identification
+                </h2>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Scan to identify this specimen
+                </p>
+
+                <div className="mx-auto mt-5 flex h-40 w-40 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white p-3">
+                  <img
+                    src={
+                      order.qrCodeUrl ||
+                      order.barcodeUrl ||
+                      ''
+                    }
+                    alt="Laboratory specimen identification code"
+                    className="h-full w-full object-contain"
+                  />
+                </div>
+
+                <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 font-mono text-xs font-bold text-slate-600">
+                  {order.accessionNumber}
+                </p>
+              </section>
+            )}
+
+            {/* Rejection Information */}
+
+            {order.rejectionInfo && (
+              <section className="rounded-2xl border border-red-100 bg-red-50 p-5">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-100">
+                    <XCircle className="h-4 w-4 text-red-600" />
+                  </div>
+
+                  <div>
+                    <h2 className="text-sm font-bold text-red-800">
+                      Specimen Rejected
+                    </h2>
+
+                    <p className="text-xs text-red-600">
+                      Processing exception recorded
+                    </p>
+                  </div>
+                </div>
+
+                {order.rejectionInfo.reason && (
+                  <div className="mt-4 rounded-xl bg-white/60 p-3">
+                    <p className="text-sm leading-6 text-red-700">
+                      {order.rejectionInfo.reason}
+                    </p>
+                  </div>
+                )}
+
+                <div className="mt-4 space-y-2 border-t border-red-100 pt-4 text-xs">
+                  <div className="flex justify-between gap-3">
+                    <span className="text-red-500">
+                      Quality
+                    </span>
+
+                    <span className="font-bold text-red-700">
+                      {formatStatus(
+                        order.rejectionInfo.quality
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between gap-3">
+                    <span className="text-red-500">
+                      Recollection
+                    </span>
+
+                    <span className="font-bold text-red-700">
+                      {order.rejectionInfo
+                        .recollectionRequested
+                        ? 'Requested'
+                        : 'Not requested'}
+                    </span>
+                  </div>
+                </div>
+              </section>
+            )}
+          </aside>
         </div>
-      </Modal>
-
-      {/* ================================================================== */}
-      {/* AMEND REPORT MODAL                                                 */}
-      {/* ================================================================== */}
-
-      <Modal
-        open={showAmendModal}
-        title="Amend Radiology Report"
-        subtitle="Create a new amended version of the finalized report."
-        onClose={() => setShowAmendModal(false)}
-        width="max-w-3xl"
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Findings
-            </label>
-
-            <textarea
-              rows={8}
-              value={amendForm.findings}
-              onChange={(e) =>
-                setAmendForm({
-                  ...amendForm,
-                  findings: e.target.value,
-                })
-              }
-              className="w-full px-3 py-3 rounded-xl border border-slate-200 bg-white text-sm shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] resize-y"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Impression
-            </label>
-
-            <textarea
-              rows={5}
-              value={amendForm.impression}
-              onChange={(e) =>
-                setAmendForm({
-                  ...amendForm,
-                  impression: e.target.value,
-                })
-              }
-              className="w-full px-3 py-3 rounded-xl border border-slate-200 bg-white text-sm shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] resize-y"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Radiologist Notes
-            </label>
-
-            <textarea
-              rows={3}
-              value={amendForm.radiologistNotes}
-              onChange={(e) =>
-                setAmendForm({
-                  ...amendForm,
-                  radiologistNotes: e.target.value,
-                })
-              }
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] resize-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-rose-700 mb-1.5">
-              Amendment Reason *
-            </label>
-
-            <textarea
-              rows={3}
-              value={amendForm.amendmentReason}
-              onChange={(e) =>
-                setAmendForm({
-                  ...amendForm,
-                  amendmentReason: e.target.value,
-                })
-              }
-              placeholder="Explain why this report is being amended..."
-              className="w-full px-3 py-2.5 rounded-xl border border-rose-200 bg-rose-50/30 text-xs resize-none"
-            />
-          </div>
-
-          <ModalActions
-            onCancel={() => setShowAmendModal(false)}
-            onSubmit={handleAmendReport}
-            submitting={submitting}
-            submitLabel="Amend Report"
-          />
-        </div>
-      </Modal>
-
-      {/* ================================================================== */}
-      {/* CRITICAL RESULT MODAL                                              */}
-      {/* ================================================================== */}
-
-      <Modal
-        open={showCriticalModal}
-        title="Critical Result Management"
-        subtitle="Document notification and acknowledgement of critical findings."
-        onClose={() => setShowCriticalModal(false)}
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Status
-            </label>
-
-            <select
-              value={criticalForm.status}
-              onChange={(e) =>
-                setCriticalForm({
-                  ...criticalForm,
-                  status:
-                    e.target.value as CriticalResultStatus,
-                })
-              }
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            >
-              {Object.values(
-                CriticalResultStatus
-              ).map((status) => (
-                <option key={status} value={status}>
-                  {formatLabel(status)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Finding
-            </label>
-
-            <textarea
-              rows={4}
-              value={criticalForm.finding}
-              onChange={(e) =>
-                setCriticalForm({
-                  ...criticalForm,
-                  finding: e.target.value,
-                })
-              }
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] resize-none"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              value={criticalForm.notifiedUserId}
-              onChange={(e) =>
-                setCriticalForm({
-                  ...criticalForm,
-                  notifiedUserId: e.target.value,
-                })
-              }
-              placeholder="Notified user ID"
-              className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-
-            <select
-              value={criticalForm.notificationMethod}
-              onChange={(e) =>
-                setCriticalForm({
-                  ...criticalForm,
-                  notificationMethod:
-                    e.target.value as
-                      | 'PHONE'
-                      | 'SMS'
-                      | 'EMAIL'
-                      | 'IN_APP',
-                })
-              }
-              className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            >
-              <option value="IN_APP">In App</option>
-              <option value="PHONE">Phone</option>
-              <option value="SMS">SMS</option>
-              <option value="EMAIL">Email</option>
-            </select>
-          </div>
-
-          <textarea
-            rows={3}
-            value={criticalForm.notificationNotes}
-            onChange={(e) =>
-              setCriticalForm({
-                ...criticalForm,
-                notificationNotes:
-                  e.target.value,
-              })
-            }
-            placeholder="Notification notes..."
-            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] resize-none"
-          />
-
-          <ModalActions
-            onCancel={() => setShowCriticalModal(false)}
-            onSubmit={handleCriticalResult}
-            submitting={submitting}
-            submitLabel="Update Critical Result"
-          />
-        </div>
-      </Modal>
-
-      {/* ================================================================== */}
-      {/* AI MODAL                                                           */}
-      {/* ================================================================== */}
-
-      <Modal
-        open={showAIModal}
-        title="AI Analysis"
-        subtitle="Record MedxVerse AI analysis results and quality checks."
-        onClose={() => setShowAIModal(false)}
-        width="max-w-2xl"
-      >
-        <div className="space-y-4">
-          <label className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={aiForm.enabled}
-              onChange={(e) =>
-                setAIForm({
-                  ...aiForm,
-                  enabled: e.target.checked,
-                })
-              }
-            />
-
-            <span className="text-xs font-bold text-slate-700">
-              AI analysis enabled
-            </span>
-          </label>
-
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              value={aiForm.modelName}
-              onChange={(e) =>
-                setAIForm({
-                  ...aiForm,
-                  modelName: e.target.value,
-                })
-              }
-              placeholder="Model name"
-              className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-
-            <input
-              value={aiForm.modelVersion}
-              onChange={(e) =>
-                setAIForm({
-                  ...aiForm,
-                  modelVersion: e.target.value,
-                })
-              }
-              placeholder="Model version"
-              className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <select
-              value={aiForm.priority}
-              onChange={(e) =>
-                setAIForm({
-                  ...aiForm,
-                  priority:
-                    e.target.value as AIStudyPriority,
-                })
-              }
-              className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            >
-              {Object.values(AIStudyPriority).map(
-                (priority) => (
-                  <option key={priority} value={priority}>
-                    {formatLabel(priority)}
-                  </option>
-                )
-              )}
-            </select>
-
-            <input
-              type="number"
-              min="0"
-              max="1"
-              step="0.01"
-              value={aiForm.confidence}
-              onChange={(e) =>
-                setAIForm({
-                  ...aiForm,
-                  confidence: e.target.value,
-                })
-              }
-              placeholder="Confidence (0–1)"
-              className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68]"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              AI Findings
-            </label>
-
-            <textarea
-              rows={5}
-              value={aiForm.findings}
-              onChange={(e) =>
-                setAIForm({
-                  ...aiForm,
-                  findings: e.target.value,
-                })
-              }
-              placeholder="One finding per line..."
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] resize-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Recommendations
-            </label>
-
-            <textarea
-              rows={4}
-              value={aiForm.recommendations}
-              onChange={(e) =>
-                setAIForm({
-                  ...aiForm,
-                  recommendations: e.target.value,
-                })
-              }
-              placeholder="One recommendation per line..."
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] resize-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1.5 tracking-tight">
-              Measurements
-            </label>
-
-            <textarea
-              rows={4}
-              value={aiForm.measurements}
-              onChange={(e) =>
-                setAIForm({
-                  ...aiForm,
-                  measurements: e.target.value,
-                })
-              }
-              placeholder={'Example:\nlesionSize=12.5\nvolume=30.2'}
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] font-mono resize-none"
-            />
-          </div>
-
-          <label className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={aiForm.qualityPassed}
-              onChange={(e) =>
-                setAIForm({
-                  ...aiForm,
-                  qualityPassed: e.target.checked,
-                })
-              }
-            />
-
-            <span className="text-xs font-bold text-slate-700">
-              Quality control passed
-            </span>
-          </label>
-
-          <textarea
-            rows={3}
-            value={aiForm.qualityNotes}
-            onChange={(e) =>
-              setAIForm({
-                ...aiForm,
-                qualityNotes: e.target.value,
-              })
-            }
-            placeholder="Quality control notes..."
-            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs shadow-[0_1px_2px_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-[#1b7b68]/10 focus:border-[#1b7b68] resize-none"
-          />
-
-          <ModalActions
-            onCancel={() => setShowAIModal(false)}
-            onSubmit={handleAIUpdate}
-            submitting={submitting}
-            submitLabel="Save AI Analysis"
-          />
-        </div>
-      </Modal>
-
-      {/* ================================================================== */}
-      {/* CANCEL MODAL                                                       */}
-      {/* ================================================================== */}
-
-      <Modal
-        open={showCancelModal}
-        title="Cancel Radiology Order"
-        subtitle="This action will mark the examination as cancelled."
-        onClose={() => setShowCancelModal(false)}
-      >
-        <div className="space-y-4">
-          <div className="p-4 rounded-xl bg-rose-50 border border-rose-100 flex gap-3">
-            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-
-            <p className="text-xs text-rose-700 leading-5">
-              Please provide a reason for cancellation.
-              This will be stored with the radiology order.
-            </p>
-          </div>
-
-          <textarea
-            rows={5}
-            value={cancelReason}
-            onChange={(e) =>
-              setCancelReason(e.target.value)
-            }
-            placeholder="Cancellation reason..."
-            className="w-full px-3 py-3 rounded-xl border border-slate-200 text-xs resize-none focus:outline-none focus:border-rose-400"
-          />
-
-          <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={() => setShowCancelModal(false)}
-              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 shadow-sm hover:bg-slate-50 hover:bg-slate-50"
-            >
-              Keep Order
-            </button>
-
-            <button
-              type="button"
-              onClick={handleCancel}
-              disabled={submitting || !cancelReason.trim()}
-              className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold disabled:opacity-50 flex items-center gap-2"
-            >
-              {submitting && (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              )}
-              Cancel Order
-            </button>
-          </div>
-        </div>
-      </Modal>
       </div>
     </div>
+  );
+}
+
+/* =========================================================
+   SMALL COMPONENTS
+========================================================= */
+
+function ActionButton({
+  children,
+  icon: Icon,
+  onClick,
+  disabled,
+  loading,
+  variant = 'primary',
+}: {
+  children: React.ReactNode;
+  icon: ElementType;
+  onClick: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  variant?:
+    | 'primary'
+    | 'blue'
+    | 'secondary'
+    | 'orange'
+    | 'success'
+    | 'danger-outline';
+}) {
+  const styles = {
+    primary:
+      'bg-[#1b7b68] text-white hover:bg-[#155f50]',
+    blue:
+      'bg-[#1b7b68] text-white hover:bg-[#155f50]',
+    secondary:
+      'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+    orange:
+      'bg-orange-500 text-white hover:bg-orange-600',
+    success:
+      'bg-emerald-600 text-white hover:bg-emerald-700',
+    'danger-outline':
+      'border border-red-200 bg-red-50 text-red-600 hover:bg-red-100',
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${styles[variant]}`}
+    >
+      {loading ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <Icon className="h-4 w-4" />
+      )}
+
+      {children}
+    </button>
+  );
+}
+
+function SectionCard({
+  icon: Icon,
+  title,
+  subtitle,
+  children,
+}: {
+  icon: ElementType;
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-5 sm:px-6">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1b7b68]/10 text-[#1b7b68]">
+          <Icon className="h-5 w-5" />
+        </div>
+
+        <div>
+          <h2 className="font-bold text-slate-900">
+            {title}
+          </h2>
+
+          {subtitle && (
+            <p className="mt-1 text-sm text-slate-500">
+              {subtitle}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="p-5 sm:p-6">{children}</div>
+    </section>
+  );
+}
+
+function InfoItem({
+  label,
+  value,
+  prominent = false,
+}: {
+  label: string;
+  value: string;
+  prominent?: boolean;
+}) {
+  return (
+    <div>
+      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+        {label}
+      </p>
+
+      <p
+        className={`mt-2 break-words ${
+          prominent
+            ? 'text-[15px] font-bold text-slate-900'
+            : 'text-sm font-semibold text-slate-700'
+        }`}
+      >
+        {value || '—'}
+      </p>
+    </div>
+  );
+}
+
+function SidebarStat({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-xl bg-slate-50 p-3">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+        {label}
+      </p>
+
+      <p className="mt-1 truncate text-xs font-bold text-slate-900">
+        {value || '—'}
+      </p>
+    </div>
+  );
+}
+
+function FormInput({
+  label,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-xs font-bold text-slate-500">
+        {label}
+      </label>
+
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#1b7b68] focus:ring-4 focus:ring-[#1b7b68]/10"
+      />
+    </div>
+  );
+}
+
+function TimelineItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 px-5 py-4">
+      <span className="text-sm text-slate-500">
+        {label}
+      </span>
+
+      <span className="max-w-[150px] text-right text-xs font-semibold leading-5 text-slate-700">
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function EmptyState({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: ElementType;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex flex-col items-center px-6 py-16 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 text-slate-400">
+        <Icon className="h-6 w-6" />
+      </div>
+
+      <h3 className="mt-4 font-bold text-slate-900">
+        {title}
+      </h3>
+
+      <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">
+        {description}
+      </p>
+    </div>
+  );
+}
+
+function ResultFlagBadge({
+  flag,
+}: {
+  flag: string;
+}) {
+  const normalized = flag.toUpperCase();
+
+  let classes =
+    'border-slate-200 bg-slate-100 text-slate-600';
+
+  if (
+    normalized === 'CRITICAL' ||
+    normalized === 'CRITICALLY_HIGH' ||
+    normalized === 'CRITICALLY_LOW'
+  ) {
+    classes =
+      'border-red-200 bg-red-50 text-red-700';
+  } else if (
+    normalized === 'ABNORMAL' ||
+    normalized === 'HIGH' ||
+    normalized === 'LOW'
+  ) {
+    classes =
+      'border-amber-200 bg-amber-50 text-amber-700';
+  } else if (normalized === 'NORMAL') {
+    classes =
+      'border-emerald-200 bg-emerald-50 text-emerald-700';
+  }
+
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${classes}`}
+    >
+      {formatStatus(flag)}
+    </span>
   );
 }
