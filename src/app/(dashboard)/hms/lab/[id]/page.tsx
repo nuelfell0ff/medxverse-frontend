@@ -2192,7 +2192,7 @@ export default function LabOrderDetailsPage() {
 
             {/* QR / Barcode */}
 
-            {(order.qrCodeUrl || order.barcodeUrl) && (
+            {/* {(order.qrCodeUrl || order.barcodeUrl) && (
               <section className="rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-sm">
                 <div className="flex justify-center">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-[#1b7b68]">
@@ -2224,7 +2224,7 @@ export default function LabOrderDetailsPage() {
                   {order.accessionNumber}
                 </p>
               </section>
-            )}
+            )} */}
 
             {/* Rejection Information */}
 
