@@ -1,6 +1,7 @@
 import {
   Users,
   Calendar,
+  CalendarClock,
   FileCheck,
   ShieldCheck,
   Receipt,
@@ -81,6 +82,13 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       href: '/hms/staff',
       icon: UserCog,
       moduleKey: 'staff',
+    },
+
+    {
+      label: 'Staff Rostering',
+      href: '/hms/staff-roster',
+      icon: CalendarClock,
+      moduleKey: 'staff_roster',
     },
 
     {
