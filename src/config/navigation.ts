@@ -98,12 +98,12 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       moduleKey: 'pharmacy',
     },
 
-    {
-      label: 'Bed Management',
-      href: '/hms/beds',
-      icon: Bed,
-      moduleKey: 'beds',
-    },
+    // {
+    //   label: 'Bed Management',
+    //   href: '/hms/beds',
+    //   icon: Bed,
+    //   moduleKey: 'beds',
+    // },
 
     {
       label: 'Billing & Invoices',
