@@ -1389,7 +1389,7 @@ export default function RadiologyPage() {
           </div>
         </FormSection>
 
-        {/* Ordering Clinician Section */}
+        {/* Ordering Clinician Section
         <FormSection
           title="Ordering Clinician"
           icon={<Stethoscope className="w-3.5 h-3.5" />}
@@ -1454,7 +1454,7 @@ export default function RadiologyPage() {
               Leave blank to use the currently authenticated clinician.
             </p>
           </div>
-        </FormSection>
+        </FormSection> */}
 
         {/* Examination Section */}
         <FormSection

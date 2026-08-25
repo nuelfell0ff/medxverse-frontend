@@ -75,14 +75,79 @@ const formatLabel = (value?: string | null) => {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
+type StaffReference =
+  | string
+  | RadiologyStaff
+  | {
+      _id?: string;
+      id?: string;
+      firstName?: string;
+      lastName?: string;
+      name?: string;
+      role?: string;
+      department?: string;
+    }
+  | null
+  | undefined;
+
+const getReferenceId = (value: unknown): string => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+
+  if (typeof value === 'object') {
+    const reference = value as Record<string, unknown>;
+
+    if (typeof reference._id === 'string') return reference._id;
+    if (typeof reference.id === 'string') return reference.id;
+  }
+
+  return '';
+};
+
 const getStaffName = (
-  staff?: RadiologyStaff | string | null
+  staff: StaffReference,
+  staffDirectory?: Map<string, RadiologyStaff>
 ): string => {
   if (!staff) return 'Unknown';
 
-  if (typeof staff === 'string') return staff;
+  const referenceId = getReferenceId(staff);
 
-  return `${staff.firstName || ''} ${staff.lastName || ''}`.trim() || 'Unknown';
+  if (referenceId && staffDirectory?.has(referenceId)) {
+    staff = staffDirectory.get(referenceId) as RadiologyStaff;
+  }
+
+  if (typeof staff === 'string') {
+    return staffDirectory?.get(staff)
+      ? `${staffDirectory.get(staff)?.firstName || ''} ${staffDirectory.get(staff)?.lastName || ''}`.trim() || 'Unknown'
+      : 'Unknown';
+  }
+
+  const person = staff as Record<string, unknown>;
+  const firstName = typeof person.firstName === 'string' ? person.firstName : '';
+  const lastName = typeof person.lastName === 'string' ? person.lastName : '';
+  const name = typeof person.name === 'string' ? person.name : '';
+
+  return `${firstName} ${lastName}`.trim() || name || 'Unknown';
+};
+
+const getStaffRole = (
+  staff: StaffReference,
+  staffDirectory?: Map<string, RadiologyStaff>
+): string => {
+  if (!staff) return 'Ordering clinician';
+
+  const referenceId = getReferenceId(staff);
+  const resolved =
+    referenceId && staffDirectory?.get(referenceId)
+      ? staffDirectory.get(referenceId)
+      : staff;
+
+  if (typeof resolved === 'string') return 'Ordering clinician';
+
+  const role = (resolved as Record<string, unknown>).role;
+  return typeof role === 'string' && role
+    ? formatLabel(role)
+    : 'Ordering clinician';
 };
 
 const getPatientName = (
@@ -358,7 +423,7 @@ function Modal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-100 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
       <div
         className={`bg-white w-full ${width} rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col`}
       >
@@ -604,48 +669,39 @@ export default function RadiologyOrderDetailsPage() {
   const [staffSearch, setStaffSearch] = useState('');
   const [staffResults, setStaffResults] = useState<RadiologyStaff[]>([]);
   const [staffLoading, setStaffLoading] = useState(false);
+  const [staffDirectory, setStaffDirectory] = useState<Map<string, RadiologyStaff>>(
+    () => new Map()
+  );
+  const [orderingClinician, setOrderingClinician] =
+    useState<RadiologyStaff | null>(null);
 
   const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     'https://medxverse-backend.onrender.com';
 
-  const fetchRadiologyApi = useCallback(async (endpoint = '') => {
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 30000);
-    try {
-      const token =
-        localStorage.getItem('token') ||
-        localStorage.getItem('accessToken') ||
-        localStorage.getItem('authToken');
+  const rememberStaff = useCallback((people: RadiologyStaff[]) => {
+    if (!people.length) return;
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/radiology${endpoint}`, {
-        method: 'GET',
-        cache: 'no-store',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
+    setStaffDirectory((previous) => {
+      let changed = false;
+      const next = new Map(previous);
 
-      const json = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(
-          json?.message ||
-            json?.error ||
-            `Radiology request failed (${response.status})`
-        );
+      for (const person of people) {
+        const id = getReferenceId(person);
+        if (!id) continue;
+
+        const existing = next.get(id);
+
+        // Do not create a new Map when the same staff record is already cached.
+        if (existing !== person) {
+          next.set(id, person);
+          changed = true;
+        }
       }
-      return json;
-    } catch (error: any) {
-      if (error?.name === 'AbortError') {
-        throw new Error('Radiology request timed out. Please check that the backend is running and reachable.');
-      }
-      throw error;
-    } finally {
-      window.clearTimeout(timeout);
-    }
-  }, [API_BASE_URL]);
+
+      return changed ? next : previous;
+    });
+  }, []);
 
   const getAuthHeaders = useCallback((): HeadersInit => {
     const token =
@@ -662,6 +718,63 @@ export default function RadiologyOrderDetailsPage() {
         : {}),
     };
   }, []);
+
+  const resolveStaffById = useCallback(
+    async (staffId: string): Promise<RadiologyStaff | null> => {
+      if (!staffId) return null;
+
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/v1/staff/${encodeURIComponent(staffId)}`,
+          { headers: getAuthHeaders() }
+        );
+
+        if (!response.ok) return null;
+
+        const json = await response.json();
+        const person =
+          json?.data?.staff ||
+          json?.data?.item ||
+          json?.data ||
+          json?.staff ||
+          json?.item ||
+          json;
+
+        if (!person || typeof person !== 'object') return null;
+
+        const resolved = person as RadiologyStaff;
+        rememberStaff([resolved]);
+        return resolved;
+      } catch (err) {
+        console.error('Failed to resolve staff member:', err);
+        return null;
+      }
+    },
+    [API_BASE_URL, getAuthHeaders, rememberStaff]
+  );
+
+  const resolveReferencedStaff = useCallback(
+    async (radiologyOrder: RadiologyOrder | null) => {
+      if (!radiologyOrder) return;
+
+      const ids = new Set<string>();
+      const orderingId = getReferenceId(radiologyOrder.orderingDoctorId);
+      if (orderingId) ids.add(orderingId);
+
+      const radiologistId = getReferenceId(radiologyOrder.radiologistId);
+      if (radiologistId) ids.add(radiologistId);
+
+      for (const assignment of radiologyOrder.assignments || []) {
+        const id = getReferenceId(assignment.userId);
+        if (id) ids.add(id);
+      }
+
+      await Promise.all(
+        Array.from(ids).map((id) => resolveStaffById(id))
+      );
+    },
+    [resolveStaffById]
+  );
 
   const searchStaff = useCallback(
     async (query = '') => {
@@ -697,6 +810,7 @@ export default function RadiologyOrderDetailsPage() {
             : [];
 
         setStaffResults(data);
+        rememberStaff(data);
       } catch (err) {
         console.error('Failed to search staff:', err);
         setStaffResults([]);
@@ -704,7 +818,7 @@ export default function RadiologyOrderDetailsPage() {
         setStaffLoading(false);
       }
     },
-    [API_BASE_URL, getAuthHeaders]
+    [API_BASE_URL, getAuthHeaders, rememberStaff]
   );
 
   useEffect(() => {
@@ -723,11 +837,7 @@ export default function RadiologyOrderDetailsPage() {
 
   const loadOrder = useCallback(
     async (isRefresh = false) => {
-      if (!orderId) {
-        setLoading(false);
-        setError('No radiology examination ID was provided.');
-        return;
-      }
+      if (!orderId) return;
 
       try {
         if (isRefresh) {
@@ -738,13 +848,25 @@ export default function RadiologyOrderDetailsPage() {
 
         setError(null);
 
-        const payload = await fetchRadiologyApi(`/${encodeURIComponent(orderId)}`);
-        const result = payload?.data ?? payload?.order ?? payload;
+        const result = await RadiologyApiService.getOrder(orderId);
 
-        if (!result || !result._id) {
-          throw new Error('Radiology examination data was not returned by the backend.');
+        const populatedStaff: RadiologyStaff[] = [];
+
+        if (result && typeof result.orderingDoctorId !== 'string' && result.orderingDoctorId) {
+          populatedStaff.push(result.orderingDoctorId as RadiologyStaff);
         }
 
+        if (result?.radiologistId && typeof result.radiologistId !== 'string') {
+          populatedStaff.push(result.radiologistId as RadiologyStaff);
+        }
+
+        for (const assignment of result?.assignments || []) {
+          if (assignment.userId && typeof assignment.userId !== 'string') {
+            populatedStaff.push(assignment.userId as unknown as RadiologyStaff);
+          }
+        }
+
+        rememberStaff(populatedStaff);
         setOrder(result);
       } catch (err: any) {
         setError(
@@ -756,12 +878,120 @@ export default function RadiologyOrderDetailsPage() {
         setRefreshing(false);
       }
     },
-    [orderId, fetchRadiologyApi]
+    [orderId, rememberStaff]
   );
 
   useEffect(() => {
     loadOrder();
   }, [loadOrder]);
+
+  // Resolve ID-only staff references after the order has been loaded.
+  // This is deliberately separate from loadOrder so resolving a staff member
+  // can update the directory without causing another order fetch.
+  useEffect(() => {
+    if (!order) return;
+    void resolveReferencedStaff(order);
+  }, [order, resolveReferencedStaff]);
+
+  /* ---------------------------------------------------------------------- */
+  /* Ordering clinician                                                      */
+  /* ---------------------------------------------------------------------- */
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolveOrderingClinician = async () => {
+      if (!order?.orderingDoctorId) {
+        setOrderingClinician(null);
+        return;
+      }
+
+      const referenceId = getReferenceId(order.orderingDoctorId);
+
+      // 1. Use the populated orderingDoctorId when the API already returned it.
+      if (typeof order.orderingDoctorId !== 'string') {
+        const populated = order.orderingDoctorId as RadiologyStaff;
+        if (populated.firstName || populated.lastName ) {
+          setOrderingClinician(populated);
+          return;
+        }
+      }
+
+      // 2. Use the exact same populated assignment record that powers
+      //    the Assigned Staff section.
+      const matchingAssignment = (order.assignments || []).find(
+        (assignment) =>
+          referenceId &&
+          getReferenceId(assignment.userId) === referenceId &&
+          typeof assignment.userId !== 'string'
+      );
+
+      if (matchingAssignment && typeof matchingAssignment.userId !== 'string') {
+        setOrderingClinician(
+          matchingAssignment.userId as unknown as RadiologyStaff
+        );
+        return;
+      }
+
+      // 3. If the order only contains the ID, fetch that exact staff record.
+      if (!referenceId) {
+        setOrderingClinician(null);
+        return;
+      }
+
+      const cached = staffDirectory.get(referenceId);
+      if (cached) {
+        setOrderingClinician(cached);
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/v1/staff/${encodeURIComponent(referenceId)}`,
+          { headers: getAuthHeaders() }
+        );
+
+        if (!response.ok) {
+          if (!cancelled) setOrderingClinician(null);
+          return;
+        }
+
+        const json = await response.json();
+        const person =
+          json?.data?.staff ||
+          json?.data?.item ||
+          json?.data ||
+          json?.staff ||
+          json?.item ||
+          json;
+
+        if (
+          !cancelled &&
+          person &&
+          typeof person === 'object' &&
+          (person.firstName || person.lastName || person.name)
+        ) {
+          setOrderingClinician(person as RadiologyStaff);
+        } else if (!cancelled) {
+          setOrderingClinician(null);
+        }
+      } catch (error) {
+        console.error('Failed to load ordering clinician:', error);
+        if (!cancelled) setOrderingClinician(null);
+      }
+    };
+
+    void resolveOrderingClinician();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    order,
+    staffDirectory,
+    API_BASE_URL,
+    getAuthHeaders,
+  ]);
 
   /* ---------------------------------------------------------------------- */
   /* Sync forms when order loads                                            */
@@ -988,7 +1218,83 @@ export default function RadiologyOrderDetailsPage() {
 
       const updated = await action();
 
-      setOrder(updated);
+      // Keep populated staff references from the previous order when an update
+      // endpoint returns the same references as raw ObjectId strings.
+      const previous = order;
+      let nextOrder = updated;
+
+      if (previous && updated) {
+        const previousOrdering = previous.orderingDoctorId;
+        const updatedOrdering = updated.orderingDoctorId;
+
+        if (
+          typeof updatedOrdering === 'string' &&
+          typeof previousOrdering !== 'string'
+        ) {
+          nextOrder = {
+            ...nextOrder,
+            orderingDoctorId: previousOrdering,
+          };
+        }
+
+        if (previous.assignments?.length && updated.assignments?.length) {
+          const previousByKey = new Map(
+            previous.assignments.map((assignment, index) => [
+              `${getReferenceId(assignment.userId)}::${assignment.role}::${index}`,
+              assignment,
+            ])
+          );
+
+          nextOrder = {
+            ...nextOrder,
+            assignments: updated.assignments.map((assignment, index) => {
+              const id = getReferenceId(assignment.userId);
+              const exact = previousByKey.get(
+                `${id}::${assignment.role}::${index}`
+              );
+              const sameRole = (previous.assignments || []).find(
+                (candidate) =>
+                  candidate.role === assignment.role &&
+                  getReferenceId(candidate.userId) === id
+              );
+              const previousAssignment = exact || sameRole;
+
+              if (
+                previousAssignment &&
+                typeof assignment.userId === 'string' &&
+                typeof previousAssignment.userId !== 'string'
+              ) {
+                return {
+                  ...assignment,
+                  userId: previousAssignment.userId,
+                };
+              }
+
+              return assignment;
+            }),
+          };
+        }
+      }
+
+      const populatedStaff: RadiologyStaff[] = [];
+
+      if (nextOrder && typeof nextOrder.orderingDoctorId !== 'string') {
+        populatedStaff.push(nextOrder.orderingDoctorId as RadiologyStaff);
+      }
+
+      if (nextOrder?.radiologistId && typeof nextOrder.radiologistId !== 'string') {
+        populatedStaff.push(nextOrder.radiologistId as RadiologyStaff);
+      }
+
+      for (const assignment of nextOrder?.assignments || []) {
+        if (assignment.userId && typeof assignment.userId !== 'string') {
+          populatedStaff.push(assignment.userId as unknown as RadiologyStaff);
+        }
+      }
+
+      rememberStaff(populatedStaff);
+      setOrder(nextOrder);
+      await resolveReferencedStaff(nextOrder);
 
       setSuccessMessage(message);
 
@@ -1445,11 +1751,33 @@ export default function RadiologyOrderDetailsPage() {
       ? order.patientId
       : null;
 
-  const orderingDoctor =
-    order &&
-    typeof order.orderingDoctorId !== 'string'
-      ? order.orderingDoctorId
-      : null;
+  const orderingDoctor: StaffReference = useMemo(() => {
+    const reference = order?.orderingDoctorId || null;
+    if (!reference) return null;
+
+    const referenceId = getReferenceId(reference);
+
+    // Prefer the fully populated staff record cached from the staff directory.
+    if (referenceId) {
+      const cached = staffDirectory.get(referenceId);
+      if (cached) return cached as StaffReference;
+    }
+
+    // If the API returned only an ID, reuse the populated assignment record
+    // when that same staff member is already assigned to the examination.
+    const matchingAssignment = (order?.assignments || []).find(
+      (assignment) =>
+        referenceId &&
+        getReferenceId(assignment.userId) === referenceId &&
+        typeof assignment.userId !== 'string'
+    );
+
+    if (matchingAssignment?.userId) {
+      return matchingAssignment.userId as StaffReference;
+    }
+
+    return reference as StaffReference;
+  }, [order, staffDirectory]);
 
   const radiologist =
     order?.radiologistId &&
@@ -1678,7 +2006,7 @@ export default function RadiologyOrderDetailsPage() {
       {/* Patient / Procedure summary                                      */}
       {/* ---------------------------------------------------------------- */}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-3 gap-4">
         <div className="bg-white border border-slate-100 shadow-sm rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
@@ -1731,7 +2059,7 @@ export default function RadiologyOrderDetailsPage() {
           </p>
         </div>
 
-        <div className="bg-white border border-slate-100 shadow-sm rounded-2xl p-5">
+        {/* <div className="bg-white border border-slate-100 shadow-sm rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
               <Stethoscope className="w-4 h-4" />
@@ -1743,19 +2071,17 @@ export default function RadiologyOrderDetailsPage() {
           </div>
 
           <h3 className="text-base font-bold text-slate-900">
-            {orderingDoctor
-              ? getStaffName(orderingDoctor)
-              : typeof order.orderingDoctorId === 'string'
-                ? order.orderingDoctorId
-                : 'Not assigned'}
+            {orderingClinician
+              ? getStaffName(orderingClinician)
+              : 'Not assigned'}
           </h3>
 
           <p className="text-xs text-slate-400 mt-1">
-            {orderingDoctor?.role
-              ? formatLabel(orderingDoctor.role)
+            {orderingClinician?.role
+              ? formatLabel(orderingClinician.role)
               : 'Ordering clinician'}
           </p>
-        </div>
+        </div> */}
 
         <div className="bg-white border border-slate-100 shadow-sm rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
@@ -2188,10 +2514,7 @@ export default function RadiologyOrderDetailsPage() {
                       assignment: RadiologyAssignment,
                       index
                     ) => {
-                      const userId =
-                        typeof assignment.userId === 'string'
-                          ? assignment.userId
-                          : assignment.userId._id;
+                      const userId = getReferenceId(assignment.userId);
 
                       return (
                         <div
@@ -2207,7 +2530,8 @@ export default function RadiologyOrderDetailsPage() {
                               <div>
                                 <p className="text-xs font-bold text-slate-800">
                                   {getStaffName(
-                                    assignment.userId
+                                    assignment.userId as unknown as StaffReference,
+                                    staffDirectory
                                   )}
                                 </p>
 
