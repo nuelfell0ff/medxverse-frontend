@@ -279,6 +279,17 @@ const getPatientMeta = (
     : '';
 };
 
+const getChargeOutstanding = (charge: Charge) =>
+  Math.max(
+    0,
+    Number(charge.netAmount ?? 0) -
+      Number(charge.amountPaid ?? 0)
+  );
+
+const isChargeFullyPaid = (charge: Charge) =>
+  charge.status?.toUpperCase() === 'PAID' ||
+  getChargeOutstanding(charge) <= 0;
+
 const statusClasses = (
   status?: string
 ) => {
@@ -788,6 +799,9 @@ export default function BillingPage() {
 
   const [showPaymentModal, setShowPaymentModal] =
     useState(false);
+
+  const [selectedPaymentCharge, setSelectedPaymentCharge] =
+    useState<Charge | null>(null);
 
   const [showCatalogueModal, setShowCatalogueModal] =
     useState(false);
@@ -1427,6 +1441,36 @@ export default function BillingPage() {
       }
     };
 
+  const openChargePayment = (charge: Charge) => {
+    if (isChargeFullyPaid(charge)) {
+      return;
+    }
+
+    const patient =
+      charge.patientId &&
+      typeof charge.patientId !== 'string'
+        ? charge.patientId
+        : null;
+
+    setSelectedPaymentCharge(charge);
+    setSelectedPaymentPatient(patient);
+
+    setPaymentForm((previous) => ({
+      ...previous,
+      patientId:
+        typeof charge.patientId === 'string'
+          ? charge.patientId
+          : charge.patientId?._id || '',
+      billingAccountId:
+        charge.billingAccountId || '',
+      amount:
+        getChargeOutstanding(charge).toFixed(2),
+    }));
+
+    setError(null);
+    setShowPaymentModal(true);
+  };
+
   const handleCreatePayment =
     async () => {
       if (
@@ -1447,6 +1491,10 @@ export default function BillingPage() {
           {
             patientId:
               paymentForm.patientId.trim(),
+
+            chargeId:
+              selectedPaymentCharge?._id ||
+              undefined,
 
             billingAccountId:
               paymentForm.billingAccountId.trim() ||
@@ -1486,6 +1534,7 @@ export default function BillingPage() {
       if (ok) {
         setShowPaymentModal(false);
         setSelectedPaymentPatient(null);
+        setSelectedPaymentCharge(null);
 
         setPaymentForm({
           patientId: '',
@@ -2429,7 +2478,7 @@ export default function BillingPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px]">
+            <table className="w-full min-w-[1040px]">
               <thead>
                 <tr className="border-b border-slate-100">
                   {[
@@ -2440,6 +2489,7 @@ export default function BillingPage() {
                     'Paid',
                     'Status',
                     'Date',
+                    'Action',
                   ].map((heading) => (
                     <th
                       key={heading}
@@ -2456,7 +2506,7 @@ export default function BillingPage() {
                 0 ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="py-10 text-center text-xs text-slate-400"
                     >
                       No charges found.
@@ -2527,9 +2577,25 @@ export default function BillingPage() {
                           </StatusBadge>
                         </td>
 
-                        <td className="py-3 px-3 text-xs text-slate-500">
-                          {formatDate(
-                            charge.chargeDate
+                        <td className="py-3 px-3">
+                          {isChargeFullyPaid(charge) ? (
+                            <button
+                              type="button"
+                              disabled
+                              className="px-3 py-2 rounded-lg bg-slate-100 text-slate-400 text-[10px] font-bold cursor-not-allowed"
+                            >
+                              Paid
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openChargePayment(charge)
+                              }
+                              className="px-3 py-2 rounded-lg bg-[#1b7b68] hover:bg-[#176c5c] text-white text-[10px] font-bold transition-colors"
+                            >
+                              Pay
+                            </button>
                           )}
                         </td>
                       </tr>
@@ -2576,9 +2642,10 @@ export default function BillingPage() {
           action={
             <button
               type="button"
-              onClick={() =>
-                setShowPaymentModal(true)
-              }
+              onClick={() => {
+                setSelectedPaymentCharge(null);
+                setShowPaymentModal(true);
+              }}
               className="px-3 py-2 rounded-xl bg-[#1b7b68] text-white text-[11px] font-bold flex items-center gap-1.5"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -3488,35 +3555,105 @@ export default function BillingPage() {
         }
       >
         <div className="space-y-4">
-          <PatientSelector
-            label="Patient"
-            required
-            selectedPatient={
-              selectedPaymentPatient
-            }
-            onOpen={() =>
-              openPatientSearch('payment')
-            }
-            onChange={() => {
-              setSelectedPaymentPatient(
-                null
-              );
+          {selectedPaymentCharge ? (
+            <div className="p-4 rounded-2xl border border-[#1b7b68]/20 bg-[#1b7b68]/5 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider font-bold text-[#1b7b68]">
+                    Selected Charge
+                  </p>
+                  <p className="text-sm font-bold text-slate-900 mt-1">
+                    {getPatientName(
+                      selectedPaymentCharge.patientId
+                    )}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    {getPatientMeta(
+                      selectedPaymentCharge.patientId
+                    )}
+                  </p>
+                </div>
 
-              setPaymentForm(
-                (previous) => ({
-                  ...previous,
-                  patientId: '',
-                })
-              );
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPaymentCharge(null);
+                    setSelectedPaymentPatient(null);
+                    setPaymentForm((previous) => ({
+                      ...previous,
+                      patientId: '',
+                      billingAccountId: '',
+                      amount: '',
+                    }));
+                  }}
+                  className="text-[10px] font-bold text-[#1b7b68] hover:underline"
+                >
+                  Change
+                </button>
+              </div>
 
-              openPatientSearch(
-                'payment'
-              );
-            }}
-          />
+              <div className="pt-3 border-t border-[#1b7b68]/10">
+                <p className="text-xs font-semibold text-slate-800">
+                  {selectedPaymentCharge.description ||
+                    'Charge'}
+                </p>
+                <p className="text-[10px] text-[#1b7b68] mt-1">
+                  {selectedPaymentCharge.serviceCode ||
+                    'Manual'}
+                </p>
+              </div>
 
-          <Input
-            label="Billing Account ID"
+              <div className="grid grid-cols-2 gap-3">
+                <Field
+                  label="Charge Amount"
+                  value={formatMoney(
+                    selectedPaymentCharge.netAmount,
+                    selectedPaymentCharge.currency
+                  )}
+                />
+                <Field
+                  label="Outstanding"
+                  value={formatMoney(
+                    getChargeOutstanding(
+                      selectedPaymentCharge
+                    ),
+                    selectedPaymentCharge.currency
+                  )}
+                />
+              </div>
+            </div>
+          ) : (
+            <PatientSelector
+              label="Patient"
+              required
+              selectedPatient={
+                selectedPaymentPatient
+              }
+              onOpen={() =>
+                openPatientSearch('payment')
+              }
+              onChange={() => {
+                setSelectedPaymentPatient(
+                  null
+                );
+
+                setPaymentForm(
+                  (previous) => ({
+                    ...previous,
+                    patientId: '',
+                  })
+                );
+
+                openPatientSearch(
+                  'payment'
+                );
+              }}
+            />
+          )}
+
+          {!selectedPaymentCharge && (
+            <Input
+              label="Billing Account ID"
             value={
               paymentForm.billingAccountId
             }
@@ -3531,6 +3668,8 @@ export default function BillingPage() {
             }
             placeholder="Optional — resolved automatically"
           />
+
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
@@ -3663,10 +3802,17 @@ export default function BillingPage() {
             placeholder="Optional notes"
           />
 
+          {selectedPaymentCharge && (
+            <p className="text-[10px] text-slate-400">
+              This payment will be applied directly to the selected charge.
+            </p>
+          )}
+
           <ModalActions
-            onCancel={() =>
-              setShowPaymentModal(false)
-            }
+            onCancel={() => {
+              setShowPaymentModal(false);
+              setSelectedPaymentCharge(null);
+            }}
             onSubmit={
               handleCreatePayment
             }
