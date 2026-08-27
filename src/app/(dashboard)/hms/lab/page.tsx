@@ -148,6 +148,23 @@ interface CreateOrderForm {
   notes: string;
 }
 
+interface LaboratoryPricingCatalogue {
+  _id: string;
+  id?: string;
+  code?: string;
+  name?: string;
+  planName?: string;
+  category?: string;
+  departmentName?: string;
+  price?: number;
+  currency?: string;
+  version?: number;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+  isActive?: boolean;
+  description?: string;
+}
+
 /* =========================================================
    CONSTANTS
 ========================================================= */
@@ -423,6 +440,14 @@ export default function LabPage() {
   const [selectedDoctor, setSelectedDoctor] =
     useState<Staff | null>(null);
 
+  /*
+   * Laboratory pricing catalogue selection
+   */
+  const [catalogueSearch, setCatalogueSearch] = useState('');
+  const [catalogues, setCatalogues] = useState<LaboratoryPricingCatalogue[]>([]);
+  const [loadingCatalogues, setLoadingCatalogues] = useState(false);
+  const [selectedCatalogue, setSelectedCatalogue] = useState<LaboratoryPricingCatalogue | null>(null);
+
   /* =========================================================
      FETCH LAB ORDERS
   ========================================================= */
@@ -654,6 +679,68 @@ export default function LabPage() {
     []
   );
 
+  /* =========================================================
+     FETCH LABORATORY PRICING CATALOGUES
+  ========================================================= */
+
+  const loadCatalogues = useCallback(async (queryTerm = '') => {
+    try {
+      setLoadingCatalogues(true);
+
+      const params = new URLSearchParams();
+      params.set('limit', '50');
+      if (queryTerm.trim()) params.set('search', queryTerm.trim());
+
+      const response = await fetch(
+        `${LAB_API_URL}/pricing-catalogues?${params.toString()}`,
+        {
+          method: 'GET',
+          headers: {
+            ...getAuthHeaders(),
+            'Content-Type': 'application/json',
+          },
+          cache: 'no-store',
+        }
+      );
+
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          json?.message ||
+            json?.error ||
+            `Failed to load laboratory pricing catalogues (${response.status})`
+        );
+      }
+
+      const data = json?.data ?? json;
+      const raw = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.items)
+          ? data.items
+          : Array.isArray(data?.catalogues)
+            ? data.catalogues
+            : Array.isArray(data?.results)
+              ? data.results
+              : [];
+
+      const active = raw.filter(
+        (item: LaboratoryPricingCatalogue) =>
+          item && item._id && item.isActive !== false
+      );
+
+      setCatalogues(active);
+
+      if (active.length === 1 && !selectedCatalogue) {
+        setSelectedCatalogue(active[0]);
+      }
+    } catch (err) {
+      console.error('Failed to load laboratory pricing catalogues:', err);
+      setCatalogues([]);
+    } finally {
+      setLoadingCatalogues(false);
+    }
+  }, [selectedCatalogue]);
+
   /*
    * Search patients only while modal is open
    */
@@ -688,6 +775,19 @@ export default function LabPage() {
     fetchDoctors,
   ]);
 
+  /*
+   * Search pricing catalogues only while modal is open.
+   */
+  useEffect(() => {
+    if (!showCreateModal) return;
+
+    const timer = setTimeout(() => {
+      loadCatalogues(catalogueSearch);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [showCreateModal, catalogueSearch, loadCatalogues]);
+
   /* =========================================================
      MODAL HELPERS
   ========================================================= */
@@ -703,6 +803,10 @@ export default function LabPage() {
     setStaff([]);
     setDoctorSearch('');
     setSelectedDoctor(null);
+
+    setCatalogueSearch('');
+    setCatalogues([]);
+    setSelectedCatalogue(null);
 
     setShowCreateModal(true);
   };
@@ -720,6 +824,10 @@ export default function LabPage() {
     setStaff([]);
     setDoctorSearch('');
     setSelectedDoctor(null);
+
+    setCatalogueSearch('');
+    setCatalogues([]);
+    setSelectedCatalogue(null);
   };
 
   const selectPatient = (patient: Patient) => {
@@ -769,6 +877,12 @@ export default function LabPage() {
         );
       }
 
+      if (!selectedCatalogue?._id) {
+        throw new Error(
+          'Please select a Laboratory pricing plan.'
+        );
+      }
+
       const payload = {
         patientId: form.patientId,
         doctorId: form.doctorId || undefined,
@@ -780,6 +894,7 @@ export default function LabPage() {
           : form.priority,
         isStat: form.isStat,
         notes: form.notes.trim() || undefined,
+        pricingCatalogueItemId: selectedCatalogue._id,
       };
 
       const response = await fetch(
@@ -815,6 +930,10 @@ export default function LabPage() {
       setStaff([]);
       setDoctorSearch('');
       setSelectedDoctor(null);
+
+      setCatalogueSearch('');
+      setCatalogues([]);
+      setSelectedCatalogue(null);
 
       await fetchOrders(1, true);
     } catch (err) {
@@ -1972,6 +2091,96 @@ export default function LabPage() {
                       </select>
                     </div>
                   </div>
+                </div>
+
+                {/* =========================================
+                    LABORATORY PRICING PLAN
+                ========================================= */}
+
+                <div>
+                  <div className="mb-3 flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#e8f5f3]">
+                      <Beaker className="h-4 w-4 text-[#1b7b68]" />
+                    </div>
+
+                    <div>
+                      <h3 className="text-sm font-extrabold text-slate-800">
+                        Laboratory Pricing Plan *
+                      </h3>
+                      <p className="text-[11px] text-slate-400">
+                        Select the Billing catalogue that should price this laboratory test.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={catalogueSearch}
+                      onChange={(event) => setCatalogueSearch(event.target.value)}
+                      placeholder="Search pricing plans..."
+                      className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50/50 pl-10 pr-10 text-xs font-medium text-slate-800 outline-none transition-all placeholder:text-slate-400 focus:border-[#1b7b68] focus:bg-white focus:ring-4 focus:ring-[#1b7b68]/10"
+                    />
+                    {loadingCatalogues && (
+                      <Loader2 className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-[#1b7b68]" />
+                    )}
+                  </div>
+
+                  {loadingCatalogues && catalogues.length === 0 ? (
+                    <div className="mt-2 rounded-2xl border border-slate-100 bg-white p-4 text-xs text-slate-400">
+                      Loading laboratory pricing plans...
+                    </div>
+                  ) : catalogues.length === 0 ? (
+                    <div className="mt-2 rounded-2xl border border-slate-100 bg-slate-50/70 p-4 text-xs text-slate-400">
+                      No active laboratory pricing plans are available.
+                    </div>
+                  ) : (
+                    <div className="mt-2 max-h-64 space-y-2 overflow-y-auto">
+                      {catalogues.map((catalogue) => {
+                        const isSelected = selectedCatalogue?._id === catalogue._id;
+                        const planName = catalogue.planName || catalogue.name || 'Laboratory pricing plan';
+                        const price = typeof catalogue.price === 'number'
+                          ? new Intl.NumberFormat('en-NG', {
+                              style: 'currency',
+                              currency: catalogue.currency || 'NGN',
+                            }).format(catalogue.price)
+                          : 'Price unavailable';
+
+                        return (
+                          <button
+                            key={catalogue._id}
+                            type="button"
+                            onClick={() => setSelectedCatalogue(catalogue)}
+                            className={`w-full rounded-2xl border p-4 text-left transition-all ${
+                              isSelected
+                                ? 'border-[#1b7b68] bg-[#e8f5f3]/70 ring-2 ring-[#1b7b68]/10'
+                                : 'border-slate-100 bg-white hover:border-[#1b7b68]/30 hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-extrabold text-slate-800">
+                                  {planName}
+                                </p>
+                                <p className="mt-1 text-[10px] font-medium text-slate-400">
+                                  {catalogue.code || 'LABORATORY'} • Version {catalogue.version || 1}
+                                </p>
+                                {catalogue.description && (
+                                  <p className="mt-2 line-clamp-2 text-[11px] leading-5 text-slate-400">
+                                    {catalogue.description}
+                                  </p>
+                                )}
+                              </div>
+
+                              <p className="shrink-0 text-sm font-extrabold text-slate-900">
+                                {price}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* =========================================

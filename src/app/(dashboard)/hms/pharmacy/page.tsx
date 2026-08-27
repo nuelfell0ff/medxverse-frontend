@@ -289,7 +289,7 @@ export default function PharmacyPage() {
 
           <button
             onClick={() => setIsDispenseOpen(true)}
-            className="px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold uppercase tracking-wider rounded-2xl shadow-sm hover:shadow transition-all flex items-center gap-2"
+            className="px-4 py-3 bg-[#1b7b68] hover:bg-[#1b7b68] text-white text-xs font-bold uppercase tracking-wider rounded-2xl shadow-sm hover:shadow transition-all flex items-center gap-2"
           >
             <PackageCheck className="w-4 h-4" /> Dispense Medication
           </button>
@@ -459,7 +459,7 @@ export default function PharmacyPage() {
                         </div>
                       </td>
                       <td className="py-4 px-6 font-bold text-slate-800">
-                        ${item.unitPrice.toFixed(2)}
+                        ₦{item.unitPrice.toFixed(2)}
                       </td>
                       <td className="py-4 px-6 text-slate-500">
                         {new Date(item.expiryDate).toLocaleDateString()}
@@ -552,7 +552,7 @@ export default function PharmacyPage() {
                         </div>
                       </td>
                       <td className="py-4 px-6 font-black text-slate-800">
-                        ${rec.totalAmount.toFixed(2)}
+                        ₦{rec.totalAmount.toFixed(2)}
                       </td>
                       <td className="py-4 px-6 text-slate-600">
                         {rec.dispensedBy?.firstName} {rec.dispensedBy?.lastName}
@@ -767,7 +767,7 @@ function AddInventoryModal({
               />
             </div>
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Unit Price ($) *</label>
+              <label className="font-bold text-slate-700 block mb-1">Unit Price (₦) *</label>
               <input
                 type="number"
                 step="0.01"
@@ -1020,7 +1020,7 @@ function DispenseModal({
 
   const handleSelectPatient = (patient: IPatientResult) => {
     setSelectedPatient(patient);
-    setPatientSearchTerm(`${patient.firstName} ${patient.lastName}`);
+    setPatientSearchTerm(`₦{patient.firstName} ${patient.lastName}`);
     setShowPatientDropdown(false);
   };
 
@@ -1189,7 +1189,7 @@ function DispenseModal({
                   <option value="">Select Drug...</option>
                   {inventory.map((inv) => (
                     <option key={inv._id} value={inv._id} disabled={inv.quantityInStock <= 0}>
-                      {inv.name} (In stock: {inv.quantityInStock}) - ${inv.unitPrice}
+                      {inv.name} (In stock: {inv.quantityInStock}) - ₦{inv.unitPrice}
                     </option>
                   ))}
                 </select>
@@ -1238,7 +1238,7 @@ function DispenseModal({
             <button
               type="submit"
               disabled={loading}
-              className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold disabled:opacity-50"
+              className="px-5 py-2.5 rounded-xl bg-[#1b7b68] hover:bg-[#1b7b68] text-white font-bold disabled:opacity-50"
             >
               {loading ? 'Processing...' : 'Dispense Drugs'}
             </button>
