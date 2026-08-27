@@ -28,6 +28,10 @@ import {
   Settings2,
   ShieldCheck,
   Tags,
+  Pencil,
+  History,
+  Power,
+  SlidersHorizontal,
   User,
   WalletCards,
   X,
@@ -725,6 +729,24 @@ export default function BillingPage() {
       emptyPage()
     );
 
+  const [catalogueDepartmentFilter, setCatalogueDepartmentFilter] =
+    useState('');
+  const [catalogueStatusFilter, setCatalogueStatusFilter] =
+    useState('ACTIVE');
+  const [catalogueCategoryFilter, setCatalogueCategoryFilter] =
+    useState('');
+
+  const [selectedCatalogue, setSelectedCatalogue] =
+    useState<CatalogueItem | null>(null);
+  const [showCatalogueEditModal, setShowCatalogueEditModal] =
+    useState(false);
+  const [showCatalogueHistoryModal, setShowCatalogueHistoryModal] =
+    useState(false);
+  const [catalogueHistory, setCatalogueHistory] =
+    useState<any[]>([]);
+  const [loadingCatalogueHistory, setLoadingCatalogueHistory] =
+    useState(false);
+
   const [loading, setLoading] =
     useState(true);
 
@@ -1106,6 +1128,10 @@ export default function BillingPage() {
                     catalogueSearch.trim()
                   )}`
                 : ''
+            }${
+              catalogueCategoryFilter
+                ? `&category=${encodeURIComponent(catalogueCategoryFilter)}`
+                : ''
             }`
           ),
         ]);
@@ -1178,6 +1204,7 @@ export default function BillingPage() {
       paymentSearch,
       cataloguePage,
       catalogueSearch,
+      catalogueCategoryFilter,
       request,
     ]
   );
@@ -1245,6 +1272,38 @@ export default function BillingPage() {
     refunds,
     summary,
   ]);
+
+  const filteredCatalogue = useMemo(() => {
+    return catalogue.filter((item) => {
+      const matchesDepartment =
+        !catalogueDepartmentFilter ||
+        (item.departmentName || '').toLowerCase() ===
+          catalogueDepartmentFilter.toLowerCase();
+
+      const matchesStatus =
+        !catalogueStatusFilter ||
+        catalogueStatusFilter === 'ALL' ||
+        (catalogueStatusFilter === 'ACTIVE'
+          ? item.isActive !== false
+          : item.isActive === false);
+
+      return matchesDepartment && matchesStatus;
+    });
+  }, [
+    catalogue,
+    catalogueDepartmentFilter,
+    catalogueStatusFilter,
+  ]);
+
+  const catalogueDepartments = useMemo(() => {
+    return Array.from(
+      new Set(
+        catalogue
+          .map((item) => item.departmentName?.trim())
+          .filter(Boolean) as string[]
+      )
+    ).sort();
+  }, [catalogue]);
 
   /* ------------------------------------------------------------------------ */
   /* MUTATIONS                                                                */
@@ -1442,79 +1501,156 @@ export default function BillingPage() {
       }
     };
 
-  const handleCreateCatalogue =
-    async () => {
-      if (
-        !catalogueForm.code.trim() ||
-        !catalogueForm.name.trim() ||
-        !catalogueForm.price.trim() ||
-        !catalogueForm.effectiveFrom
-      ) {
-        setError(
-          'Code, name, price and effective-from date are required.'
-        );
+  const handleCreateCatalogue = async () => {
+    const planName = catalogueForm.name.trim();
+    const rawPrice = String(catalogueForm.price ?? '').trim();
+    const price = Number(rawPrice);
+    const effectiveFrom = String(catalogueForm.effectiveFrom ?? '').trim();
 
-        return;
-      }
+    if (!planName) {
+      setError('Pricing plan name is required.');
+      return;
+    }
 
-      const ok =
-        await runMutation(
-          '/catalogue',
-          'POST',
-          {
-            code:
-              catalogueForm.code
-                .trim()
-                .toUpperCase(),
+    if (!rawPrice || !Number.isFinite(price) || price < 0) {
+      setError('Please provide a valid price.');
+      return;
+    }
 
-            name:
-              catalogueForm.name.trim(),
+    if (!effectiveFrom) {
+      setError('Effective-from date is required.');
+      return;
+    }
 
-            category:
-              catalogueForm.category,
+    const ok = await runMutation(
+      '/catalogue',
+      'POST',
+      {
+        // The backend now derives the canonical service code from the
+        // selected department. Do not require the administrator to enter it.
+        name: planName,
+        category: catalogueForm.category,
+        departmentName:
+          catalogueForm.departmentName.trim() || undefined,
+        price,
+        currency: catalogueForm.currency,
+        effectiveFrom,
+        effectiveTo:
+          catalogueForm.effectiveTo.trim() || undefined,
+        description:
+          catalogueForm.description.trim() || undefined,
+      },
+      'Pricing catalogue item created successfully.'
+    );
 
-            departmentName:
-              catalogueForm.departmentName.trim() ||
-              undefined,
+    if (ok) {
+      setShowCatalogueModal(false);
 
-            price:
-              Number(
-                catalogueForm.price
-              ),
+      setCatalogueForm({
+        code: '',
+        name: '',
+        category: 'MISCELLANEOUS',
+        departmentName: '',
+        price: '',
+        currency: 'NGN',
+        effectiveFrom: '',
+        effectiveTo: '',
+        description: '',
+      });
+    }
+  };
 
-            currency:
-              catalogueForm.currency,
+  const openCatalogueEdit = (item: CatalogueItem) => {
+    setSelectedCatalogue(item);
+    setCatalogueForm({
+      code: item.code || '',
+      name: item.name || '',
+      category: item.category || 'MISCELLANEOUS',
+      departmentName: item.departmentName || '',
+      price: String(item.price ?? ''),
+      currency: item.currency || 'NGN',
+      effectiveFrom: item.effectiveFrom
+        ? new Date(item.effectiveFrom).toISOString().slice(0, 10)
+        : '',
+      effectiveTo: item.effectiveTo
+        ? new Date(item.effectiveTo).toISOString().slice(0, 10)
+        : '',
+      description: item.description || '',
+    });
+    setShowCatalogueEditModal(true);
+  };
 
-            effectiveFrom:
-              catalogueForm.effectiveFrom,
+  const handleUpdateCatalogue = async () => {
+    if (!selectedCatalogue) return;
 
-            effectiveTo:
-              catalogueForm.effectiveTo ||
-              undefined,
+    if (
+      !catalogueForm.code.trim() ||
+      !catalogueForm.name.trim() ||
+      !catalogueForm.price.trim() ||
+      !catalogueForm.effectiveFrom
+    ) {
+      setError('Code, pricing plan name, price and effective-from date are required.');
+      return;
+    }
 
-            description:
-              catalogueForm.description.trim() ||
-              undefined,
-          },
-          'Pricing catalogue item created successfully.'
-        );
+    const ok = await runMutation(
+      `/catalogue/${selectedCatalogue._id}`,
+      'PATCH',
+      {
+        code: catalogueForm.code.trim().toUpperCase(),
+        name: catalogueForm.name.trim(),
+        category: catalogueForm.category,
+        departmentName: catalogueForm.departmentName.trim() || undefined,
+        price: Number(catalogueForm.price),
+        currency: catalogueForm.currency,
+        effectiveFrom: catalogueForm.effectiveFrom,
+        effectiveTo: catalogueForm.effectiveTo || undefined,
+        description: catalogueForm.description.trim() || undefined,
+      },
+      'Pricing catalogue updated successfully.'
+    );
 
-      if (ok) {
-        setShowCatalogueModal(false);
+    if (ok) {
+      setShowCatalogueEditModal(false);
+      setSelectedCatalogue(null);
+    }
+  };
 
-        setCatalogueForm({
-          code: '',
-          name: '',
-          category: 'MISCELLANEOUS',
-          departmentName: '',
-          price: '',
-          currency: 'NGN',
-          effectiveFrom: '',
-          effectiveTo: '',
-          description: '',
-        });
-      }
-    };
+  const toggleCatalogueStatus = async (item: CatalogueItem) => {
+    await runMutation(
+      `/catalogue/${item._id}`,
+      'PATCH',
+      { isActive: item.isActive === false },
+      item.isActive === false
+        ? 'Pricing plan activated successfully.'
+        : 'Pricing plan deactivated successfully.'
+    );
+  };
+
+  const openCatalogueHistory = async (item: CatalogueItem) => {
+    setSelectedCatalogue(item);
+    setShowCatalogueHistoryModal(true);
+    setLoadingCatalogueHistory(true);
+    setCatalogueHistory([]);
+
+    try {
+      const result = await request<any>(
+        `/catalogue/${item._id}/history`
+      );
+      setCatalogueHistory(
+        Array.isArray(result?.history)
+          ? result.history
+          : []
+      );
+    } catch (err: any) {
+      setError(
+        err?.message ||
+          'Failed to load pricing history.'
+      );
+    } finally {
+      setLoadingCatalogueHistory(false);
+    }
+  };
 
   const handleCreateRefund =
     async () => {
@@ -2646,24 +2782,54 @@ export default function BillingPage() {
             </button>
           }
         >
-          <div className="relative mb-5">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 mb-5">
+            <div className="lg:col-span-2 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <input
+                value={catalogueSearch}
+                onChange={(e) => {
+                  setCatalogueSearch(e.target.value);
+                  setCataloguePage(1);
+                }}
+                placeholder="Search by service code, plan name or department..."
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-[#1b7b68]"
+              />
+            </div>
 
-            <input
-              value={catalogueSearch}
-              onChange={(e) => {
-                setCatalogueSearch(
-                  e.target.value
-                );
-                setCataloguePage(1);
-              }}
-              placeholder="Search by service code or name..."
-              className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-[#1b7b68]"
+            <Select
+              label="Department"
+              value={catalogueDepartmentFilter}
+              onChange={setCatalogueDepartmentFilter}
+              options={[
+                { value: '', label: 'All departments' },
+                ...catalogueDepartments.map((department) => ({
+                  value: department,
+                  label: department,
+                })),
+              ]}
+            />
+
+            <Select
+              label="Status"
+              value={catalogueStatusFilter}
+              onChange={setCatalogueStatusFilter}
+              options={[
+                { value: 'ACTIVE', label: 'Active plans' },
+                { value: 'INACTIVE', label: 'Inactive plans' },
+                { value: 'ALL', label: 'All plans' },
+              ]}
             />
           </div>
 
+          <div className="flex items-center gap-2 mb-5 p-3 rounded-xl bg-slate-50 border border-slate-100">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-[#1b7b68]" />
+            <p className="text-[10px] text-slate-500">
+              Clinical modules will only use active pricing plans assigned to their department.
+            </p>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {catalogue.length ===
+            {filteredCatalogue.length ===
             0 ? (
               <div className="md:col-span-2 xl:col-span-3 py-12 text-center">
                 <Tags className="w-8 h-8 text-slate-300 mx-auto" />
@@ -2674,7 +2840,7 @@ export default function BillingPage() {
                 </p>
               </div>
             ) : (
-              catalogue.map((item) => (
+              filteredCatalogue.map((item) => (
                 <div
                   key={item._id}
                   className="p-4 rounded-2xl border border-slate-100 bg-slate-50/50"
@@ -2713,6 +2879,37 @@ export default function BillingPage() {
                         ? 'Inactive'
                         : 'Active'}
                     </StatusBadge>
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-4">
+                    <button
+                      type="button"
+                      onClick={() => openCatalogueEdit(item)}
+                      className="flex-1 py-2 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-600 hover:bg-slate-50 flex items-center justify-center gap-1.5"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      Edit Price
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openCatalogueHistory(item)}
+                      className="w-9 h-9 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 flex items-center justify-center"
+                      title="View price history"
+                    >
+                      <History className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleCatalogueStatus(item)}
+                      className={`w-9 h-9 rounded-lg border flex items-center justify-center ${
+                        item.isActive === false
+                          ? 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'
+                          : 'border-rose-200 text-rose-500 hover:bg-rose-50'
+                      }`}
+                      title={item.isActive === false ? 'Activate plan' : 'Deactivate plan'}
+                    >
+                      <Power className="w-3.5 h-3.5" />
+                    </button>
                   </div>
 
                   <div className="flex items-end justify-between mt-5">
@@ -3493,25 +3690,20 @@ export default function BillingPage() {
       >
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="Service Code"
-              required
-              value={
-                catalogueForm.code
-              }
-              onChange={(value) =>
-                setCatalogueForm(
-                  (previous) => ({
-                    ...previous,
-                    code: value,
-                  })
-                )
-              }
-              placeholder="RADIOLOGY_CT_BRAIN"
-            />
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2.5">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+                Service Code
+              </p>
+              <p className="mt-1 text-xs font-semibold text-emerald-900">
+                Automatically generated from the selected department
+              </p>
+              <p className="mt-0.5 text-[10px] text-emerald-700">
+                You do not need to enter a service code manually.
+              </p>
+            </div>
 
             <Input
-              label="Service Name"
+              label="Pricing Plan Name"
               required
               value={
                 catalogueForm.name
@@ -3548,7 +3740,13 @@ export default function BillingPage() {
                 'RADIOLOGY',
                 'PHARMACY',
                 'SURGERY',
+                'ICU',
                 'WARD',
+                'PROFESSIONAL_FEE',
+                'ANAESTHESIA',
+                'CONSUMABLE',
+                'IMPLANT',
+                'ACCOMMODATION',
                 'EMERGENCY',
                 'MISCELLANEOUS',
               ].map((value) => ({
@@ -3558,21 +3756,26 @@ export default function BillingPage() {
               }))}
             />
 
-            <Input
-              label="Department"
-              value={
-                catalogueForm.departmentName
-              }
+            <Select
+              label="Department / Module"
+              value={catalogueForm.departmentName}
               onChange={(value) =>
-                setCatalogueForm(
-                  (previous) => ({
-                    ...previous,
-                    departmentName:
-                      value,
-                  })
-                )
+                setCatalogueForm((previous) => ({
+                  ...previous,
+                  departmentName: value,
+                }))
               }
-              placeholder="Optional department-specific price"
+              options={[
+                { value: '', label: 'Global / All departments' },
+                { value: 'Outpatient', label: 'Outpatient' },
+                { value: 'Laboratory', label: 'Laboratory' },
+                { value: 'Radiology', label: 'Radiology' },
+                { value: 'Surgery', label: 'Surgery' },
+                { value: 'Pharmacy', label: 'Pharmacy' },
+                { value: 'Ward', label: 'Ward' },
+                { value: 'ICU', label: 'ICU' },
+                { value: 'Emergency', label: 'Emergency' },
+              ]}
             />
           </div>
 
@@ -3681,11 +3884,7 @@ export default function BillingPage() {
           />
 
           <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-[10px] text-emerald-700">
-            This price becomes the
-            centralized source used by
-            module-generated billing charges.
-            Historical versions remain
-            auditable.
+            Create a department-specific pricing plan here. Radiology, Laboratory, Surgery, Outpatient and Pharmacy can later select the active plan when creating their clinical order. Historical versions remain auditable.
           </div>
 
           <ModalActions
@@ -3698,6 +3897,143 @@ export default function BillingPage() {
             submitting={submitting}
             submitLabel="Create Price"
           />
+        </div>
+      </Modal>
+
+      {/* ==================================================================== */}
+      {/* EDIT PRICING CATALOGUE MODAL                                         */}
+      {/* ==================================================================== */}
+      <Modal
+        open={showCatalogueEditModal}
+        title="Edit Pricing Plan"
+        subtitle="Update the current price while preserving its version history."
+        onClose={() => {
+          setShowCatalogueEditModal(false);
+          setSelectedCatalogue(null);
+        }}
+        width="max-w-2xl"
+      >
+        <div className="space-y-4">
+          <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+            <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
+              Current plan
+            </p>
+            <p className="text-sm font-bold text-slate-800 mt-1">
+              {selectedCatalogue?.name || 'Pricing plan'}
+            </p>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              {selectedCatalogue?.code || '—'} • Version {selectedCatalogue?.version || 1}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input label="Service Code" required value={catalogueForm.code} onChange={(value) => setCatalogueForm((previous) => ({ ...previous, code: value }))} />
+            <Input label="Pricing Plan Name" required value={catalogueForm.name} onChange={(value) => setCatalogueForm((previous) => ({ ...previous, name: value }))} />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Select label="Department / Module" value={catalogueForm.departmentName} onChange={(value) => setCatalogueForm((previous) => ({ ...previous, departmentName: value }))} options={[
+              { value: '', label: 'Global / All departments' },
+              { value: 'Outpatient', label: 'Outpatient' },
+              { value: 'Laboratory', label: 'Laboratory' },
+              { value: 'Radiology', label: 'Radiology' },
+              { value: 'Surgery', label: 'Surgery' },
+              { value: 'Pharmacy', label: 'Pharmacy' },
+              { value: 'Ward', label: 'Ward' },
+              { value: 'ICU', label: 'ICU' },
+              { value: 'Emergency', label: 'Emergency' },
+            ]} />
+            <Select label="Category" value={catalogueForm.category} onChange={(value) => setCatalogueForm((previous) => ({ ...previous, category: value }))} options={['CONSULTATION','LABORATORY','RADIOLOGY','PHARMACY','SURGERY','ICU','WARD','EMERGENCY','PROFESSIONAL_FEE','ANAESTHESIA','CONSUMABLE','IMPLANT','ACCOMMODATION','MISCELLANEOUS'].map((value) => ({ value, label: formatLabel(value) }))} />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input label="Price" required value={catalogueForm.price} onChange={(value) => setCatalogueForm((previous) => ({ ...previous, price: value }))} type="number" />
+            <Select label="Currency" value={catalogueForm.currency} onChange={(value) => setCatalogueForm((previous) => ({ ...previous, currency: value }))} options={[{ value: 'NGN', label: 'NGN — Nigerian Naira' }, { value: 'USD', label: 'USD — US Dollar' }, { value: 'GBP', label: 'GBP — Pound Sterling' }]} />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input label="Effective From" required value={catalogueForm.effectiveFrom} onChange={(value) => setCatalogueForm((previous) => ({ ...previous, effectiveFrom: value }))} type="date" />
+            <Input label="Effective To" value={catalogueForm.effectiveTo} onChange={(value) => setCatalogueForm((previous) => ({ ...previous, effectiveTo: value }))} type="date" />
+          </div>
+
+          <Input label="Description" value={catalogueForm.description} onChange={(value) => setCatalogueForm((previous) => ({ ...previous, description: value }))} placeholder="Pricing notes or service description" />
+
+          <div className="p-3 rounded-xl bg-amber-50 border border-amber-100 text-[10px] text-amber-700">
+            Changing the price creates a new catalogue version. Existing patient charges keep their original price snapshot.
+          </div>
+
+          <ModalActions onCancel={() => setShowCatalogueEditModal(false)} onSubmit={handleUpdateCatalogue} submitting={submitting} submitLabel="Save Pricing Plan" />
+        </div>
+      </Modal>
+
+      {/* ==================================================================== */}
+      {/* PRICING HISTORY MODAL                                                */}
+      {/* ==================================================================== */}
+      <Modal
+        open={showCatalogueHistoryModal}
+        title="Pricing Version History"
+        subtitle="Audit previous prices and effective periods for this service."
+        onClose={() => {
+          setShowCatalogueHistoryModal(false);
+          setSelectedCatalogue(null);
+        }}
+        width="max-w-2xl"
+      >
+        <div className="space-y-4">
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold text-[#1b7b68] uppercase tracking-wider">
+                  {selectedCatalogue?.code || 'SERVICE'}
+                </p>
+                <p className="text-sm font-bold text-slate-900 mt-1">
+                  {selectedCatalogue?.name || 'Pricing plan'}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {selectedCatalogue?.departmentName || 'Global'}
+                </p>
+              </div>
+              <p className="text-lg font-black text-slate-900">
+                {formatMoney(selectedCatalogue?.price, selectedCatalogue?.currency)}
+              </p>
+            </div>
+          </div>
+
+          {loadingCatalogueHistory ? (
+            <div className="py-10 text-center">
+              <Loader2 className="w-6 h-6 animate-spin text-[#1b7b68] mx-auto" />
+              <p className="text-xs text-slate-400 mt-2">Loading pricing history...</p>
+            </div>
+          ) : catalogueHistory.length === 0 ? (
+            <div className="py-10 text-center">
+              <History className="w-8 h-8 text-slate-300 mx-auto" />
+              <p className="text-xs font-semibold text-slate-600 mt-3">No previous versions</p>
+              <p className="text-[10px] text-slate-400 mt-1">This pricing plan has no archived versions yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[420px] overflow-y-auto">
+              {catalogueHistory.map((version, index) => (
+                <div key={`${selectedCatalogue?._id}-${version.version || index}`} className="p-3 rounded-xl border border-slate-100 bg-white">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">Version {version.version}</p>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        {formatDate(version.effectiveFrom)}{version.effectiveTo ? ` → ${formatDate(version.effectiveTo)}` : ' → Open ended'}
+                      </p>
+                    </div>
+                    <p className="text-sm font-black text-slate-900">
+                      {formatMoney(version.price, version.currency)}
+                    </p>
+                  </div>
+                  {version.changedAt && (
+                    <p className="text-[10px] text-slate-400 mt-2 pt-2 border-t border-slate-100">
+                      Archived {formatDateTime(version.changedAt)}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </Modal>
 

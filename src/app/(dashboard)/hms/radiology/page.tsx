@@ -28,6 +28,8 @@ import {
   UserRound,
   Users,
   X,
+  Check,
+
 } from 'lucide-react';
 
 import {
@@ -102,6 +104,22 @@ interface Staff {
   lastName?: string;
   role?: string;
   department?: string;
+}
+
+interface RadiologyPricingCatalogue {
+  _id: string;
+  code?: string;
+  name?: string;
+  planName?: string;
+  category?: string;
+  departmentName?: string;
+  price: number;
+  currency?: string;
+  version?: number;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+  description?: string;
+  isActive?: boolean;
 }
 
 const STATUS_CONFIG: Record<
@@ -285,6 +303,11 @@ export default function RadiologyPage() {
   const [formError, setFormError] =
     useState<string | null>(null);
 
+  const [catalogueSearch, setCatalogueSearch] = useState('');
+  const [catalogues, setCatalogues] = useState<RadiologyPricingCatalogue[]>([]);
+  const [selectedCatalogue, setSelectedCatalogue] = useState<RadiologyPricingCatalogue | null>(null);
+  const [loadingCatalogues, setLoadingCatalogues] = useState(false);
+
   const [selectedOrder, setSelectedOrder] =
     useState<RadiologyOrder | null>(null);
 
@@ -337,6 +360,72 @@ export default function RadiologyPage() {
     contrastName: '',
     contrastType: '',
   });
+
+  const loadPricingCatalogues = useCallback(async (queryTerm: string = '') => {
+    try {
+      setLoadingCatalogues(true);
+      const token = localStorage.getItem('token') || localStorage.getItem('accessToken') || localStorage.getItem('authToken');
+      const params = new URLSearchParams();
+      params.set('departmentName', 'Radiology');
+      params.set('activeOnly', 'true');
+      if (queryTerm.trim()) params.set('search', queryTerm.trim());
+
+      const response = await fetch(`${RADIOLOGY_API_URL}/pricing-catalogues?${params.toString()}`, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(json?.message || 'Failed to load Radiology pricing plans.');
+      const raw = json?.data ?? json;
+      const rows = Array.isArray(raw) ? raw : raw?.items ?? raw?.catalogues ?? raw?.results ?? [];
+      setCatalogues(rows.filter((item: any) => item && (item._id || item.id)).map((item: any) => ({
+        ...item,
+        _id: String(item._id ?? item.id),
+        price: Number(item.price ?? 0),
+        version: Number(item.version ?? 1),
+      })));
+    } catch (err) {
+      console.error('Failed to load Radiology pricing catalogues:', err);
+      setCatalogues([]);
+    } finally {
+      setLoadingCatalogues(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isCreateOpen) return;
+    loadPricingCatalogues();
+  }, [isCreateOpen, loadPricingCatalogues]);
+
+  const filteredCatalogues = useMemo(() => {
+    const query = catalogueSearch.trim().toLowerCase();
+    if (!query) return catalogues;
+    return catalogues.filter((catalogue) =>
+      [catalogue.name, catalogue.planName, catalogue.code, catalogue.description]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query))
+    );
+  }, [catalogues, catalogueSearch]);
+
+  const catalogueName = (catalogue: RadiologyPricingCatalogue) =>
+    catalogue.planName || catalogue.name || catalogue.code || 'Radiology Pricing Plan';
+
+  const formatCatalogueMoney = (catalogue: RadiologyPricingCatalogue) => {
+    if (!Number.isFinite(catalogue.price)) return 'Price not set';
+    try {
+      return new Intl.NumberFormat('en-NG', {
+        style: 'currency',
+        currency: catalogue.currency || 'NGN',
+        maximumFractionDigits: 2,
+      }).format(catalogue.price);
+    } catch {
+      return `${catalogue.currency || 'NGN'} ${catalogue.price.toLocaleString()}`;
+    }
+  };
 
   const loadOrders = useCallback(async () => {
     try {
@@ -525,6 +614,9 @@ export default function RadiologyPage() {
     setPatients([]);
     setStaff([]);
     setFormError(null);
+    setCatalogueSearch('');
+    setSelectedCatalogue(null);
+    setCatalogues([]);
   };
 
   const handleCreate = async (
@@ -536,6 +628,11 @@ export default function RadiologyPage() {
       setFormError(
         'Please select a patient.'
       );
+      return;
+    }
+
+    if (!selectedCatalogue) {
+      setFormError('Please select a Radiology pricing plan.');
       return;
     }
 
@@ -579,6 +676,7 @@ export default function RadiologyPage() {
           form.clinicalIndication.trim(),
 
         priority: form.priority,
+        pricingCatalogueItemId: selectedCatalogue._id,
       };
 
       if (form.scheduledDate) {
@@ -821,7 +919,7 @@ export default function RadiologyPage() {
                   key={status}
                   value={status}
                 >
-                  {formatLabel(status)}
+                  {formatLabel(String(status))}
                 </option>
               ))}
             </select>
@@ -847,7 +945,7 @@ export default function RadiologyPage() {
                   key={modality}
                   value={modality}
                 >
-                  {formatLabel(modality)}
+                  {formatLabel(String(modality))}
                 </option>
               ))}
             </select>
@@ -873,7 +971,7 @@ export default function RadiologyPage() {
                   key={priority}
                   value={priority}
                 >
-                  {formatLabel(priority)}
+                  {formatLabel(String(priority))}
                 </option>
               ))}
             </select>
@@ -921,7 +1019,7 @@ export default function RadiologyPage() {
                   key={status}
                   value={status}
                 >
-                  {formatLabel(status)}
+                  {formatLabel(String(status))}
                 </option>
               ))}
             </select>
@@ -1479,7 +1577,7 @@ export default function RadiologyPage() {
               >
                 {Object.values(ImagingModality).map((item) => (
                   <option key={item} value={item}>
-                    {formatLabel(item)}
+                    {formatLabel(String(item))}
                   </option>
                 ))}
               </select>
@@ -1501,7 +1599,7 @@ export default function RadiologyPage() {
               >
                 {Object.values(PriorityLevel).map((item) => (
                   <option key={item} value={item}>
-                    {formatLabel(item)}
+                    {formatLabel(String(item))}
                   </option>
                 ))}
               </select>
@@ -1562,6 +1660,100 @@ export default function RadiologyPage() {
               className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none resize-none"
             />
           </div>
+        </FormSection>
+
+        {/* Radiology Pricing Plan Section */}
+        <FormSection
+          title="Radiology Pricing Plan *"
+          icon={<FileText className="w-3.5 h-3.5" />}
+        >
+          <p className="text-[10px] text-slate-400 mb-2.5">
+            Select the Billing catalogue that should price this examination.
+          </p>
+
+          <div className="relative mb-2.5">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={catalogueSearch}
+              onChange={(event) => setCatalogueSearch(event.target.value)}
+              placeholder="Search pricing plans..."
+              className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#1b7b68] focus:ring-1 focus:ring-[#1b7b68] transition-all outline-none"
+            />
+            {loadingCatalogues && (
+              <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#1b7b68] animate-spin" />
+            )}
+          </div>
+
+          <div className="space-y-2 max-h-56 overflow-y-auto custom-scrollbar pr-1">
+            {loadingCatalogues && catalogues.length === 0 ? (
+              <div className="p-5 rounded-lg border border-slate-200 bg-slate-50/50 text-center">
+                <Loader2 className="w-5 h-5 text-[#1b7b68] animate-spin mx-auto mb-2" />
+                <p className="text-[11px] text-slate-400">Loading Radiology pricing plans...</p>
+              </div>
+            ) : filteredCatalogues.length === 0 ? (
+              <div className="p-4 rounded-lg border border-slate-200 bg-slate-50/50 text-center">
+                <FileText className="w-5 h-5 text-slate-300 mx-auto mb-2" />
+                <p className="text-[11px] font-semibold text-slate-500">
+                  {catalogues.length === 0
+                    ? 'No active Radiology pricing plans are available.'
+                    : 'No pricing plans match your search.'}
+                </p>
+              </div>
+            ) : (
+              filteredCatalogues.map((catalogue) => {
+                const isSelected = selectedCatalogue?._id === catalogue._id;
+                return (
+                  <button
+                    key={catalogue._id}
+                    type="button"
+                    onClick={() => setSelectedCatalogue(catalogue)}
+                    className={`w-full p-3 rounded-xl border text-left transition-all ${
+                      isSelected
+                        ? 'border-[#1b7b68] bg-[#e8f5f3]/70 ring-1 ring-[#1b7b68]'
+                        : 'border-slate-200 bg-white hover:border-[#9ed5cb] hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-slate-800 truncate">
+                          {catalogueName(catalogue)}
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          {catalogue.code || 'RADIOLOGY_PROCEDURE'} • Version {catalogue.version ?? 1}
+                        </p>
+                        {catalogue.description && (
+                          <p className="text-[10px] text-slate-500 mt-1 line-clamp-2">
+                            {catalogue.description}
+                          </p>
+                        )}
+                      </div>
+                      {isSelected && (
+                        <CheckCircle2 className="w-4 h-4 text-[#1b7b68] shrink-0" />
+                      )}
+                    </div>
+                    <p className="text-sm font-extrabold text-slate-900 mt-2">
+                      {formatCatalogueMoney(catalogue)}
+                    </p>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          {selectedCatalogue && (
+            <div className="mt-2.5 p-2.5 rounded-lg bg-[#e8f5f3]/60 border border-[#c7e7e1] flex items-start gap-2.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#1b7b68] shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-[#156354] truncate">
+                  {catalogueName(selectedCatalogue)}
+                </p>
+                <p className="text-[10px] text-[#1b7b68]">
+                  {selectedCatalogue.code || 'RADIOLOGY_PROCEDURE'} • Version {selectedCatalogue.version ?? 1} • {formatCatalogueMoney(selectedCatalogue)}
+                </p>
+              </div>
+            </div>
+          )}
         </FormSection>
 
         {/* Scheduling Section */}

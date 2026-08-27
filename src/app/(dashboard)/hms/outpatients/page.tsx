@@ -12,19 +12,23 @@ import {
 import { OutpatientStatCards } from '../../../../components/outpatient/OutpatientStatCards';
 import { RecordVitalsModal } from '../../../../components/outpatient/RecordVitalsModal';
 import { ConsultationModal } from '../../../../components/outpatient/ConsultationModal';
-import { CheckInModal } from '../../../../components/outpatient/CheckInModal';
+import { PatientApiService } from '@/services/patient.service';
 
 import { 
-  UserPlus, 
-  RefreshCw, 
-  Search, 
-  Filter, 
-  Stethoscope, 
-  Activity, 
+  UserPlus,
+  RefreshCw,
+  Search,
+  Filter,
+  Stethoscope,
+  Activity,
   CheckCircle2,
   Clock,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  X,
+  Loader2,
+  ChevronDown,
+  CreditCard,
 } from 'lucide-react';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://medxverse-backend.onrender.com';
@@ -43,10 +47,13 @@ export default function OutpatientsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
   // Modal states
-  const [isCheckInOpen, setIsCheckInOpen] = useState<boolean>(false);
   const [isVitalsOpen, setIsVitalsOpen] = useState<boolean>(false);
   const [isConsultationOpen, setIsConsultationOpen] = useState<boolean>(false);
   const [selectedEncounter, setSelectedEncounter] = useState<IOutpatientEncounter | null>(null);
+
+  // Billing / pricing catalogue state. The selected catalogue is sent with
+  // the outpatient encounter so the backend can carry it into Billing.
+  const [isCheckInOpen, setIsCheckInOpen] = useState<boolean>(false);
 
   const fetchEncounters = useCallback(async () => {
     setLoading(true);
@@ -411,7 +418,7 @@ export default function OutpatientsPage() {
       </div>
 
       {/* Modals */}
-      <CheckInModal
+      <CheckInBillingModal
         isOpen={isCheckInOpen}
         onClose={() => setIsCheckInOpen(false)}
         onSuccess={() => fetchEncounters()}
@@ -436,6 +443,692 @@ export default function OutpatientsPage() {
         }}
         onSubmit={handleCompleteConsultation}
       />
+    </div>
+  );
+}
+
+
+/* ============================================================================
+   BILLING-AWARE OUTPATIENT CHECK-IN
+   The existing CheckInModal is replaced here so the selected Pricing
+   Catalogue is part of the actual encounter creation request.
+============================================================================ */
+
+interface OutpatientPricingCatalogue {
+  _id: string;
+  code?: string;
+  name?: string;
+  planName?: string;
+  description?: string;
+  departmentName?: string;
+  price?: number;
+  currency?: string;
+  version?: number;
+  isActive?: boolean;
+}
+
+interface SearchPatient {
+  _id: string;
+  firstName?: string;
+  lastName?: string;
+  mrn?: string;
+  gender?: string;
+  dateOfBirth?: string;
+  phone?: string;
+}
+
+interface SearchStaff {
+  _id: string;
+  firstName?: string;
+  lastName?: string;
+  role?: string;
+  department?: string;
+  isActive?: boolean;
+}
+
+function CheckInBillingModal({
+  isOpen,
+  onClose,
+  onSuccess,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [patientSearch, setPatientSearch] = useState('');
+  const [patients, setPatients] = useState<SearchPatient[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<SearchPatient | null>(null);
+  const [loadingPatients, setLoadingPatients] = useState(false);
+
+  const [doctorSearch, setDoctorSearch] = useState('');
+  const [staff, setStaff] = useState<SearchStaff[]>([]);
+  const [selectedDoctor, setSelectedDoctor] = useState<SearchStaff | null>(null);
+  const [loadingStaff, setLoadingStaff] = useState(false);
+
+  const [catalogueSearch, setCatalogueSearch] = useState('');
+  const [catalogues, setCatalogues] = useState<OutpatientPricingCatalogue[]>([]);
+  const [selectedCatalogue, setSelectedCatalogue] =
+    useState<OutpatientPricingCatalogue | null>(null);
+  const [loadingCatalogues, setLoadingCatalogues] = useState(false);
+
+  const [chiefComplaint, setChiefComplaint] = useState('');
+  const [triagePriority, setTriagePriority] = useState('STANDARD');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const token = () =>
+    typeof window !== 'undefined'
+      ? localStorage.getItem('token') ||
+        localStorage.getItem('accessToken') ||
+        localStorage.getItem('authToken')
+      : null;
+
+  const patientName = (patient?: SearchPatient | null) =>
+    patient
+      ? `${patient.firstName || ''} ${patient.lastName || ''}`.trim() || 'Unnamed Patient'
+      : '';
+
+  const staffName = (person?: SearchStaff | null) =>
+    person
+      ? `${person.firstName || ''} ${person.lastName || ''}`.trim() || 'Unnamed Staff'
+      : '';
+
+  const catalogueName = (catalogue: OutpatientPricingCatalogue) =>
+    catalogue.planName || catalogue.name || catalogue.code || 'Outpatient Pricing Plan';
+
+  const formatMoney = (catalogue: OutpatientPricingCatalogue) => {
+    if (typeof catalogue.price !== 'number') return 'Price not set';
+
+    try {
+      return new Intl.NumberFormat('en-NG', {
+        style: 'currency',
+        currency: catalogue.currency || 'NGN',
+        maximumFractionDigits: 2,
+      }).format(catalogue.price);
+    } catch {
+      return `${catalogue.currency || 'NGN'} ${catalogue.price.toLocaleString()}`;
+    }
+  };
+
+  const loadPatients = useCallback(async (query: string) => {
+    try {
+      setLoadingPatients(true);
+      const response = await PatientApiService.getPatients({
+        search: query,
+        limit: 10,
+      });
+
+      setPatients((response?.patients || []) as SearchPatient[]);
+    } catch (err) {
+      console.error('Failed to search outpatient patients:', err);
+      setPatients([]);
+    } finally {
+      setLoadingPatients(false);
+    }
+  }, []);
+
+  const loadStaff = useCallback(async (query: string) => {
+    try {
+      setLoadingStaff(true);
+
+      const params = new URLSearchParams();
+      params.set('isActive', 'true');
+      if (query.trim()) params.set('search', query.trim());
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/staff?${params.toString()}`,
+        {
+          headers: {
+            ...(token() ? { Authorization: `Bearer ${token()}` } : {}),
+          },
+        }
+      );
+
+      const json = await response.json().catch(() => ({}));
+
+      const result = Array.isArray(json)
+        ? json
+        : Array.isArray(json?.data)
+          ? json.data
+          : Array.isArray(json?.data?.staff)
+            ? json.data.staff
+            : [];
+
+      setStaff(result as SearchStaff[]);
+    } catch (err) {
+      console.error('Failed to search outpatient staff:', err);
+      setStaff([]);
+    } finally {
+      setLoadingStaff(false);
+    }
+  }, []);
+
+  const loadCatalogues = useCallback(async (query: string) => {
+    try {
+      setLoadingCatalogues(true);
+
+      const params = new URLSearchParams();
+      if (query.trim()) params.set('search', query.trim());
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/outpatients/pricing-catalogues${
+          params.toString() ? `?${params.toString()}` : ''
+        }`,
+        {
+          headers: {
+            ...(token() ? { Authorization: `Bearer ${token()}` } : {}),
+          },
+          cache: 'no-store',
+        }
+      );
+
+      const json = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          json?.message ||
+            json?.error ||
+            `Failed to load outpatient pricing catalogues (${response.status})`
+        );
+      }
+
+      const raw = Array.isArray(json)
+        ? json
+        : Array.isArray(json?.data)
+          ? json.data
+          : Array.isArray(json?.data?.items)
+            ? json.data.items
+            : Array.isArray(json?.items)
+              ? json.items
+              : [];
+
+      setCatalogues(
+        raw.filter(
+          (item: OutpatientPricingCatalogue) =>
+            item &&
+            item._id &&
+            item.isActive !== false
+        )
+      );
+    } catch (err: any) {
+      console.error('Failed to load outpatient pricing catalogues:', err);
+      setCatalogues([]);
+      setError(err?.message || 'Unable to load outpatient pricing plans.');
+    } finally {
+      setLoadingCatalogues(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setError(null);
+    setPatientSearch('');
+    setPatients([]);
+    setSelectedPatient(null);
+    setDoctorSearch('');
+    setStaff([]);
+    setSelectedDoctor(null);
+    setCatalogueSearch('');
+    setCatalogues([]);
+    setSelectedCatalogue(null);
+    setChiefComplaint('');
+    setTriagePriority('STANDARD');
+    setSubmitting(false);
+
+    loadPatients('');
+    loadStaff('');
+    loadCatalogues('');
+  }, [isOpen, loadPatients, loadStaff, loadCatalogues]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const timer = window.setTimeout(() => {
+      loadPatients(patientSearch);
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [isOpen, patientSearch, loadPatients]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const timer = window.setTimeout(() => {
+      loadStaff(doctorSearch);
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [isOpen, doctorSearch, loadStaff]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const timer = window.setTimeout(() => {
+      loadCatalogues(catalogueSearch);
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [isOpen, catalogueSearch, loadCatalogues]);
+
+  const handleSubmit = async () => {
+    setError(null);
+
+    if (!selectedPatient?._id) {
+      setError('Please search for and select a patient.');
+      return;
+    }
+
+    if (!chiefComplaint.trim()) {
+      setError('Please enter the chief complaint.');
+      return;
+    }
+
+    // If more than one applicable plan exists, force an explicit selection.
+    if (catalogues.length > 1 && !selectedCatalogue?._id) {
+      setError('Please select an outpatient pricing plan before checking in the patient.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/outpatients`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token() ? { Authorization: `Bearer ${token()}` } : {}),
+        },
+        body: JSON.stringify({
+          patientId: selectedPatient._id,
+          doctorId: selectedDoctor?._id || undefined,
+          chiefComplaint: chiefComplaint.trim(),
+          triagePriority,
+          // This is the critical Billing integration.
+          pricingCatalogueItemId: selectedCatalogue?._id || undefined,
+        }),
+      });
+
+      const json = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          json?.message ||
+            json?.error ||
+            `Failed to create outpatient encounter (${response.status})`
+        );
+      }
+
+      onClose();
+      onSuccess();
+    } catch (err: any) {
+      console.error('Failed to create outpatient encounter:', err);
+      setError(
+        err?.message ||
+          'Unable to create the outpatient encounter. Please try again.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-bold text-slate-900">
+              New Patient Check-In
+            </h3>
+            <p className="text-xs text-slate-400 mt-1">
+              Register the patient and select the outpatient pricing plan for this consultation.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-9 h-9 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-700"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto space-y-5">
+          {error && (
+            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Patient */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              Patient *
+            </label>
+
+            {selectedPatient ? (
+              <div className="flex items-center justify-between p-3 rounded-2xl border border-[#1b7b68]/20 bg-[#e8f5f3]">
+                <div>
+                  <p className="text-xs font-bold text-slate-800">
+                    {patientName(selectedPatient)}
+                  </p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    MRN: {selectedPatient.mrn || 'No MRN'}
+                    {selectedPatient.phone ? ` • ${selectedPatient.phone}` : ''}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPatient(null);
+                    setPatientSearch('');
+                  }}
+                  className="text-[10px] font-bold text-[#1b7b68] hover:underline"
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <Search className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
+                <input
+                  value={patientSearch}
+                  onChange={(e) => setPatientSearch(e.target.value)}
+                  placeholder="Search by patient name, MRN or phone..."
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 text-xs focus:outline-none focus:border-[#1b7b68] focus:ring-2 focus:ring-[#1b7b68]/10"
+                />
+
+                {(loadingPatients || patients.length > 0) && (
+                  <div className="absolute z-20 left-0 right-0 top-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-xl overflow-hidden">
+                    {loadingPatients ? (
+                      <div className="p-4 text-xs text-slate-400 flex items-center gap-2">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Searching patients...
+                      </div>
+                    ) : (
+                      patients.map((patient) => (
+                        <button
+                          key={patient._id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedPatient(patient);
+                            setPatientSearch('');
+                            setPatients([]);
+                          }}
+                          className="w-full text-left px-4 py-3 hover:bg-[#e8f5f3]/60 border-b border-slate-50 last:border-b-0"
+                        >
+                          <p className="text-xs font-bold text-slate-800">
+                            {patientName(patient)}
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            MRN: {patient.mrn || 'N/A'}
+                            {patient.phone ? ` • ${patient.phone}` : ''}
+                          </p>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Pricing Catalogue */}
+          <div className="p-4 rounded-2xl border border-emerald-100 bg-emerald-50/40">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-xs font-bold text-slate-800">
+                  Outpatient Pricing Plan *
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Select the Billing catalogue that should price this consultation.
+                </p>
+              </div>
+
+              <CreditCard className="w-4 h-4 text-[#1b7b68]" />
+            </div>
+
+            <div className="relative mb-3">
+              <Search className="absolute left-3.5 top-3.5 w-3.5 h-3.5 text-slate-400" />
+              <input
+                value={catalogueSearch}
+                onChange={(e) => setCatalogueSearch(e.target.value)}
+                placeholder="Search outpatient pricing plans..."
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs focus:outline-none focus:border-[#1b7b68]"
+              />
+            </div>
+
+            {loadingCatalogues ? (
+              <div className="p-4 rounded-xl bg-white border border-slate-100 text-xs text-slate-400 flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Loading outpatient pricing plans...
+              </div>
+            ) : catalogues.length === 0 ? (
+              <div className="p-4 rounded-xl bg-white border border-amber-100 text-xs text-amber-700">
+                No active outpatient pricing catalogue is available.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {catalogues.map((catalogue) => {
+                  const selected = selectedCatalogue?._id === catalogue._id;
+
+                  return (
+                    <button
+                      key={catalogue._id}
+                      type="button"
+                      onClick={() => setSelectedCatalogue(catalogue)}
+                      className={`w-full text-left p-3 rounded-xl border transition-all ${
+                        selected
+                          ? 'border-[#1b7b68] bg-[#e8f5f3] ring-2 ring-[#1b7b68]/10'
+                          : 'border-slate-100 bg-white hover:border-[#1b7b68]/30 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-800 truncate">
+                            {catalogueName(catalogue)}
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-0.5 truncate">
+                            {catalogue.code || 'OUTPATIENT_CONSULTATION'}
+                            {catalogue.version
+                              ? ` • Version ${catalogue.version}`
+                              : ''}
+                          </p>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <p className="text-xs font-black text-[#1b7b68]">
+                            {formatMoney(catalogue)}
+                          </p>
+                          {selected && (
+                            <p className="text-[9px] font-bold uppercase tracking-wider text-[#1b7b68] mt-0.5">
+                              Selected
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {catalogue.description && (
+                        <p className="text-[10px] text-slate-400 mt-2 line-clamp-2">
+                          {catalogue.description}
+                        </p>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {selectedCatalogue && (
+              <div className="mt-3 flex items-center justify-between p-2.5 rounded-xl bg-white border border-[#1b7b68]/20">
+                <span className="text-[10px] font-semibold text-slate-500">
+                  Billing selection
+                </span>
+                <span className="text-[10px] font-bold text-[#1b7b68]">
+                  {catalogueName(selectedCatalogue)} • {formatMoney(selectedCatalogue)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Doctor */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              Attending Doctor
+            </label>
+
+            {selectedDoctor ? (
+              <div className="flex items-center justify-between p-3 rounded-2xl border border-slate-200 bg-slate-50">
+                <div>
+                  <p className="text-xs font-bold text-slate-800">
+                    {staffName(selectedDoctor)}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    {selectedDoctor.role || 'Staff'}
+                    {selectedDoctor.department
+                      ? ` • ${selectedDoctor.department}`
+                      : ''}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedDoctor(null)}
+                  className="text-[10px] font-bold text-[#1b7b68] hover:underline"
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <Search className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
+                <input
+                  value={doctorSearch}
+                  onChange={(e) => setDoctorSearch(e.target.value)}
+                  placeholder="Search doctor or staff..."
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 text-xs focus:outline-none focus:border-[#1b7b68]"
+                />
+
+                {staff.length > 0 && (
+                  <div className="absolute z-20 left-0 right-0 top-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-xl overflow-hidden max-h-52 overflow-y-auto">
+                    {staff.map((person) => (
+                      <button
+                        key={person._id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedDoctor(person);
+                          setDoctorSearch('');
+                          setStaff([]);
+                        }}
+                        className="w-full text-left px-4 py-3 hover:bg-[#e8f5f3]/60 border-b border-slate-50 last:border-b-0"
+                      >
+                        <p className="text-xs font-bold text-slate-800">
+                          {staffName(person)}
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          {person.role || 'Staff'}
+                          {person.department ? ` • ${person.department}` : ''}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {loadingStaff && (
+                  <div className="absolute z-30 left-0 right-0 top-full mt-2 bg-white border border-slate-100 rounded-xl shadow-lg p-3 text-xs text-slate-400 flex items-center gap-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Searching staff...
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Triage + complaint */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Triage Priority
+              </label>
+
+              <div className="relative">
+                <select
+                  value={triagePriority}
+                  onChange={(e) => setTriagePriority(e.target.value)}
+                  className="w-full appearance-none px-3 py-3 pr-9 rounded-2xl border border-slate-200 text-xs bg-white focus:outline-none focus:border-[#1b7b68]"
+                >
+                  <option value="STANDARD">Standard</option>
+                  <option value="URGENT">Urgent</option>
+                  <option value="EMERGENCY">Emergency</option>
+                </select>
+                <ChevronDown className="absolute right-3 top-3.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Billing
+              </label>
+
+              <div className="h-[42px] px-3 rounded-2xl border border-slate-200 bg-slate-50 flex items-center">
+                <span className="text-[10px] font-semibold text-slate-500">
+                  {selectedCatalogue
+                    ? `${catalogueName(selectedCatalogue)} • ${formatMoney(selectedCatalogue)}`
+                    : 'Select a pricing plan above'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              Chief Complaint *
+            </label>
+
+            <textarea
+              rows={4}
+              value={chiefComplaint}
+              onChange={(e) => setChiefComplaint(e.target.value)}
+              placeholder="Describe the patient's presenting complaint..."
+              className="w-full px-3 py-3 rounded-2xl border border-slate-200 text-xs resize-none focus:outline-none focus:border-[#1b7b68]"
+            />
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={
+              submitting ||
+              !selectedPatient ||
+              !chiefComplaint.trim() ||
+              catalogues.length === 0 ||
+              (catalogues.length > 1 && !selectedCatalogue)
+            }
+            className="px-4 py-2.5 rounded-xl bg-[#1b7b68] hover:bg-[#145f50] text-white text-xs font-bold flex items-center gap-2 disabled:opacity-50"
+          >
+            {submitting && (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            )}
+            Check In Patient
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
   Activity,
   AlertCircle,
   CalendarDays,
+  CreditCard,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -14,6 +15,7 @@ import {
   Eye,
   Filter,
   Hospital,
+  Loader2,
   Plus,
   RefreshCw,
   Search,
@@ -84,6 +86,19 @@ interface Staff {
   lastName?: string;
   role?: string;
   department?: string;
+  isActive?: boolean;
+}
+
+interface SurgeryPricingCatalogue {
+  _id: string;
+  code?: string;
+  name?: string;
+  planName?: string;
+  description?: string;
+  departmentName?: string;
+  price?: number;
+  currency?: string;
+  version?: number;
   isActive?: boolean;
 }
 
@@ -341,6 +356,12 @@ export default function SurgeryPage() {
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
   const [surgicalTeam, setSurgicalTeam] = useState<SurgicalTeamDraft[]>([]);
 
+  const [catalogueSearch, setCatalogueSearch] = useState('');
+  const [catalogues, setCatalogues] = useState<SurgeryPricingCatalogue[]>([]);
+  const [selectedCatalogue, setSelectedCatalogue] =
+    useState<SurgeryPricingCatalogue | null>(null);
+  const [loadingCatalogues, setLoadingCatalogues] = useState(false);
+
   const fetchPatients = useCallback(async (queryTerm: string = '') => {
     try {
       setLoadingPatients(true);
@@ -354,6 +375,51 @@ export default function SurgeryPage() {
       setPatients([]);
     } finally {
       setLoadingPatients(false);
+    }
+  }, []);
+
+  const fetchCatalogues = useCallback(async (queryTerm: string = '') => {
+    try {
+      setLoadingCatalogues(true);
+      const params = new URLSearchParams();
+      params.set('departmentName', 'Surgery');
+      params.set('activeOnly', 'true');
+      if (queryTerm.trim()) params.set('search', queryTerm.trim());
+
+      const token = localStorage.getItem('token');
+      const res = await fetch(
+        `${API_BASE_URL}/billing/catalogue/available?${params.toString()}`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          cache: 'no-store',
+        }
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.message || json?.error || `Failed to load Surgery pricing catalogues (${res.status})`);
+      }
+
+      const raw = Array.isArray(json)
+        ? json
+        : Array.isArray(json?.data)
+          ? json.data
+          : Array.isArray(json?.data?.items)
+            ? json.data.items
+            : Array.isArray(json?.items)
+              ? json.items
+              : [];
+
+      setCatalogues(
+        raw.filter(
+          (item: SurgeryPricingCatalogue) =>
+            item && item._id && item.isActive !== false
+        )
+      );
+    } catch (error) {
+      console.error('Failed to load Surgery pricing catalogues:', error);
+      setCatalogues([]);
+    } finally {
+      setLoadingCatalogues(false);
     }
   }, []);
 
@@ -455,6 +521,16 @@ export default function SurgeryPage() {
     return () => clearTimeout(timer);
   }, [staffSearch, isScheduleOpen, fetchStaff]);
 
+  useEffect(() => {
+    if (!isScheduleOpen) return;
+
+    const timer = setTimeout(() => {
+      fetchCatalogues(catalogueSearch);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [catalogueSearch, isScheduleOpen, fetchCatalogues]);
+
   const resetScheduleForm = () => {
     setScheduleForm({
       patientId: '',
@@ -474,6 +550,9 @@ export default function SurgeryPage() {
     setStaffSearch('');
     setSelectedStaff(null);
     setSurgicalTeam([]);
+    setCatalogueSearch('');
+    setCatalogues([]);
+    setSelectedCatalogue(null);
     setActionError(null);
   };
 
@@ -697,6 +776,18 @@ export default function SurgeryPage() {
         throw new Error('Please add at least one staff member to the surgical team.');
       }
 
+      if (loadingCatalogues) {
+        throw new Error('Please wait for the Surgery pricing plans to finish loading.');
+      }
+
+      if (!catalogues.length) {
+        throw new Error('No active Surgery pricing catalogue is available. Create an active Surgery pricing plan in Billing before scheduling this procedure.');
+      }
+
+      if (!selectedCatalogue?._id) {
+        throw new Error('Please select a Surgery pricing plan before scheduling the procedure.');
+      }
+
       const primary = surgicalTeam.find((member) => member.role === SurgicalRole.PRIMARY_SURGEON);
       if (!primary || primary.userId !== scheduleForm.leadSurgeonId) {
         throw new Error('The lead surgeon must be assigned as the primary surgeon in the surgical team.');
@@ -724,6 +815,7 @@ export default function SurgeryPage() {
           scheduleForm.scheduledEndTime
         ).toISOString(),
         anesthesiaType: scheduleForm.anesthesiaType,
+        pricingCatalogueItemId: selectedCatalogue?._id || undefined,
       };
 
       const res = await fetch(`${API_BASE_URL}/surgery`, {
@@ -1334,6 +1426,12 @@ export default function SurgeryPage() {
           addStaffToTeam={addStaffToTeam}
           removeStaffFromTeam={removeStaffFromTeam}
           updateTeamRole={updateTeamRole}
+          catalogueSearch={catalogueSearch}
+          setCatalogueSearch={setCatalogueSearch}
+          catalogues={catalogues}
+          selectedCatalogue={selectedCatalogue}
+          setSelectedCatalogue={setSelectedCatalogue}
+          loadingCatalogues={loadingCatalogues}
         />
       )}
     </div>
@@ -1718,6 +1816,12 @@ function ScheduleSurgeryModal({
   addStaffToTeam,
   removeStaffFromTeam,
   updateTeamRole,
+  catalogueSearch,
+  setCatalogueSearch,
+  catalogues,
+  selectedCatalogue,
+  setSelectedCatalogue,
+  loadingCatalogues,
 }: {
   form: {
     patientId: string;
@@ -1750,6 +1854,12 @@ function ScheduleSurgeryModal({
   addStaffToTeam: () => void;
   removeStaffFromTeam: (userId: string) => void;
   updateTeamRole: (userId: string, role: SurgicalRole) => void;
+  catalogueSearch: string;
+  setCatalogueSearch: React.Dispatch<React.SetStateAction<string>>;
+  catalogues: SurgeryPricingCatalogue[];
+  selectedCatalogue: SurgeryPricingCatalogue | null;
+  setSelectedCatalogue: React.Dispatch<React.SetStateAction<SurgeryPricingCatalogue | null>>;
+  loadingCatalogues: boolean;
 }) {
   const displayStaff = staff.filter((person) => {
     const id = normalizeStaffId(person._id);
@@ -1873,6 +1983,98 @@ function ScheduleSurgeryModal({
                   </div>
                 )}
               </>
+            )}
+          </div>
+
+          {/* Pricing Catalogue */}
+          <div className="p-4 rounded-2xl border border-emerald-100 bg-emerald-50/40">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-xs font-bold text-slate-800">Surgery Pricing Plan *</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Select the Billing catalogue that should price this surgical procedure.
+                </p>
+              </div>
+              <CreditCard className="w-4 h-4 text-[#1b7b68]" />
+            </div>
+
+            <div className="relative mb-3">
+              <Search className="absolute left-3.5 top-3.5 w-3.5 h-3.5 text-slate-400" />
+              <input
+                value={catalogueSearch}
+                onChange={(e) => setCatalogueSearch(e.target.value)}
+                placeholder="Search Surgery pricing plans..."
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs focus:outline-none focus:border-[#1b7b68]"
+              />
+            </div>
+
+            {loadingCatalogues ? (
+              <div className="p-4 rounded-xl bg-white border border-slate-100 text-xs text-slate-400 flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Loading Surgery pricing plans...
+              </div>
+            ) : catalogues.length === 0 ? (
+              <div className="p-4 rounded-xl bg-white border border-amber-100 text-xs text-amber-700">
+                No active Surgery pricing catalogue is available.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {catalogues.map((catalogue) => {
+                  const selected = selectedCatalogue?._id === catalogue._id;
+                  const name = catalogue.planName || catalogue.name || catalogue.code || 'Surgery Pricing Plan';
+                  let money = 'Price not set';
+                  if (typeof catalogue.price === 'number') {
+                    try {
+                      money = new Intl.NumberFormat('en-NG', {
+                        style: 'currency',
+                        currency: catalogue.currency || 'NGN',
+                        maximumFractionDigits: 2,
+                      }).format(catalogue.price);
+                    } catch {
+                      money = `${catalogue.currency || 'NGN'} ${catalogue.price.toLocaleString()}`;
+                    }
+                  }
+
+                  return (
+                    <button
+                      key={catalogue._id}
+                      type="button"
+                      onClick={() => setSelectedCatalogue(catalogue)}
+                      className={`w-full text-left p-3 rounded-xl border transition-all ${
+                        selected
+                          ? 'border-[#1b7b68] bg-[#e8f5f3] ring-2 ring-[#1b7b68]/10'
+                          : 'border-slate-100 bg-white hover:border-[#1b7b68]/30 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-800 truncate">{name}</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5 truncate">
+                            {catalogue.code || 'SURGERY_PROCEDURE'}
+                            {catalogue.version ? ` • Version ${catalogue.version}` : ''}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs font-black text-[#1b7b68]">{money}</p>
+                          {selected && <p className="text-[9px] font-bold uppercase tracking-wider text-[#1b7b68] mt-0.5">Selected</p>}
+                        </div>
+                      </div>
+                      {catalogue.description && (
+                        <p className="text-[10px] text-slate-400 mt-2 line-clamp-2">{catalogue.description}</p>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {selectedCatalogue && (
+              <div className="mt-3 flex items-center justify-between p-2.5 rounded-xl bg-white border border-[#1b7b68]/20">
+                <span className="text-[10px] font-semibold text-slate-500">Billing selection</span>
+                <span className="text-[10px] font-bold text-[#1b7b68]">
+                  {selectedCatalogue.planName || selectedCatalogue.name || selectedCatalogue.code || 'Surgery Pricing Plan'}
+                </span>
+              </div>
             )}
           </div>
 
@@ -2013,7 +2215,7 @@ function ScheduleSurgeryModal({
                         >
                           {getAllowedSurgicalRoles(person).map((role) => (
                             <option key={role} value={role}>
-                              {role.replaceAll('_', ' ')}
+                              {String(role).replace(/_/g, ' ')}
                             </option>
                           ))}
                         </select>
