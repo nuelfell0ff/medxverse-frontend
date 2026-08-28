@@ -748,6 +748,10 @@ export default function SurgeryPage() {
         (item) => item.status === SurgeryStatus.COMPLETED
       ).length,
 
+      recovery: cases.filter(
+        (item) => item.status === SurgeryStatus.RECOVERY
+      ).length,
+
       emergency: cases.filter(
         (item) => item.urgency === UrgencyLevel.EMERGENCY
       ).length,
@@ -981,8 +985,8 @@ export default function SurgeryPage() {
 
         <MetricCard
           icon={<CheckCircle2 className="w-5 h-5" />}
-          label="Completed"
-          value={stats.completed}
+          label="Recovery"
+          value={stats.recovery}
           iconClass="bg-emerald-50 text-emerald-600"
         />
 
