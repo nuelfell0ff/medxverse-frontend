@@ -1462,7 +1462,9 @@ export default function BillingPage() {
           ? charge.patientId
           : charge.patientId?._id || '',
       billingAccountId:
-        charge.billingAccountId || '',
+        typeof charge.billingAccountId === 'string'
+          ? charge.billingAccountId
+          : '',
       amount:
         getChargeOutstanding(charge).toFixed(2),
     }));
@@ -1497,7 +1499,7 @@ export default function BillingPage() {
               undefined,
 
             billingAccountId:
-              paymentForm.billingAccountId.trim() ||
+              String(paymentForm.billingAccountId ?? '').trim() ||
               undefined,
 
             amount:
