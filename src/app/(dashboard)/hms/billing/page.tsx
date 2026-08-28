@@ -31,6 +31,7 @@ import {
   Pencil,
   History,
   Power,
+  Printer,
   SlidersHorizontal,
   User,
   WalletCards,
@@ -103,6 +104,13 @@ type Payment = {
   reconciliationStatus?: string;
   refundedAmount?: number;
   notes?: string;
+  chargeId?: string;
+  receivedBy?: {
+    firstName?: string;
+    lastName?: string;
+    role?: string;
+  } | string;
+  createdAt?: string;
 };
 
 type CatalogueItem = {
@@ -1441,6 +1449,529 @@ export default function BillingPage() {
       }
     };
 
+  const getHospitalDisplayName = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return 'Hospital Management System';
+    }
+
+    const candidateKeys = [
+      'hospital',
+      'hospitalData',
+      'currentHospital',
+      'user',
+      'currentUser',
+      'account',
+      'profile',
+    ];
+
+    for (const key of candidateKeys) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+
+        const parsed = JSON.parse(raw);
+        const candidate =
+          parsed?.hospitalName ||
+          parsed?.hospital?.name ||
+          parsed?.hospital?.hospitalName ||
+          parsed?.hospital?.accountName ||
+          parsed?.name;
+
+        if (typeof candidate === 'string' && candidate.trim()) {
+          return candidate.trim();
+        }
+      } catch {
+        // Ignore malformed local storage entries.
+      }
+    }
+
+    // Some authentication systems put hospital information in the JWT.
+    try {
+      const token = localStorage.getItem('token');
+      if (token) {
+        const payload = JSON.parse(
+          decodeURIComponent(
+            atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))
+              .split('')
+              .map((char) =>
+                `%${(`00${char.charCodeAt(0).toString(16)}`).slice(-2)}`
+              )
+              .join('')
+          )
+        );
+
+        const candidate =
+          payload?.hospitalName ||
+          payload?.hospital?.name ||
+          payload?.hospital?.hospitalName;
+
+        if (typeof candidate === 'string' && candidate.trim()) {
+          return candidate.trim();
+        }
+      }
+    } catch {
+      // JWT may not contain hospital information.
+    }
+
+    return 'Hospital Management System';
+  }, []);
+
+  const printPaymentReceipt = useCallback(
+    async (payment: Payment) => {
+      /*
+       * A payment is allocated to charges by the billing backend, but the
+       * payment record does not always contain a chargeId. Therefore, when
+       * chargeId is unavailable, load the patient's charges and payments
+       * directly before calculating the receipt balance.
+       *
+       * Balance due is always:
+       *     total patient charges - total patient payments
+       *
+       * This prevents the receipt from displaying "Not available".
+       */
+      let charge = payment.chargeId
+        ? charges.find((item) => item._id === payment.chargeId)
+        : undefined;
+
+      let patientCharges: Charge[] = [];
+      let patientPayments: Payment[] = [];
+
+      const patientId =
+        typeof payment.patientId === 'string'
+          ? payment.patientId
+          : payment.patientId?._id;
+
+      if (patientId) {
+        try {
+          const [chargeResult, paymentResult] =
+            await Promise.all([
+              request<PageResult<Charge>>(
+                `/charges?patientId=${encodeURIComponent(patientId)}&page=1&limit=100`
+              ),
+              request<PageResult<Payment>>(
+                `/payments?patientId=${encodeURIComponent(patientId)}&page=1&limit=100`
+              ),
+            ]);
+
+          patientCharges = chargeResult?.items || [];
+          patientPayments = paymentResult?.items || [];
+
+          if (!charge && payment.chargeId) {
+            charge = patientCharges.find(
+              (item) => item._id === payment.chargeId
+            );
+          }
+        } catch (error) {
+          console.error(
+            'Failed to load complete billing totals for receipt:',
+            error
+          );
+        }
+      }
+
+      const patientName = getPatientName(payment.patientId);
+      const patientMeta = getPatientMeta(payment.patientId) || 'No MRN';
+      const amountPaid = Number(payment.amount ?? 0);
+
+      const chargeAmount = charge
+        ? Number(charge.netAmount ?? charge.grossAmount ?? 0)
+        : patientCharges.reduce(
+            (total, item) =>
+              total + Number(item.netAmount ?? item.grossAmount ?? 0),
+            0
+          );
+
+      const recordedPaid = charge
+        ? Number(charge.amountPaid ?? amountPaid)
+        : patientPayments.reduce(
+            (total, item) => total + Number(item.amount ?? 0),
+            0
+          );
+
+      const balance = Math.max(
+        0,
+        chargeAmount - recordedPaid
+      );
+
+      const currency =
+        charge?.currency ||
+        patientCharges.find((item) => item.currency)?.currency ||
+        'NGN';
+
+      const escapeHtml = (value: unknown) =>
+        String(value ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+
+      const hospitalName = escapeHtml(getHospitalDisplayName());
+      const receiptNumber = escapeHtml(
+        payment.receiptNumber || payment._id
+      );
+      const description = escapeHtml(
+        charge?.description || 'Payment received'
+      );
+      const department = escapeHtml(
+        charge?.departmentName ||
+          (charge?.sourceModule ? formatLabel(charge.sourceModule) : '') ||
+          'Billing'
+      );
+      const serviceCode = escapeHtml(
+        charge?.serviceCode || 'N/A'
+      );
+      const method = escapeHtml(formatLabel(payment.method));
+      const status = escapeHtml(formatLabel(payment.status));
+      const reconciliation = escapeHtml(
+        formatLabel(payment.reconciliationStatus)
+      );
+      const reference = escapeHtml(payment.reference || 'N/A');
+      const provider = escapeHtml(payment.provider || 'N/A');
+      const providerTransactionId = escapeHtml(
+        payment.providerTransactionId || 'N/A'
+      );
+      const notes = payment.notes
+        ? escapeHtml(payment.notes)
+        : '';
+      const paidAt = escapeHtml(formatDateTime(payment.paidAt));
+      const patient = escapeHtml(patientName);
+      const mrn = escapeHtml(patientMeta);
+      const amountPaidText = escapeHtml(
+        formatMoney(amountPaid, currency)
+      );
+      const chargeAmountText = escapeHtml(
+        formatMoney(chargeAmount, currency)
+      );
+      const recordedPaidText = escapeHtml(
+        formatMoney(recordedPaid, currency)
+      );
+      const balanceText = escapeHtml(
+        formatMoney(balance, currency)
+      );
+      const transactionId = escapeHtml(payment._id);
+      const generatedAt = escapeHtml(formatDateTime(new Date().toISOString()));
+
+      const invoiceWindow = window.open(
+        '',
+        '_blank',
+        'width=900,height=1100,resizable=yes,scrollbars=yes'
+      );
+
+      if (!invoiceWindow) {
+        setError('Unable to open the invoice window. Please allow pop-ups for this site.');
+        return;
+      }
+
+      invoiceWindow.document.open();
+      invoiceWindow.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${hospitalName} - Payment Invoice ${receiptNumber}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #f1f5f9;
+      color: #0f172a;
+      font-family: Arial, Helvetica, sans-serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .page {
+      width: 190mm;
+      height: 277mm;
+      max-height: 277mm;
+      margin: 10mm auto;
+      background: #fff;
+      padding: 0;
+      overflow: hidden;
+      box-sizing: border-box;
+      page-break-after: avoid;
+      break-after: avoid-page;
+    }
+    .top {
+      display: flex;
+      justify-content: space-between;
+      gap: 32px;
+      border-bottom: 2px solid #0f172a;
+      padding-bottom: 18px;
+    }
+    .hospital {
+      font-size: 25px;
+      font-weight: 800;
+      line-height: 1.15;
+    }
+    .subtitle {
+      margin-top: 7px;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .invoice-meta { text-align: right; min-width: 190px; }
+    .label {
+      color: #94a3b8;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .value {
+      margin-top: 4px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .section {
+      margin-top: 18px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .section-title {
+      margin-bottom: 10px;
+      color: #64748b;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+    }
+    .patient-grid, .payment-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 18px;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 12px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .patient-name { font-size: 17px; font-weight: 800; }
+    .muted { margin-top: 4px; color: #64748b; font-size: 11px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th {
+      background: #f8fafc;
+      color: #64748b;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      text-align: left;
+      padding: 11px;
+      border-bottom: 1px solid #cbd5e1;
+    }
+    td { padding: 9px 8px; font-size: 10px; border-bottom: 1px solid #e2e8f0; vertical-align: top; overflow-wrap: anywhere; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
+    .right { text-align: right; }
+    .strong { font-weight: 800; }
+    .totals { margin-top: 18px; margin-left: auto; width: 330px; }
+    .total-row { display: flex; justify-content: space-between; padding: 7px 0; font-size: 12px; }
+    .total-row.final { border-top: 2px solid #0f172a; margin-top: 5px; padding-top: 12px; font-size: 16px; font-weight: 800; }
+    .status {
+      display: inline-block;
+      border: 1px solid #bbf7d0;
+      background: #f0fdf4;
+      color: #15803d;
+      border-radius: 999px;
+      padding: 5px 9px;
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .footer {
+      margin-top: 24px;
+      padding-top: 15px;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      color: #64748b;
+      font-size: 9px;
+      line-height: 1.5;
+    }
+    .print-button {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      border: 0;
+      border-radius: 9px;
+      background: #1b7b68;
+      color: white;
+      padding: 11px 17px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    @page {
+      size: A4 portrait;
+      margin: 10mm;
+    }
+
+    @media print {
+      html {
+        width: 210mm;
+        height: 297mm;
+      }
+
+      body {
+        width: 210mm;
+        height: 297mm;
+        margin: 0;
+        padding: 0;
+        background: white;
+        overflow: hidden;
+      }
+
+      .page {
+        width: 190mm;
+        height: 277mm;
+        max-height: 277mm;
+        min-height: 277mm;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        page-break-before: avoid;
+        page-break-after: avoid;
+        page-break-inside: avoid;
+        break-before: avoid-page;
+        break-after: avoid-page;
+        break-inside: avoid-page;
+      }
+
+      .section,
+      .patient-grid,
+      .payment-grid,
+      table,
+      tr,
+      .footer {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .print-button { display: none; }
+    }
+    @media (max-width: 760px) {
+      .page { width: auto; min-height: auto; margin: 0; padding: 24px; }
+      .top, .patient-grid, .payment-grid { grid-template-columns: 1fr; display: grid; }
+      .invoice-meta { text-align: left; }
+      .totals { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="top">
+      <div>
+        <div class="hospital">${hospitalName}</div>
+        <div class="subtitle">Payment Invoice / Receipt</div>
+      </div>
+      <div class="invoice-meta">
+        <div class="label">Receipt Number</div>
+        <div class="value">${receiptNumber}</div>
+        <div style="height:12px"></div>
+        <div class="label">Payment Date</div>
+        <div class="value">${paidAt}</div>
+      </div>
+    </header>
+
+    <section class="section">
+      <div class="section-title">Patient Information</div>
+      <div class="patient-grid">
+        <div>
+          <div class="label">Patient Name</div>
+          <div class="patient-name">${patient}</div>
+          <div class="muted">${mrn}</div>
+        </div>
+        <div>
+          <div class="label">Transaction ID</div>
+          <div class="value">${transactionId}</div>
+          <div class="muted">Billing account: ${escapeHtml(payment.billingAccountId || 'N/A')}</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-title">Transaction Details</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th>Department</th>
+            <th>Service Code</th>
+            <th class="right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="strong">${description}</span></td>
+            <td>${department}</td>
+            <td>${serviceCode}</td>
+            <td class="right strong">${amountPaidText}</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <div class="section-title">Payment Summary</div>
+      <div class="totals">
+        <div class="total-row"><span>Total Charge</span><span>${chargeAmountText}</span></div>
+        <div class="total-row"><span>Amount Paid This Transaction</span><span>${amountPaidText}</span></div>
+        <div class="total-row"><span>Total Paid on Charge</span><span>${recordedPaidText}</span></div>
+        <div class="total-row final"><span>Balance Due</span><span>${balanceText}</span></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-title">Payment Information</div>
+      <div class="payment-grid">
+        <div><div class="label">Payment Method</div><div class="value">${method}</div></div>
+        <div><div class="label">Payment Status</div><div class="value"><span class="status">${status}</span></div></div>
+        <div><div class="label">Reference</div><div class="value">${reference}</div></div>
+        <div><div class="label">Reconciliation</div><div class="value">${reconciliation}</div></div>
+        <div><div class="label">Provider</div><div class="value">${provider}</div></div>
+        <div><div class="label">Provider Transaction ID</div><div class="value">${providerTransactionId}</div></div>
+      </div>
+    </section>
+
+    ${notes ? `<section class="section"><div class="section-title">Notes</div><div class="muted" style="font-size:11px;color:#334155">${notes}</div></section>` : ''}
+
+    <footer class="footer">
+      <div>
+        <strong>${hospitalName}</strong><br />
+        This document is a transaction-specific payment invoice/receipt generated from the hospital billing system.
+      </div>
+      <div style="text-align:right">
+        Generated: ${generatedAt}<br />
+        Please retain this document for your records.
+      </div>
+    </footer>
+  </main>
+  <button class="print-button" onclick="window.print()">Print Invoice</button>
+</body>
+</html>`);
+      invoiceWindow.document.close();
+
+      invoiceWindow.onload = () => {
+        invoiceWindow.focus();
+        invoiceWindow.print();
+      };
+
+      // Some browsers may complete document.write before assigning onload.
+      // Keep a short fallback so the standalone invoice still prints.
+      invoiceWindow.setTimeout(() => {
+        try {
+          invoiceWindow.focus();
+          invoiceWindow.print();
+        } catch {
+          // Ignore print errors; the invoice remains open for manual printing.
+        }
+      }, 700);
+    },
+    [charges, getHospitalDisplayName]
+  );
+
   const openChargePayment = (charge: Charge) => {
     if (isChargeFullyPaid(charge)) {
       return;
@@ -1462,9 +1993,7 @@ export default function BillingPage() {
           ? charge.patientId
           : charge.patientId?._id || '',
       billingAccountId:
-        typeof charge.billingAccountId === 'string'
-          ? charge.billingAccountId
-          : '',
+        charge.billingAccountId || '',
       amount:
         getChargeOutstanding(charge).toFixed(2),
     }));
@@ -1499,7 +2028,7 @@ export default function BillingPage() {
               undefined,
 
             billingAccountId:
-              String(paymentForm.billingAccountId ?? '').trim() ||
+              paymentForm.billingAccountId.trim() ||
               undefined,
 
             amount:
@@ -2782,20 +3311,34 @@ export default function BillingPage() {
                         </td>
 
                         <td className="py-3 px-3">
-                          {payment.reconciliationStatus !==
-                            'RECONCILED' && (
+                          <div className="flex items-center gap-3">
                             <button
                               type="button"
                               onClick={() =>
-                                handleReconcile(
-                                  payment._id
-                                )
+                                printPaymentReceipt(payment)
                               }
-                              className="text-[10px] font-bold text-[#1b7b68] hover:underline"
+                              className="inline-flex items-center gap-1.5 text-[10px] font-bold text-[#1b7b68] hover:underline"
+                              title="Print payment receipt"
                             >
-                              Reconcile
+                              <Printer className="w-3.5 h-3.5" />
+                              Print Receipt
                             </button>
-                          )}
+
+                            {payment.reconciliationStatus !==
+                              'RECONCILED' && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleReconcile(
+                                    payment._id
+                                  )
+                                }
+                                className="text-[10px] font-bold text-[#1b7b68] hover:underline"
+                              >
+                                Reconcile
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )
@@ -4568,4 +5111,5 @@ export default function BillingPage() {
       </Modal>
     </div>
   );
+
 }
