@@ -23,6 +23,7 @@ import {
   MapPin,
   CheckCircle2,
   FileText,
+  Receipt,
 } from 'lucide-react';
 import {
   IPatient,
@@ -46,6 +47,18 @@ export default function PatientsPage() {
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [isVitalsOpen, setIsVitalsOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<IPatient | null>(null);
+
+  type PatientBillingSummary = {
+    totalCharges?: number | string | null;
+    totalPaid?: number | string | null;
+    totalPayments?: number | string | null;
+    outstandingBalance?: number | string | null;
+  };
+
+  const [patientBillingSummary, setPatientBillingSummary] =
+    useState<PatientBillingSummary | null>(null);
+  const [loadingPatientBilling, setLoadingPatientBilling] = useState(false);
+  const [patientBillingError, setPatientBillingError] = useState<string | null>(null);
 
   // Form States
   const [registerForm, setRegisterForm] = useState<CreatePatientDTO>({
@@ -74,6 +87,70 @@ export default function PatientsPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const API_BASE_URL =
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    'https://medxverse-backend.onrender.com';
+
+  const loadPatientBilling = useCallback(async (patientId: string) => {
+    setLoadingPatientBilling(true);
+    setPatientBillingError(null);
+    setPatientBillingSummary(null);
+
+    try {
+      const token =
+        typeof window !== 'undefined'
+          ? localStorage.getItem('token')
+          : null;
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/billing/patients/${encodeURIComponent(patientId)}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token
+              ? {
+                  Authorization: `Bearer ${token}`,
+                }
+              : {}),
+          },
+        }
+      );
+
+      const json = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          json?.message ||
+            json?.error ||
+            'Unable to load patient billing information.'
+        );
+      }
+
+      const billingData = json?.data ?? json;
+      setPatientBillingSummary(billingData?.summary ?? null);
+    } catch (err: any) {
+      console.error('Failed to load patient billing:', err);
+      setPatientBillingError(
+        err?.message || 'Unable to load patient billing information.'
+      );
+      setPatientBillingSummary(null);
+    } finally {
+      setLoadingPatientBilling(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedPatient?._id) {
+      setPatientBillingSummary(null);
+      setPatientBillingError(null);
+      setLoadingPatientBilling(false);
+      return;
+    }
+
+    loadPatientBilling(selectedPatient._id);
+  }, [selectedPatient?._id, loadPatientBilling]);
 
   // Fetch Patients List
   const loadPatients = useCallback(async () => {
@@ -154,6 +231,21 @@ export default function PatientsPage() {
       genotype: 'AA',
       policyNumber: '',
     });
+  };
+
+  const formatPatientBillingMoney = (value?: number | string | null) => {
+    const amount = Number(value ?? 0);
+
+    if (!Number.isFinite(amount)) {
+      return '₦0.00';
+    }
+
+    return new Intl.NumberFormat('en-NG', {
+      style: 'currency',
+      currency: 'NGN',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
   };
 
   const calculateAge = (dobString: string) => {
@@ -806,6 +898,67 @@ export default function PatientsPage() {
                   <span className="font-semibold">{selectedPatient.policyNumber || 'N/A'}</span>
                 </div>
               </div>
+            </div>
+
+            {/* Billing Summary */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-extrabold text-slate-800 flex items-center gap-2">
+                  <Receipt className="w-4 h-4 text-[#1b7b68]" />
+                  <span>Billing Summary</span>
+                </h3>
+              </div>
+
+              {loadingPatientBilling ? (
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                    <div className="w-4 h-4 rounded-full border-2 border-[#1b7b68]/30 border-t-[#1b7b68] animate-spin" />
+                    Loading billing information...
+                  </div>
+                </div>
+              ) : patientBillingError ? (
+                <div className="rounded-2xl border border-rose-100 bg-rose-50/60 p-4">
+                  <p className="text-xs font-semibold text-rose-600">
+                    {patientBillingError}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
+                    <p className="text-[10px] font-medium text-slate-400">
+                      Total Charges
+                    </p>
+                    <p className="mt-1 text-sm font-extrabold text-slate-800">
+                      {formatPatientBillingMoney(
+                        patientBillingSummary?.totalCharges
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
+                    <p className="text-[10px] font-medium text-slate-400">
+                      Amount Paid
+                    </p>
+                    <p className="mt-1 text-sm font-extrabold text-emerald-700">
+                      {formatPatientBillingMoney(
+                        patientBillingSummary?.totalPaid ??
+                          patientBillingSummary?.totalPayments
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4">
+                    <p className="text-[10px] font-medium text-slate-400">
+                      Balance Owed
+                    </p>
+                    <p className="mt-1 text-sm font-extrabold text-amber-700">
+                      {formatPatientBillingMoney(
+                        patientBillingSummary?.outstandingBalance
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Vitals History */}
