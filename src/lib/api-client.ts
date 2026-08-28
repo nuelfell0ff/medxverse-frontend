@@ -32,7 +32,7 @@ apiClient.interceptors.response.use(
     
     if (error.response?.status === 401 && typeof window !== 'undefined') {
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      window.location.href = '/auth/login';
     }
 
     return Promise.reject(new Error(message));
