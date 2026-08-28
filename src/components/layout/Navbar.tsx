@@ -23,12 +23,12 @@ export default function Navbar({ isSidebarCollapsed, onToggleSidebar }: NavbarPr
   const hospitalName = account?.name || 'Hospital';
 
   return (
-    <header className="fixed top-0 left-0 right-0 h-16 bg-white/95 backdrop-blur-md border-b border-slate-100 z-40 px-4 md:px-6 flex items-center justify-between transition-all duration-300 font-sans">
+    <header className="fixed top-0 left-0 right-0 w-full h-16 bg-white/95 backdrop-blur-md border-b border-slate-100 z-50 px-4 md:px-6 flex items-center justify-between transition-all duration-300 font-sans">
       {/* Left: Brand Logo & Gemini-Style Sidebar Toggle */}
-      <div className="flex items-center gap-3 md:gap-5 min-w-[240px]">
+      <div className="flex items-center gap-3 md:gap-5 min-w-0 sm:min-w-[240px]">
         <button
           onClick={onToggleSidebar}
-          className="p-2 rounded-xl text-slate-500 hover:text-[#1b7b68] hover:bg-[#e8f5f3] transition-all duration-200 active:scale-95"
+          className="p-2 rounded-xl text-slate-500 hover:text-[#1b7b68] hover:bg-[#e8f5f3] transition-all duration-200 active:scale-95 shrink-0"
           title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           aria-label="Toggle sidebar"
         >
@@ -65,7 +65,7 @@ export default function Navbar({ isSidebarCollapsed, onToggleSidebar }: NavbarPr
       </div>
 
       {/* Right Actions & Profile */}
-      <div className="flex items-center gap-2 md:gap-3">
+      <div className="flex items-center gap-2 md:gap-3 shrink-0">
         <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-all">
           <Settings className="w-5 h-5" />
         </button>

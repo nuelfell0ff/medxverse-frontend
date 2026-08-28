@@ -45,10 +45,10 @@ export default function Sidebar({ isCollapsed, isMobileOpen, onCloseMobile }: Si
 
   return (
     <>
-      {/* Mobile Backdrop */}
+      {/* Mobile Backdrop - Positioned below Navbar (top-16) with z-30 */}
       {isMobileOpen && (
         <div
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden transition-opacity"
+          className="fixed top-16 inset-x-0 bottom-0 bg-slate-900/40 backdrop-blur-sm z-30 md:hidden transition-opacity"
           onClick={onCloseMobile}
         />
       )}

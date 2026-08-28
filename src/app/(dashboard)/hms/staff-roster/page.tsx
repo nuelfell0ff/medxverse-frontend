@@ -521,6 +521,20 @@ function getShiftEndDateTimeForUi(
   return end;
 }
 
+function isShiftCurrentlyOpen(shift: Shift, now = new Date()): boolean {
+  const shiftStart = getShiftDateTimeForUi(shift.date, shift.startTime);
+  const shiftEnd = getShiftEndDateTimeForUi(
+    shift.date,
+    shift.startTime,
+    shift.endTime
+  );
+
+  // Only shifts occurring today and currently within their start/end window
+  // are considered open for attendance. The `isOpenShift` flag is intentionally
+  // not used here because it controls open-shift staffing, not attendance.
+  return now >= shiftStart && now <= shiftEnd;
+}
+
 function getLiveAttendanceStatus(
   shift: Shift,
   assignment: ShiftAssignment
@@ -4653,74 +4667,54 @@ export default function RosteringPage() {
           </SectionCard>
 
           <SectionCard
-            title="Today's Assigned Shift"
-            subtitle="Sign in or sign out of your own assigned shift. The server records the exact time automatically."
+            title="Open Attendance"
+            subtitle="Attendance is available only for your assigned shift that is active right now."
             icon={<Clock3 className="w-4 h-4" />}
+            action={
+              <StatusBadge className="bg-[#e8f5f3] text-[#1b7b68] border-[#1b7b68]/10">
+                Live shift only
+              </StatusBadge>
+            }
           >
             {(() => {
-              const currentUserId =
-                getCurrentUserId();
+              const currentUserId = getCurrentUserId();
+              const now = new Date();
 
-              const todayShifts =
-                calendarShifts.filter(
-                  ({ shift }) => {
-                    const today =
-                      new Date();
-
-                    const date =
-                      new Date(
-                        shift.date
-                      );
-
-                    return (
-                      date.getFullYear() ===
-                        today.getFullYear() &&
-                      date.getMonth() ===
-                        today.getMonth() &&
-                      date.getDate() ===
-                        today.getDate()
-                    );
+              const openAssignments = calendarShifts.flatMap(
+                ({ shift, roster }) => {
+                  if (!shift._id || !isShiftCurrentlyOpen(shift, now)) {
+                    return [];
                   }
-                );
 
-              const myAssignments =
-                todayShifts.flatMap(
-                  ({
+                  const assignments = (shift.assignedStaff || []).filter(
+                    (assignment) => {
+                      const staffId = getId(assignment.staffId);
+                      return (
+                        !!currentUserId &&
+                        !!staffId &&
+                        staffId === currentUserId
+                      );
+                    }
+                  );
+
+                  return assignments.map((assignment, index) => ({
                     shift,
                     roster,
-                  }) =>
-                    shift.assignedStaff
-                      .filter(
-                        (assignment) =>
-                          !!currentUserId &&
-                          getId(
-                            assignment.staffId
-                          ) === currentUserId
-                      )
-                      .map(
-                        (
-                          assignment,
-                          index
-                        ) => ({
-                          shift,
-                          roster,
-                          assignment,
-                          index,
-                        })
-                      )
-                );
+                    assignment,
+                    index,
+                  }));
+                }
+              );
 
-              if (
-                myAssignments.length === 0
-              ) {
+              if (openAssignments.length === 0) {
                 return (
                   <div className="py-10 text-center">
-                    <Users className="w-7 h-7 text-slate-300 mx-auto" />
-                    <p className="text-xs font-semibold text-slate-500 mt-2">
-                      You have no assigned shift today
+                    <Clock3 className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p className="text-sm font-bold text-slate-600 mt-3">
+                      No open attendance right now
                     </p>
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Your sign-in controls will appear here when you are rostered.
+                    <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                      Your attendance controls appear here only while one of your assigned shifts is within its scheduled start and end time today.
                     </p>
                   </div>
                 );
@@ -4728,115 +4722,81 @@ export default function RosteringPage() {
 
               return (
                 <div className="space-y-3">
-                  {myAssignments.map(
-                    ({
-                      shift,
-                      roster,
-                      assignment,
-                      index,
-                    }) => {
-                      const status =
-                        getLiveAttendanceStatus(
-                          shift,
-                          assignment
-                        );
+                  {openAssignments.map(
+                    ({ shift, roster, assignment, index }) => {
+                      const status = getLiveAttendanceStatus(
+                        shift,
+                        assignment
+                      );
 
                       return (
                         <div
                           key={`${shift._id}-${assignment._id || index}`}
-                          className="rounded-2xl border border-slate-100 bg-slate-50/50 p-4"
+                          className="rounded-2xl border border-[#1b7b68]/20 bg-[#e8f5f3]/30 p-4"
                         >
                           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                            <div>
-                              <p className="text-xs font-extrabold text-slate-800">
-                                {roster.name}
-                              </p>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-xs font-extrabold text-slate-800">
+                                  {roster.name}
+                                </p>
+                                <StatusBadge className={getAttendanceStatusClasses(status)}>
+                                  {formatLabel(status)}
+                                </StatusBadge>
+                              </div>
 
                               <p className="text-[10px] text-slate-500 mt-1">
-                                {formatLabel(
-                                  shift.shiftType
-                                )}{' '}
-                                • {shift.startTime} –{' '}
-                                {shift.endTime}
+                                {formatLabel(shift.shiftType)} • {shift.startTime} – {shift.endTime}
                               </p>
 
                               <p className="text-[10px] text-slate-400 mt-1">
                                 {shift.location ||
                                   shift.departmentName ||
                                   shift.wardName ||
-                                  formatLabel(
-                                    shift.areaType
-                                  )}
+                                  formatLabel(shift.areaType)}
                               </p>
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-2">
-                              <StatusBadge
-                                className={getAttendanceStatusClasses(
-                                  status
-                                )}
-                              >
-                                {formatLabel(status)}
-                              </StatusBadge>
-
+                            <div className="flex flex-wrap items-center gap-2 shrink-0">
                               {assignment.signedInAt && (
                                 <span className="text-[10px] text-slate-400">
-                                  In:{' '}
-                                  {formatDateTime(
-                                    assignment.signedInAt
-                                  )}
+                                  In: {formatDateTime(assignment.signedInAt)}
                                 </span>
                               )}
 
                               {assignment.signedOutAt && (
                                 <span className="text-[10px] text-slate-400">
-                                  Out:{' '}
-                                  {formatDateTime(
-                                    assignment.signedOutAt
-                                  )}
+                                  Out: {formatDateTime(assignment.signedOutAt)}
                                 </span>
                               )}
 
-                              {!assignment.signedInAt &&
-                                status !==
-                                  'ABSENT' && (
-                                  <button
-                                    type="button"
-                                    disabled={
-                                      attendanceSubmitting
-                                    }
-                                    onClick={() =>
-                                      void handleSignIn(
-                                        shift,
-                                        assignment
-                                      )
-                                    }
-                                    className="px-3 py-2 rounded-xl bg-[#1b7b68] text-white text-[10px] font-bold flex items-center gap-1.5 disabled:opacity-50"
-                                  >
-                                    <LogIn className="w-3 h-3" />
-                                    Sign In
-                                  </button>
-                                )}
+                              {!assignment.signedInAt && status !== 'ABSENT' && (
+                                <button
+                                  type="button"
+                                  disabled={attendanceSubmitting}
+                                  onClick={() =>
+                                    void handleSignIn(shift, assignment)
+                                  }
+                                  className="px-3 py-2 rounded-xl bg-[#1b7b68] text-white text-[10px] font-bold flex items-center gap-1.5 disabled:opacity-50"
+                                >
+                                  <LogIn className="w-3 h-3" />
+                                  Mark Present
+                                </button>
+                              )}
 
-                              {assignment.signedInAt &&
-                                !assignment.signedOutAt && (
-                                  <button
-                                    type="button"
-                                    disabled={
-                                      attendanceSubmitting
-                                    }
-                                    onClick={() =>
-                                      void handleSignOut(
-                                        shift,
-                                        assignment
-                                      )
-                                    }
-                                    className="px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-[10px] font-bold flex items-center gap-1.5 disabled:opacity-50"
-                                  >
-                                    <LogOut className="w-3 h-3" />
-                                    Sign Out
-                                  </button>
-                                )}
+                              {assignment.signedInAt && !assignment.signedOutAt && (
+                                <button
+                                  type="button"
+                                  disabled={attendanceSubmitting}
+                                  onClick={() =>
+                                    void handleSignOut(shift, assignment)
+                                  }
+                                  className="px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-[10px] font-bold flex items-center gap-1.5 disabled:opacity-50"
+                                >
+                                  <LogOut className="w-3 h-3" />
+                                  Sign Out
+                                </button>
+                              )}
                             </div>
                           </div>
 
@@ -4844,28 +4804,20 @@ export default function RosteringPage() {
                             <label className="block text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mb-1.5">
                               Attendance note
                             </label>
-
                             <textarea
                               rows={2}
-                              value={
-                                attendanceNote
-                              }
+                              value={attendanceNote}
                               onChange={(event) =>
-                                setAttendanceNote(
-                                  event.target.value
-                                )
+                                setAttendanceNote(event.target.value)
                               }
-                              placeholder="Optional note about anything that happened during the shift..."
+                              placeholder="Optional attendance note..."
                               className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs resize-none focus:outline-none focus:border-[#1b7b68]"
                             />
                           </div>
 
                           {assignment.attendanceNotes && (
                             <p className="text-[10px] text-slate-500 mt-2">
-                              Previous note:{' '}
-                              {
-                                assignment.attendanceNotes
-                              }
+                              Previous note: {assignment.attendanceNotes}
                             </p>
                           )}
                         </div>
