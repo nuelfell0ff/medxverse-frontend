@@ -6,10 +6,12 @@ interface AuthState {
   account: AccountPayload | null;
   token: string | null;
   isAuthenticated: boolean;
+  hasHydrated: boolean;
 
   // Actions
   setAuth: (account: AccountPayload, token: string) => void;
   logout: () => void;
+  setHasHydrated: (state: boolean) => void;
 
   // Helper Methods
   hasModule: (moduleKey: string | string[]) => boolean;
@@ -50,6 +52,7 @@ export const useAuthStore = create<AuthState>()(
       account: null,
       token: null,
       isAuthenticated: false,
+      hasHydrated: false,
 
       setAuth: (account, token) => {
         const hospitalId = extractHospitalId(account);
@@ -73,6 +76,10 @@ export const useAuthStore = create<AuthState>()(
         }
 
         set({ account: null, token: null, isAuthenticated: false });
+      },
+
+      setHasHydrated: (state: boolean) => {
+        set({ hasHydrated: state });
       },
 
       getHospitalId: () => {
@@ -101,8 +108,11 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'medxverse-auth-storage',
       storage: createJSONStorage(() => localStorage),
-      // Syncs standalone 'token' and 'hospitalId' whenever page refreshes or store rehydrates
       onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.setHasHydrated(true);
+        }
+
         if (typeof window !== 'undefined' && state) {
           if (state.token) {
             localStorage.setItem('token', state.token);

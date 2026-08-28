@@ -18,30 +18,46 @@ interface NavbarProps {
 
 export default function Navbar({ isSidebarCollapsed, onToggleSidebar }: NavbarProps) {
   const pathname = usePathname();
-  const { account } = useAuthStore();
+  const { account, hasHydrated } = useAuthStore();
   const isHmo = account?.accountType === 'HMO';
 
-  // Fallback immediately to 'Hospital' so it never skips execution on load
   const hospitalName = account?.name || 'Hospital';
   const systemSuffix = isHmo ? 'HMO Portal' : 'Hospital Management System';
 
+  // Instant Title Sync
   useEffect(() => {
-    // Convert route path to a readable page title (e.g. "/patients" -> "Patients")
+    let currentHospitalName = account?.name;
+
+    // Fallback directly to stored JSON if Zustand is still hydrating on hard refresh
+    if (!currentHospitalName && typeof window !== 'undefined') {
+      try {
+        const rawStorage = localStorage.getItem('medxverse-auth-storage');
+        if (rawStorage) {
+          const parsed = JSON.parse(rawStorage);
+          currentHospitalName = parsed?.state?.account?.name;
+        }
+      } catch (err) {
+        console.error('Failed to parse cached title:', err);
+      }
+    }
+
+    if (!currentHospitalName) return;
+
     const pathSegments = pathname.split('/').filter(Boolean);
     const rawPageName = pathSegments[pathSegments.length - 1] || '';
     
-    // Capitalize page name
     const pageTitle = rawPageName
       ? rawPageName.charAt(0).toUpperCase() + rawPageName.slice(1).replace(/-/g, ' ')
       : '';
 
-    // Set title immediately on render
-    if (!pageTitle || pageTitle.toLowerCase() === 'dashboard') {
-      document.title = `${hospitalName} ${systemSuffix}`;
+    const finalSuffix = (account?.accountType === 'HMO' || !account) && systemSuffix;
+
+    if (!pageTitle || pageTitle.toLowerCase() === 'dashboard' || pageTitle.toLowerCase() === 'hms') {
+      document.title = `${currentHospitalName} | ${systemSuffix}`;
     } else {
-      document.title = `${pageTitle} | ${hospitalName} ${systemSuffix}`;
+      document.title = `${pageTitle} | ${currentHospitalName} ${systemSuffix}`;
     }
-  }, [pathname, account?.name, hospitalName, systemSuffix]);
+  }, [pathname, account, hasHydrated, systemSuffix]);
 
   return (
     <header className="fixed top-0 left-0 right-0 w-full h-16 bg-white/95 backdrop-blur-md border-b border-slate-100 z-50 px-4 md:px-6 flex items-center justify-between transition-all duration-300 font-sans">

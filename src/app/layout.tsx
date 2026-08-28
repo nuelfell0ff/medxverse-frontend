@@ -13,10 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: {
-    default: "MedxVerse | Hospital Management System",
-    template: "%s | Hospital Management System",
-  },
+  title: "MedxVerse | Hospital Management System",
   description: "Comprehensive Healthcare & Hospital Management System",
 };
 
