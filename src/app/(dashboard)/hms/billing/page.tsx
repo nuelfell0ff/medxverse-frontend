@@ -2430,7 +2430,7 @@ export default function BillingPage() {
   /* ======================================================================== */
 
   return (
-    <div className="p-6 max-w-full mx-auto space-y-6 font-sans pb-12">
+    <div className="p-6 w mx-auto space-y-6 font-sans pb-12">
       {/* ==================================================================== */}
       {/* HEADER                                                                */}
       {/* ==================================================================== */}
@@ -4992,15 +4992,15 @@ export default function BillingPage() {
       {/* PATIENT SEARCH MODAL                                                  */}
       {/* ==================================================================== */}
 
-      <Modal
-        open={
-          patientSearchContext !== null
-        }
-        title="Select Patient"
-        subtitle="Search hospital patients by name or MRN."
-        onClose={closePatientSearch}
-        width="max-w-xl"
-      >
+        <Modal
+          open={
+            patientSearchContext !== null
+          }
+          title="Select Patient"
+          subtitle="Search hospital patients by name or MRN."
+          onClose={closePatientSearch}
+          width="max-w-xl"
+        >
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1.5">

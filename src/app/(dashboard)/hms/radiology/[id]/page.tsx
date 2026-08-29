@@ -1843,7 +1843,7 @@ export default function RadiologyOrderDetailsPage() {
 
   if (error || !order) {
     return (
-      <div className="p-6 max-w-7xl mx-auto">
+      <div className="p-6 max-w-full mx-auto">
         <button
           type="button"
           onClick={() => router.back()}
