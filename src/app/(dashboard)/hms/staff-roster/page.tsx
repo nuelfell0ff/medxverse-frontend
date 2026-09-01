@@ -423,6 +423,23 @@ function getStaffRole(value?: Staff | null): string {
 function getCurrentUserId(): string {
   if (typeof window === 'undefined') return '';
 
+  const persistedAuth = localStorage.getItem('medxverse-auth-storage');
+  if (persistedAuth) {
+    try {
+      const parsed = JSON.parse(persistedAuth);
+      const account = parsed?.state?.account;
+      const accountId =
+        account?.staffId ||
+        account?.userId ||
+        account?.id ||
+        account?._id;
+
+      if (accountId) return String(accountId);
+    } catch {
+      // Fall through to the legacy storage and token lookups.
+    }
+  }
+
   for (const key of ['userId', 'staffId', 'currentUserId']) {
     const value = localStorage.getItem(key);
     if (value) return value;
@@ -1025,6 +1042,9 @@ export default function RosteringPage() {
   const [attendanceEndDate, setAttendanceEndDate] =
     useState(toInputDate(new Date()));
 
+  const [attendanceNow, setAttendanceNow] =
+    useState(() => new Date());
+
   const [attendanceReport, setAttendanceReport] =
     useState<AttendanceReport | null>(null);
 
@@ -1111,6 +1131,14 @@ export default function RosteringPage() {
 
   const [submittingAvailability, setSubmittingAvailability] =
     useState(false);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setAttendanceNow(new Date());
+    }, 30000);
+
+    return () => window.clearInterval(timer);
+  }, []);
 
   /* ==========================================================================
      API
@@ -2167,16 +2195,6 @@ export default function RosteringPage() {
   ) => {
     if (!shift._id) return;
 
-    const currentUserId = getCurrentUserId();
-    const staffId = getId(assignment.staffId);
-
-    if (!currentUserId || currentUserId !== staffId) {
-      setActionError(
-        'You can only sign in for your own assigned shift.'
-      );
-      return;
-    }
-
     try {
       setAttendanceSubmitting(true);
       setActionError(null);
@@ -2186,6 +2204,7 @@ export default function RosteringPage() {
         {
           method: 'POST',
           body: JSON.stringify({
+            staffId: getId(assignment.staffId),
             notes:
               attendanceNote.trim() ||
               undefined,
@@ -2221,16 +2240,6 @@ export default function RosteringPage() {
   ) => {
     if (!shift._id) return;
 
-    const currentUserId = getCurrentUserId();
-    const staffId = getId(assignment.staffId);
-
-    if (!currentUserId || currentUserId !== staffId) {
-      setActionError(
-        'You can only sign out of your own assigned shift.'
-      );
-      return;
-    }
-
     try {
       setAttendanceSubmitting(true);
       setActionError(null);
@@ -2240,6 +2249,7 @@ export default function RosteringPage() {
         {
           method: 'POST',
           body: JSON.stringify({
+            staffId: getId(assignment.staffId),
             notes:
               attendanceNote.trim() ||
               undefined,
@@ -4677,8 +4687,7 @@ export default function RosteringPage() {
             }
           >
             {(() => {
-              const currentUserId = getCurrentUserId();
-              const now = new Date();
+              const now = attendanceNow;
 
               const openAssignments = calendarShifts.flatMap(
                 ({ shift, roster }) => {
@@ -4687,14 +4696,7 @@ export default function RosteringPage() {
                   }
 
                   const assignments = (shift.assignedStaff || []).filter(
-                    (assignment) => {
-                      const staffId = getId(assignment.staffId);
-                      return (
-                        !!currentUserId &&
-                        !!staffId &&
-                        staffId === currentUserId
-                      );
-                    }
+                    (assignment) => !!getId(assignment.staffId)
                   );
 
                   return assignments.map((assignment, index) => ({
@@ -4721,109 +4723,128 @@ export default function RosteringPage() {
               }
 
               return (
-                <div className="space-y-3">
-                  {openAssignments.map(
-                    ({ shift, roster, assignment, index }) => {
-                      const status = getLiveAttendanceStatus(
-                        shift,
-                        assignment
-                      );
+                <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                  <table className="w-full min-w-[1150px] text-left">
+                    <thead className="bg-slate-50 text-[9px] uppercase tracking-wider font-extrabold text-slate-400">
+                      <tr>
+                        <th className="px-4 py-3">Staff</th>
+                        <th className="px-4 py-3">Date</th>
+                        <th className="px-4 py-3">Shift</th>
+                        <th className="px-4 py-3">Role</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3">Signed In</th>
+                        <th className="px-4 py-3">Signed Out</th>
+                        <th className="px-4 py-3">Late</th>
+                        <th className="px-4 py-3">Notes</th>
+                        <th className="px-4 py-3">Action</th>
+                      </tr>
+                    </thead>
 
-                      return (
-                        <div
-                          key={`${shift._id}-${assignment._id || index}`}
-                          className="rounded-2xl border border-[#1b7b68]/20 bg-[#e8f5f3]/30 p-4"
-                        >
-                          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="text-xs font-extrabold text-slate-800">
-                                  {roster.name}
+                    <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                      {openAssignments.map(
+                        ({ shift, assignment, index }) => {
+                          const status = getLiveAttendanceStatus(
+                            shift,
+                            assignment
+                          );
+                          const staff = resolveStaff(assignment.staffId);
+
+                          return (
+                            <tr
+                              key={`${shift._id}-${assignment._id || index}`}
+                              className="hover:bg-[#e8f5f3]/20 transition-colors"
+                            >
+                              <td className="px-4 py-3">
+                                <p className="font-bold text-slate-800">
+                                  {getStaffName(staff || assignment.staffId)}
                                 </p>
+                                <p className="text-[9px] text-slate-400">
+                                  {shift.location ||
+                                    shift.departmentName ||
+                                    shift.wardName ||
+                                    formatLabel(shift.areaType)}
+                                </p>
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                {formatDate(shift.date)}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <p className="font-semibold text-slate-700">
+                                  {shift.startTime} – {shift.endTime}
+                                </p>
+                                <p className="text-[9px] text-slate-400 mt-0.5">
+                                  {formatLabel(shift.shiftType)}
+                                </p>
+                              </td>
+                              <td className="px-4 py-3">
+                                {assignment.role || getStaffRole(staff)}
+                              </td>
+                              <td className="px-4 py-3">
                                 <StatusBadge className={getAttendanceStatusClasses(status)}>
                                   {formatLabel(status)}
                                 </StatusBadge>
-                              </div>
-
-                              <p className="text-[10px] text-slate-500 mt-1">
-                                {formatLabel(shift.shiftType)} • {shift.startTime} – {shift.endTime}
-                              </p>
-
-                              <p className="text-[10px] text-slate-400 mt-1">
-                                {shift.location ||
-                                  shift.departmentName ||
-                                  shift.wardName ||
-                                  formatLabel(shift.areaType)}
-                              </p>
-                            </div>
-
-                            <div className="flex flex-wrap items-center gap-2 shrink-0">
-                              {assignment.signedInAt && (
-                                <span className="text-[10px] text-slate-400">
-                                  In: {formatDateTime(assignment.signedInAt)}
-                                </span>
-                              )}
-
-                              {assignment.signedOutAt && (
-                                <span className="text-[10px] text-slate-400">
-                                  Out: {formatDateTime(assignment.signedOutAt)}
-                                </span>
-                              )}
-
-                              {!assignment.signedInAt && status !== 'ABSENT' && (
-                                <button
-                                  type="button"
-                                  disabled={attendanceSubmitting}
-                                  onClick={() =>
-                                    void handleSignIn(shift, assignment)
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-[10px]">
+                                {assignment.signedInAt
+                                  ? formatDateTime(assignment.signedInAt)
+                                  : '—'}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-[10px]">
+                                {assignment.signedOutAt
+                                  ? formatDateTime(assignment.signedOutAt)
+                                  : '—'}
+                              </td>
+                              <td className="px-4 py-3">
+                                {assignment.lateByMinutes
+                                  ? `${assignment.lateByMinutes} min`
+                                  : '—'}
+                              </td>
+                              <td className="px-4 py-3 min-w-[180px]">
+                                <textarea
+                                  rows={1}
+                                  value={attendanceNote}
+                                  onChange={(event) =>
+                                    setAttendanceNote(event.target.value)
                                   }
-                                  className="px-3 py-2 rounded-xl bg-[#1b7b68] text-white text-[10px] font-bold flex items-center gap-1.5 disabled:opacity-50"
-                                >
-                                  <LogIn className="w-3 h-3" />
-                                  Mark Present
-                                </button>
-                              )}
-
-                              {assignment.signedInAt && !assignment.signedOutAt && (
-                                <button
-                                  type="button"
-                                  disabled={attendanceSubmitting}
-                                  onClick={() =>
-                                    void handleSignOut(shift, assignment)
-                                  }
-                                  className="px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-[10px] font-bold flex items-center gap-1.5 disabled:opacity-50"
-                                >
-                                  <LogOut className="w-3 h-3" />
-                                  Sign Out
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="mt-4">
-                            <label className="block text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mb-1.5">
-                              Attendance note
-                            </label>
-                            <textarea
-                              rows={2}
-                              value={attendanceNote}
-                              onChange={(event) =>
-                                setAttendanceNote(event.target.value)
-                              }
-                              placeholder="Optional attendance note..."
-                              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs resize-none focus:outline-none focus:border-[#1b7b68]"
-                            />
-                          </div>
-
-                          {assignment.attendanceNotes && (
-                            <p className="text-[10px] text-slate-500 mt-2">
-                              Previous note: {assignment.attendanceNotes}
-                            </p>
-                          )}
-                        </div>
-                      );
-                    }
-                  )}
+                                  placeholder={assignment.attendanceNotes || '—'}
+                                  className="w-full min-w-[160px] px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-[10px] resize-none focus:outline-none focus:border-[#1b7b68]"
+                                />
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                {!assignment.signedInAt && status !== 'ABSENT' ? (
+                                  <button
+                                    type="button"
+                                    disabled={attendanceSubmitting}
+                                    onClick={() =>
+                                      void handleSignIn(shift, assignment)
+                                    }
+                                    className="px-3 py-2 rounded-xl bg-[#1b7b68] text-white text-[10px] font-bold flex items-center gap-1.5 disabled:opacity-50"
+                                  >
+                                    <LogIn className="w-3 h-3" />
+                                    Mark Present
+                                  </button>
+                                ) : assignment.signedInAt && !assignment.signedOutAt ? (
+                                  <button
+                                    type="button"
+                                    disabled={attendanceSubmitting}
+                                    onClick={() =>
+                                      void handleSignOut(shift, assignment)
+                                    }
+                                    className="px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-[10px] font-bold flex items-center gap-1.5 disabled:opacity-50"
+                                  >
+                                    <LogOut className="w-3 h-3" />
+                                    Sign Out
+                                  </button>
+                                ) : (
+                                  <span className="text-[10px] text-slate-400">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        }
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               );
             })()}
