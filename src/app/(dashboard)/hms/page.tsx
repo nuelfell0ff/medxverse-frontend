@@ -51,6 +51,33 @@ type BillingChartTransaction = {
   createdAt?: string;
 };
 
+type DashboardLowStockItem = {
+  _id?: string;
+  name?: string;
+  genericName?: string;
+  quantityInStock?: number;
+  reorderLevel?: number;
+  isLowStock?: boolean;
+  unitOfMeasure?: string;
+};
+
+type DashboardShiftAssignment = {
+  staffId?: string | { _id?: string; id?: string };
+  status?: string;
+  signedInAt?: string;
+  signedOutAt?: string;
+};
+
+type DashboardOpenShift = {
+  _id?: string;
+  date?: string;
+  startTime?: string;
+  endTime?: string;
+  isOpenShift?: boolean;
+  status?: string;
+  assignedStaff?: DashboardShiftAssignment[];
+};
+
 type RevenuePoint = {
   label: string;
   charges: number;
@@ -224,6 +251,11 @@ export default function DashboardPage() {
 
   const [outpatientLoading, setOutpatientLoading] =
     useState(false);
+
+  const [lowStockItems, setLowStockItems] = useState<DashboardLowStockItem[]>([]);
+  const [lowStockLoading, setLowStockLoading] = useState(true);
+  const [openShiftStaffCount, setOpenShiftStaffCount] = useState<number | null>(null);
+  const [openShiftLoading, setOpenShiftLoading] = useState(true);
 
   const [kpiData, setKpiData] = useState<DashboardKpi[]>([
     {
@@ -507,6 +539,198 @@ export default function DashboardPage() {
       cancelled = true;
     };
   }, [selectedDate]);
+
+  /**
+   * Load real pharmacy low-stock notifications.
+   *
+   * The pharmacy module already exposes `isLowStock`, so the dashboard
+   * consumes that existing source of truth instead of calculating a
+   * separate stock threshold.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadLowStockItems = async () => {
+      setLowStockLoading(true);
+
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/v1/pharmacy/inventory?page=1&limit=100&isLowStock=true`,
+          {
+            headers: getDashboardHeaders(),
+            cache: 'no-store',
+          }
+        );
+
+        if (!response.ok) {
+          if (!cancelled) {
+            setLowStockItems([]);
+          }
+          return;
+        }
+
+        const json = await response.json();
+        const data = json?.data ?? json;
+        const items = Array.isArray(data)
+          ? data
+          : data?.items || data?.inventory || data?.results || [];
+
+        if (!cancelled) {
+          setLowStockItems(
+            Array.isArray(items)
+              ? items.filter(
+                  (item: DashboardLowStockItem) => item?.isLowStock !== false
+                )
+              : []
+          );
+        }
+      } catch (_error) {
+        if (!cancelled) {
+          setLowStockItems([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLowStockLoading(false);
+        }
+      }
+    };
+
+    // Load pharmacy stock once when the dashboard mounts.
+    void loadLowStockItems();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /**
+   * Load staff currently working on open shifts from the staff rostering
+   * module. The rostering page uses /shifts/open and its live shift window
+   * logic, including overnight shifts, so the dashboard mirrors that logic.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    const getShiftDateTime = (dateValue: string, timeValue: string): Date => {
+      const result = new Date(dateValue);
+      const [hours, minutes] = String(timeValue || '00:00')
+        .split(':')
+        .map(Number);
+
+      result.setHours(hours || 0, minutes || 0, 0, 0);
+      return result;
+    };
+
+    const getShiftEndDateTime = (
+      dateValue: string,
+      startTime: string,
+      endTime: string
+    ): Date => {
+      const start = getShiftDateTime(dateValue, startTime);
+      const end = getShiftDateTime(dateValue, endTime);
+
+      if (end <= start) {
+        end.setDate(end.getDate() + 1);
+      }
+
+      return end;
+    };
+
+    const isShiftCurrentlyOpen = (
+      shift: DashboardOpenShift,
+      now: Date
+    ): boolean => {
+      if (!shift.date || !shift.startTime || !shift.endTime) {
+        return false;
+      }
+
+      const shiftStart = getShiftDateTime(shift.date, shift.startTime);
+      const shiftEnd = getShiftEndDateTime(
+        shift.date,
+        shift.startTime,
+        shift.endTime
+      );
+
+      return now >= shiftStart && now <= shiftEnd;
+    };
+
+    const getStaffId = (
+      staffId?: string | { _id?: string; id?: string }
+    ): string => {
+      if (!staffId) return '';
+      return typeof staffId === 'string'
+        ? staffId
+        : String(staffId._id || staffId.id || '');
+    };
+
+    const loadOpenShiftStaff = async () => {
+      setOpenShiftLoading(true);
+
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/v1/rostering/shifts/open`,
+          {
+            headers: getDashboardHeaders(),
+            cache: 'no-store',
+          }
+        );
+
+        if (!response.ok) {
+          if (!cancelled) {
+            setOpenShiftStaffCount(null);
+          }
+          return;
+        }
+
+        const json = await response.json();
+        const data = json?.data ?? json;
+        const shifts = Array.isArray(data)
+          ? data
+          : data?.items || data?.shifts || data?.results || [];
+
+        const now = new Date();
+        const activeStaffIds = new Set<string>();
+
+        (Array.isArray(shifts) ? shifts : []).forEach(
+          (shift: DashboardOpenShift) => {
+            if (!isShiftCurrentlyOpen(shift, now)) return;
+
+            (shift.assignedStaff || []).forEach((assignment) => {
+              const staffId = getStaffId(assignment.staffId);
+
+              if (
+                staffId &&
+                assignment.status !== 'DECLINED' &&
+                assignment.status !== 'CANCELLED' &&
+                assignment.status !== 'COMPLETED'
+              ) {
+                activeStaffIds.add(staffId);
+              }
+            });
+          }
+        );
+
+        if (!cancelled) {
+          setOpenShiftStaffCount(activeStaffIds.size);
+        }
+      } catch (_error) {
+        if (!cancelled) {
+          setOpenShiftStaffCount(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setOpenShiftLoading(false);
+        }
+      }
+    };
+
+    // Load current open-shift staff once when the dashboard mounts.
+    void loadOpenShiftStaff();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /**
    * Load appointments whenever the selected calendar date changes.
@@ -1257,76 +1481,68 @@ export default function DashboardPage() {
               </h3>
 
               <p className="text-[10px] text-slate-400 mb-4">
-                Important updates
+                Pharmacy stock alerts
               </p>
 
               <div className="space-y-2.5">
-                <div className="p-2.5 bg-[#e8f5f3] rounded-2xl flex items-center gap-2.5 text-xs text-slate-700">
-                  <AlertCircle className="w-4 h-4 text-[#1b7b68] flex-shrink-0" />
+                {lowStockLoading ? (
+                  <div className="p-3 bg-slate-50 rounded-2xl text-[11px] text-slate-400 font-medium">
+                    Checking pharmacy stock levels...
+                  </div>
+                ) : lowStockItems.length === 0 ? (
+                  <div className="p-3 bg-[#e8f5f3] rounded-2xl flex items-center gap-2.5 text-xs text-slate-700">
+                    <Check className="w-4 h-4 text-[#1b7b68] flex-shrink-0" />
 
-                  <span className="text-[11px] font-medium">
-                    Low stock alert: Paracetamol tablets
-                  </span>
-                </div>
+                    <span className="text-[11px] font-medium">
+                      No low-stock drugs at the moment.
+                    </span>
+                  </div>
+                ) : (
+                  lowStockItems.map((item, index) => {
+                    const quantity = Number(item.quantityInStock ?? 0);
 
-                <div className="p-2.5 bg-[#e8f5f3] rounded-2xl flex items-center gap-2.5 text-xs text-slate-700">
-                  <AlertCircle className="w-4 h-4 text-[#1b7b68] flex-shrink-0" />
+                    const unit = item.unitOfMeasure
+                      ? ` ${String(item.unitOfMeasure).toLowerCase()}`
+                      : '';
 
-                  <span className="text-[11px] font-medium">
-                    3 appointments pending confirmation
-                  </span>
-                </div>
+                    return (
+                      <Link
+                        key={item._id || `${item.name || 'drug'}-${index}`}
+                        href="/hms/pharmacy"
+                        className="p-2.5 bg-[#e8f5f3] rounded-2xl flex items-center gap-2.5 text-xs text-slate-700 hover:bg-[#dff1ed] transition-colors"
+                      >
+                        <AlertCircle className="w-4 h-4 text-[#1b7b68] flex-shrink-0" />
 
-                <div className="p-2.5 bg-[#e8f5f3] rounded-2xl flex items-center gap-2.5 text-xs text-slate-700">
-                  <AlertCircle className="w-4 h-4 text-[#1b7b68] flex-shrink-0" />
-
-                  <span className="text-[11px] font-medium">
-                    Equipment maintenance due: MRI Machine
-                  </span>
-                </div>
+                        <span className="text-[11px] font-medium">
+                          Low stock: {item.name || 'Unnamed drug'} — {quantity.toLocaleString()}
+                          {unit} remaining
+                        </span>
+                      </Link>
+                    );
+                  })
+                )}
               </div>
             </div>
 
-            {/* Bed Occupancy & Staff */}
-            <div className="space-y-3 pt-4 border-t border-slate-100 mt-4">
-              <div>
-                <div className="flex items-center justify-between text-xs font-bold text-slate-800 mb-1">
-                  <span>Bed Occupancy</span>
-
-                  <span className="text-[#1b7b68]">
-                    83%
-                  </span>
-                </div>
-
-                <p className="text-[10px] text-slate-400 mb-1.5">
-                  248/300 beds occupied
-                </p>
-
-                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[#1b7b68] rounded-full"
-                    style={{
-                      width: '83%',
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-1">
+            {/* Current Staff on Open Shifts */}
+            <div className="pt-4 border-t border-slate-100 mt-4">
+              <div className="flex items-center justify-between">
                 <div>
                   <span className="text-xs font-bold text-slate-800 block">
-                    Staff
+                    Staff on Open Shifts
                   </span>
 
                   <span className="text-[10px] text-slate-400">
-                    Today's shift
+                    Currently active
                   </span>
                 </div>
 
                 <span className="text-base font-extrabold text-[#1b7b68]">
-                  {kpiData[3]?.value === null
+                  {openShiftLoading
                     ? '—'
-                    : kpiData[3]?.value?.toLocaleString()}
+                    : openShiftStaffCount === null
+                      ? '—'
+                      : openShiftStaffCount.toLocaleString()}
                 </span>
               </div>
             </div>
