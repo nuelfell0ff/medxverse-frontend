@@ -4,6 +4,7 @@ import {
   GetPatientsQueryDTO,
   PaginatedPatientsResponse,
   IPatient,
+  PatientWithClinicalSummary,
 } from '@/types/patient';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -80,6 +81,19 @@ export const PatientApiService = {
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.message || 'Failed to record vitals');
+    }
+    const data = await res.json();
+    return data.data;
+  },
+
+  async getClinicalSummary(patientId: string): Promise<PatientWithClinicalSummary> {
+    const res = await fetch(`${API_BASE_URL}/patients/${patientId}/clinical-summary`, {
+      headers: getAuthHeaders(),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.message || 'Failed to fetch clinical summary');
     }
     const data = await res.json();
     return data.data;

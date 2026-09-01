@@ -32,8 +32,10 @@ import {
   Genotype,
   CreatePatientDTO,
   AddVitalsDTO,
+  PatientWithClinicalSummary,
 } from '@/types/patient';
 import { PatientApiService } from '@/services/patient.service';
+import { PatientClinicalSummary } from '@/components/patient/PatientClinicalSummary';
 
 export default function PatientsPage() {
   const [patients, setPatients] = useState<IPatient[]>([]);
@@ -47,6 +49,12 @@ export default function PatientsPage() {
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [isVitalsOpen, setIsVitalsOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<IPatient | null>(null);
+  const [activeTab, setActiveTab] = useState<'details' | 'summary'>('details');
+
+  // Clinical Summary States
+  const [clinicalSummary, setClinicalSummary] =
+    useState<PatientWithClinicalSummary | null>(null);
+  const [loadingClinicalSummary, setLoadingClinicalSummary] = useState(false);
 
   type PatientBillingSummary = {
     totalCharges?: number | string | null;
@@ -69,6 +77,10 @@ export default function PatientsPage() {
     phone: '',
     email: '',
     address: '',
+    maritalStatus: '',
+    occupation: '',
+    nextOfKin: '',
+    informant: '',
     bloodGroup: 'O+',
     genotype: 'AA',
     policyNumber: '',
@@ -152,6 +164,30 @@ export default function PatientsPage() {
     loadPatientBilling(selectedPatient._id);
   }, [selectedPatient?._id, loadPatientBilling]);
 
+  // Load Clinical Summary
+  useEffect(() => {
+    if (!selectedPatient?._id) {
+      setClinicalSummary(null);
+      setLoadingClinicalSummary(false);
+      return;
+    }
+
+    const loadClinicalSummary = async () => {
+      setLoadingClinicalSummary(true);
+      try {
+        const summary = await PatientApiService.getClinicalSummary(selectedPatient._id);
+        setClinicalSummary(summary);
+      } catch (err: any) {
+        console.error('Failed to load clinical summary:', err);
+        setClinicalSummary(null);
+      } finally {
+        setLoadingClinicalSummary(false);
+      }
+    };
+
+    loadClinicalSummary();
+  }, [selectedPatient?._id]);
+
   // Fetch Patients List
   const loadPatients = useCallback(async () => {
     setLoading(true);
@@ -227,6 +263,10 @@ export default function PatientsPage() {
       phone: '',
       email: '',
       address: '',
+      maritalStatus: '',
+      occupation: '',
+      nextOfKin: '',
+      informant: '',
       bloodGroup: 'O+',
       genotype: 'AA',
       policyNumber: '',
@@ -441,7 +481,7 @@ export default function PatientsPage() {
                           {patient.email && (
                             <div className="flex items-center gap-1.5 text-slate-400 text-[10px]">
                               <Mail className="w-3 h-3 text-slate-400" />
-                              <span className="truncate max-w-[140px]">{patient.email}</span>
+                              <span className="truncate max-w-56">{patient.email}</span>
                             </div>
                           )}
                         </div>
@@ -640,6 +680,61 @@ export default function PatientsPage() {
                     onChange={(e) => setRegisterForm({ ...registerForm, address: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#1b7b68]/20 focus:border-[#1b7b68] outline-none"
                     placeholder="123 Hospital Road, Lagos"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Marital Status *</label>
+                  <select
+                    required
+                    value={registerForm.maritalStatus || ''}
+                    onChange={(e) => setRegisterForm({ ...registerForm, maritalStatus: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#1b7b68]/20 focus:border-[#1b7b68] outline-none"
+                  >
+                    <option value="">Select</option>
+                    <option value="Single">Single</option>
+                    <option value="Married">Married</option>
+                    <option value="Divorced">Divorced</option>
+                    <option value="Widowed">Widowed</option>
+                    <option value="Separated">Separated</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Occupation *</label>
+                  <input
+                    type="text"
+                    required
+                    value={registerForm.occupation}
+                    onChange={(e) => setRegisterForm({ ...registerForm, occupation: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#1b7b68]/20 focus:border-[#1b7b68] outline-none"
+                    placeholder="Trader"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Next of Kin *</label>
+                  <input
+                    type="text"
+                    required
+                    value={registerForm.nextOfKin}
+                    onChange={(e) => setRegisterForm({ ...registerForm, nextOfKin: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#1b7b68]/20 focus:border-[#1b7b68] outline-none"
+                    placeholder="Jane Doe"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Informant *</label>
+                  <input
+                    type="text"
+                    required
+                    value={registerForm.informant || ''}
+                    onChange={(e) => setRegisterForm({ ...registerForm, informant: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#1b7b68]/20 focus:border-[#1b7b68] outline-none"
+                    placeholder="Self / Parent / Spouse"
                   />
                 </div>
               </div>
@@ -857,7 +952,34 @@ export default function PatientsPage() {
               </button>
             </div>
 
-            {/* Quick Badges */}
+            {/* Tab Navigation */}
+            <div className="flex gap-2 border-b border-slate-100">
+              <button
+                onClick={() => setActiveTab('details')}
+                className={`px-4 py-2.5 font-semibold text-sm border-b-2 transition-colors ${
+                  activeTab === 'details'
+                    ? 'text-[#1b7b68] border-[#1b7b68]'
+                    : 'text-slate-500 border-transparent hover:text-slate-700'
+                }`}
+              >
+                Patient Details
+              </button>
+              <button
+                onClick={() => setActiveTab('summary')}
+                className={`px-4 py-2.5 font-semibold text-sm border-b-2 transition-colors ${
+                  activeTab === 'summary'
+                    ? 'text-[#1b7b68] border-[#1b7b68]'
+                    : 'text-slate-500 border-transparent hover:text-slate-700'
+                }`}
+              >
+                Clinical Summary
+              </button>
+            </div>
+
+            {/* Tab Content */}
+            {activeTab === 'details' ? (
+              <div className="space-y-6">
+                {/* Quick Badges */}
             <div className="grid grid-cols-3 gap-3">
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
                 <p className="text-[10px] text-slate-400 font-medium">Blood Group</p>
@@ -892,6 +1014,22 @@ export default function PatientsPage() {
                 <div className="col-span-2">
                   <span className="text-slate-400 block text-[10px]">Address</span>
                   <span className="font-semibold">{selectedPatient.address || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">Marital Status</span>
+                  <span className="font-semibold">{selectedPatient.maritalStatus || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">Occupation</span>
+                  <span className="font-semibold">{selectedPatient.occupation || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">Next of Kin</span>
+                  <span className="font-semibold">{selectedPatient.nextOfKin || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">Informant</span>
+                  <span className="font-semibold">{selectedPatient.informant || 'N/A'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px]">Policy Number</span>
@@ -1016,6 +1154,35 @@ export default function PatientsPage() {
                 <p className="text-xs text-slate-400 italic">No known allergies registered.</p>
               )}
             </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {clinicalSummary?.clinicalSummary ? (
+                  <PatientClinicalSummary
+                    clinicalSummary={clinicalSummary.clinicalSummary}
+                    isLoading={loadingClinicalSummary}
+                    patientBilling={patientBillingSummary}
+                    isLoadingBilling={loadingPatientBilling}
+                    billingError={patientBillingError}
+                    formatMoney={formatPatientBillingMoney}
+                  />
+                ) : (
+                  <div className="bg-slate-50 rounded-2xl p-8 text-center border border-slate-100">
+                    {loadingClinicalSummary ? (
+                      <div className="flex flex-col items-center justify-center gap-3">
+                        <div className="w-8 h-8 rounded-full border-2 border-[#1b7b68]/20 border-t-[#1b7b68] animate-spin" />
+                        <p className="text-sm text-slate-500">Loading clinical summary...</p>
+                      </div>
+                    ) : (
+                      <>
+                        <FileText className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                        <p className="text-sm text-slate-500">No clinical summary available</p>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

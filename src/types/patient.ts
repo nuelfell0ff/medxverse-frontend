@@ -59,6 +59,10 @@ export interface IPatient {
   phone: string;
   email?: string;
   address?: string;
+  maritalStatus?: string;
+  occupation?: string;
+  nextOfKin?: string;
+  informant?: string;
   bloodGroup?: BloodGroup;
   genotype?: Genotype;
   policyNumber?: string;
@@ -80,6 +84,10 @@ export interface CreatePatientDTO {
   phone: string;
   email?: string;
   address?: string;
+  maritalStatus: string;
+  occupation: string;
+  nextOfKin: string;
+  informant: string;
   bloodGroup?: BloodGroup;
   genotype?: Genotype;
   policyNumber?: string;
@@ -110,4 +118,33 @@ export interface PaginatedPatientsResponse {
   page: number;
   limit: number;
   pages: number;
+}
+
+export interface ClinicalSummaryItem {
+  id?: string;
+  date?: string | Date;
+  title: string;
+  status?: string;
+  summary?: string;
+  details?: Record<string, unknown>;
+}
+
+export interface PatientBillingSummary {
+  totalCharges: number;
+  totalPaid: number;
+  balance: number;
+  items: ClinicalSummaryItem[];
+}
+
+export interface PatientClinicalSummary {
+  surgery: ClinicalSummaryItem[];
+  radiology: ClinicalSummaryItem[];
+  laboratory: ClinicalSummaryItem[];
+  pharmacy: ClinicalSummaryItem[];
+  outpatient: ClinicalSummaryItem[];
+  billing: PatientBillingSummary;
+}
+
+export interface PatientWithClinicalSummary extends IPatient {
+  clinicalSummary: PatientClinicalSummary;
 }
