@@ -66,7 +66,7 @@ function LoginForm() {
           </div>
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Welcome Back</h1>
           <p className="text-xs font-semibold text-teal-600 tracking-widest uppercase mt-0.5">
-            Medxverse System Login
+            Medxverse Health Management System Login
           </p>
         </div>
 

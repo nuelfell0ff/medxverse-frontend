@@ -37,6 +37,7 @@ type DashboardKpi = {
   value: number | null;
   sub: string;
   icon: typeof Users;
+  url?: string; 
 };
 
 type RevenuePeriod = 'week' | 'month' | 'year';
@@ -470,6 +471,7 @@ export default function DashboardPage() {
           value: patientCount,
           sub: 'Registered patients',
           icon: Users,
+          url: '/hms/patients',
         },
         {
           title: 'Outpatients',
@@ -478,18 +480,21 @@ export default function DashboardPage() {
             selectedDate
           )}`,
           icon: Calendar,
+          url: '/hms/outpatients',
         },
         {
           title: 'Invoices',
           value: billingCount,
           sub: 'Charges plus payments',
           icon: FileText,
+          url: '/hms/billing',
         },
         {
           title: 'Staff',
           value: staffCount,
           sub: 'Active staff members',
           icon: UserCheck,
+          url: '/hms/staff',
         },
       ]);
 
@@ -853,9 +858,9 @@ export default function DashboardPage() {
                     </span>
                   </div>
 
-                  <span className="text-slate-300 hover:text-slate-500 cursor-pointer text-xs font-bold">
-                    •••
-                  </span>
+                  <Link href={`${kpi.url}`} className="text-slate-300 hover:text-slate-500 cursor-pointer text-s font-bold">
+                    ›
+                  </Link>
                 </div>
 
                 <div className="flex items-baseline justify-between my-1">
@@ -884,7 +889,7 @@ export default function DashboardPage() {
                   Revenue
                 </h3>
 
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                {/* <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> */}
               </div>
 
               <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-[10px] font-bold text-slate-500">
