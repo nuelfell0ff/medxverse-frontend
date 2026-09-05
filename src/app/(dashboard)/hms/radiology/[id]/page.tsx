@@ -75,6 +75,21 @@ const formatLabel = (value?: string | null) => {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
+type PacsImageRecord = {
+  _id?: string;
+  url: string;
+  secureUrl?: string;
+  publicId?: string;
+  originalFilename?: string;
+  format?: string;
+  resourceType?: string;
+  bytes?: number;
+  width?: number;
+  height?: number;
+  uploadedAt?: string | Date;
+  uploadedBy?: string | { _id?: string };
+};
+
 type StaffReference =
   | string
   | RadiologyStaff
@@ -609,6 +624,15 @@ export default function RadiologyOrderDetailsPage() {
     sharedLinkExpiresAt: '',
     exportEnabled: true,
   });
+
+  const [selectedPacsFiles, setSelectedPacsFiles] = useState<File[]>([]);
+  const [uploadingPacsImages, setUploadingPacsImages] = useState(false);
+  const [pacsUploadError, setPacsUploadError] = useState<string | null>(null);
+  const [selectedPacsImage, setSelectedPacsImage] =
+    useState<PacsImageRecord | null>(null);
+  const [deletingPacsImageId, setDeletingPacsImageId] = useState<string | null>(
+    null
+  );
 
   const [reportForm, setReportForm] = useState({
     findings: '',
@@ -1203,6 +1227,13 @@ export default function RadiologyOrderDetailsPage() {
     });
   }, [order]);
 
+  useEffect(() => {
+    setSelectedPacsFiles([]);
+    setPacsUploadError(null);
+    setSelectedPacsImage(null);
+    setDeletingPacsImageId(null);
+  }, [order?._id]);
+
   /* ---------------------------------------------------------------------- */
   /* Action helper                                                          */
   /* ---------------------------------------------------------------------- */
@@ -1556,6 +1587,219 @@ export default function RadiologyOrderDetailsPage() {
 
     if (success) setShowPacsModal(false);
   };
+
+  const handlePacsFilesSelected = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const files = Array.from(event.target.files || []);
+
+    if (!files.length) {
+      setSelectedPacsFiles([]);
+      setPacsUploadError(null);
+      return;
+    }
+
+    if (files.length > 20) {
+      setPacsUploadError('You can upload a maximum of 20 images at a time.');
+      setSelectedPacsFiles(files.slice(0, 20));
+      return;
+    }
+
+    const invalidFiles = files.filter((file) => {
+      const type = file.type.toLowerCase();
+      return ![
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/webp',
+        'image/gif',
+        'image/bmp',
+        'image/tiff',
+      ].includes(type);
+    });
+
+    if (invalidFiles.length) {
+      setPacsUploadError(
+        'Only JPEG, PNG, WEBP, GIF, BMP and TIFF images are supported.'
+      );
+      setSelectedPacsFiles([]);
+      event.target.value = '';
+      return;
+    }
+
+    const oversized = files.filter(
+      (file) => file.size > 25 * 1024 * 1024
+    );
+
+    if (oversized.length) {
+      setPacsUploadError('Each PACS image must be 25 MB or smaller.');
+      setSelectedPacsFiles([]);
+      event.target.value = '';
+      return;
+    }
+
+    setPacsUploadError(null);
+    setSelectedPacsFiles(files);
+  };
+
+  const handlePacsImageUpload = async () => {
+    if (!order || selectedPacsFiles.length === 0) return;
+
+    try {
+      setUploadingPacsImages(true);
+      setPacsUploadError(null);
+      setActionError(null);
+      setSuccessMessage(null);
+
+      const token =
+        typeof window !== 'undefined'
+          ? localStorage.getItem('token')
+          : null;
+
+      const formData = new FormData();
+      selectedPacsFiles.forEach((file) => {
+        formData.append('images', file);
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/radiology/${encodeURIComponent(
+          order._id
+        )}/pacs/images`,
+        {
+          method: 'POST',
+          headers: {
+            ...(token
+              ? {
+                  Authorization: `Bearer ${token}`,
+                }
+              : {}),
+          },
+          body: formData,
+        }
+      );
+
+      const json = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          json?.message ||
+            json?.error ||
+            'Failed to upload PACS images.'
+        );
+      }
+
+      const updatedOrder =
+        json?.data?.order ||
+        json?.data?.item ||
+        json?.data;
+
+      if (!updatedOrder || typeof updatedOrder !== 'object') {
+        throw new Error(
+          'Images were uploaded, but the updated radiology order was not returned.'
+        );
+      }
+
+      setOrder(updatedOrder as RadiologyOrder);
+      setSelectedPacsFiles([]);
+      setSuccessMessage('PACS images uploaded successfully.');
+
+      window.setTimeout(() => {
+        setSuccessMessage(null);
+      }, 3500);
+    } catch (err: any) {
+      setPacsUploadError(
+        err?.message || 'Failed to upload PACS images.'
+      );
+    } finally {
+      setUploadingPacsImages(false);
+    }
+  };
+
+  const handleDeletePacsImage = async (imageId: string) => {
+    if (!order || !imageId) return;
+
+    const confirmed = window.confirm(
+      'Delete this PACS image? This will remove the image from the examination.'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setDeletingPacsImageId(imageId);
+      setPacsUploadError(null);
+      setActionError(null);
+
+      const token =
+        typeof window !== 'undefined'
+          ? localStorage.getItem('token')
+          : null;
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/radiology/${encodeURIComponent(
+          order._id
+        )}/pacs/images/${encodeURIComponent(imageId)}`,
+        {
+          method: 'DELETE',
+          headers: {
+            ...(token
+              ? {
+                  Authorization: `Bearer ${token}`,
+                }
+              : {}),
+          },
+        }
+      );
+
+      const json = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          json?.message ||
+            json?.error ||
+            'Failed to delete PACS image.'
+        );
+      }
+
+      const updatedOrder =
+        json?.data?.order ||
+        json?.data?.item ||
+        json?.data;
+
+      if (!updatedOrder || typeof updatedOrder !== 'object') {
+        throw new Error(
+          'The image was deleted, but the updated radiology order was not returned.'
+        );
+      }
+
+      setOrder(updatedOrder as RadiologyOrder);
+
+      if (selectedPacsImage?._id === imageId) {
+        setSelectedPacsImage(null);
+      }
+
+      setSuccessMessage('PACS image deleted successfully.');
+
+      window.setTimeout(() => {
+        setSuccessMessage(null);
+      }, 3500);
+    } catch (err: any) {
+      setPacsUploadError(
+        err?.message || 'Failed to delete PACS image.'
+      );
+    } finally {
+      setDeletingPacsImageId(null);
+    }
+  };
+
+  const pacsImages = useMemo<PacsImageRecord[]>(
+    () =>
+      ((order?.pacsMetadata as
+        | (NonNullable<RadiologyOrder['pacsMetadata']> & {
+            images?: PacsImageRecord[];
+          })
+        | undefined)?.images || []) as PacsImageRecord[],
+    [order?.pacsMetadata]
+  );
 
   const handleCompleteReport = async () => {
     if (!order) return;
@@ -3136,13 +3380,29 @@ export default function RadiologyOrderDetailsPage() {
             subtitle="Picture Archiving and Communication System information"
             icon={<ImageIcon className="w-4 h-4" />}
             action={
-              <button
-                type="button"
-                onClick={() => setShowPacsModal(true)}
-                className="px-3 py-2 rounded-xl bg-[#1b7b68] text-white text-[11px] font-bold"
-              >
-                Edit PACS
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => loadOrder(true)}
+                  disabled={refreshing}
+                  className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-[11px] font-bold flex items-center gap-2 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  <RefreshCw
+                    className={`w-3.5 h-3.5 ${
+                      refreshing ? 'animate-spin' : ''
+                    }`}
+                  />
+                  Refresh
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowPacsModal(true)}
+                  className="px-3 py-2 rounded-xl bg-[#1b7b68] text-white text-[11px] font-bold"
+                >
+                  Edit PACS
+                </button>
+              </div>
             }
           >
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
@@ -3161,9 +3421,7 @@ export default function RadiologyOrderDetailsPage() {
 
               <Field
                 label="Study Date"
-                value={formatDate(
-                  order.pacsMetadata?.studyDate
-                )}
+                value={formatDate(order.pacsMetadata?.studyDate)}
               />
 
               <Field
@@ -3176,9 +3434,7 @@ export default function RadiologyOrderDetailsPage() {
 
               <Field
                 label="Images"
-                value={
-                  order.pacsMetadata?.imageCount ?? 'N/A'
-                }
+                value={pacsImages.length}
               />
 
               <Field
@@ -3210,6 +3466,208 @@ export default function RadiologyOrderDetailsPage() {
             </div>
           </SectionCard>
 
+          <SectionCard
+            title="PACS Image Repository"
+            subtitle="Upload, preview and manage examination images directly inside the PACS workspace."
+            icon={<ImageIcon className="w-4 h-4" />}
+            action={
+              <label className="cursor-pointer px-3 py-2 rounded-xl bg-[#1b7b68] hover:bg-[#156354] text-white text-[11px] font-bold flex items-center gap-2">
+                <Plus className="w-3.5 h-3.5" />
+                Select Images
+                <input
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/webp,image/gif,image/bmp,image/tiff"
+                  multiple
+                  className="hidden"
+                  onChange={handlePacsFilesSelected}
+                />
+              </label>
+            }
+          >
+            <div className="space-y-5">
+              {pacsUploadError && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{pacsUploadError}</span>
+                </div>
+              )}
+
+              {selectedPacsFiles.length > 0 && (
+                <div className="rounded-2xl border border-[#1b7b68]/20 bg-[#1b7b68]/5 p-4">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">
+                        Ready to upload
+                      </p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        {selectedPacsFiles.length} image
+                        {selectedPacsFiles.length === 1 ? '' : 's'} selected
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPacsFiles([])}
+                      disabled={uploadingPacsImages}
+                      className="text-[10px] font-bold text-slate-500 hover:text-slate-800 disabled:opacity-50"
+                    >
+                      Clear
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {selectedPacsFiles.map((file) => (
+                      <div
+                        key={`${file.name}-${file.size}-${file.lastModified}`}
+                        className="flex items-center gap-3 p-2.5 rounded-xl bg-white border border-slate-100"
+                      >
+                        <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 shrink-0">
+                          <ImageIcon className="w-4 h-4" />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-bold text-slate-700 truncate">
+                            {file.name}
+                          </p>
+                          <p className="text-[9px] text-slate-400 mt-0.5">
+                            {(file.size / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handlePacsImageUpload}
+                    disabled={uploadingPacsImages}
+                    className="mt-4 w-full py-3 rounded-xl bg-[#1b7b68] hover:bg-[#156354] text-white text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {uploadingPacsImages ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Uploading images...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        Upload to PACS
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {pacsImages.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 py-14 px-6 text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-[#1b7b68]/10 text-[#1b7b68] flex items-center justify-center mx-auto">
+                    <ImageIcon className="w-7 h-7" />
+                  </div>
+
+                  <p className="text-sm font-bold text-slate-800 mt-4">
+                    No PACS images uploaded
+                  </p>
+
+                  <p className="text-xs text-slate-400 max-w-md mx-auto mt-1.5 leading-5">
+                    Select one or more radiology images to upload them to
+                    Cloudinary and store their PACS metadata with this
+                    examination.
+                  </p>
+
+                  <label className="inline-flex cursor-pointer mt-5 px-4 py-2.5 rounded-xl bg-[#1b7b68] hover:bg-[#156354] text-white text-xs font-bold items-center gap-2">
+                    <Plus className="w-3.5 h-3.5" />
+                    Upload Images
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/webp,image/gif,image/bmp,image/tiff"
+                      multiple
+                      className="hidden"
+                      onChange={handlePacsFilesSelected}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                  {pacsImages.map((image, index) => {
+                    const imageUrl = image.secureUrl || image.url;
+                    const imageId =
+                      image._id || image.publicId || `${index}`;
+
+                    return (
+                      <div
+                        key={imageId}
+                        className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-950"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPacsImage(image)}
+                          className="block w-full aspect-square"
+                          aria-label={`View ${
+                            image.originalFilename ||
+                            `PACS image ${index + 1}`
+                          }`}
+                        >
+                          <img
+                            src={imageUrl}
+                            alt={
+                              image.originalFilename ||
+                              `PACS image ${index + 1}`
+                            }
+                            className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+                          />
+                        </button>
+
+                        <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-slate-950/90 via-slate-950/50 to-transparent p-3 pt-8 pointer-events-none">
+                          <p className="text-[10px] font-bold text-white truncate">
+                            {image.originalFilename ||
+                              `PACS image ${index + 1}`}
+                          </p>
+
+                          <p className="text-[9px] text-slate-300 mt-0.5">
+                            {image.width && image.height
+                              ? `${image.width} × ${image.height}`
+                              : formatLabel(image.format) || 'Image'}
+                          </p>
+                        </div>
+
+                        <div className="absolute top-2 right-2 flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedPacsImage(image)}
+                            className="w-8 h-8 rounded-lg bg-white/90 text-slate-700 flex items-center justify-center shadow-sm hover:bg-white"
+                            aria-label="View image"
+                          >
+                            <Monitor className="w-3.5 h-3.5" />
+                          </button>
+
+                          {image._id && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleDeletePacsImage(image._id as string)
+                              }
+                              disabled={
+                                deletingPacsImageId === image._id
+                              }
+                              className="w-8 h-8 rounded-lg bg-white/90 text-rose-600 flex items-center justify-center shadow-sm hover:bg-white disabled:opacity-50"
+                              aria-label="Delete image"
+                            >
+                              {deletingPacsImageId === image._id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </SectionCard>
+
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
             <SectionCard
               title="DICOM Identifiers"
@@ -3223,8 +3681,8 @@ export default function RadiologyOrderDetailsPage() {
                   </p>
 
                   <p className="font-mono text-xs text-slate-700 break-all">
-                    {order.pacsMetadata
-                      ?.studyInstanceUid || 'Not available'}
+                    {order.pacsMetadata?.studyInstanceUid ||
+                      'Not available'}
                   </p>
                 </div>
 
@@ -3234,8 +3692,8 @@ export default function RadiologyOrderDetailsPage() {
                   </p>
 
                   <p className="font-mono text-xs text-slate-700 break-all">
-                    {order.pacsMetadata
-                      ?.seriesInstanceUid || 'Not available'}
+                    {order.pacsMetadata?.seriesInstanceUid ||
+                      'Not available'}
                   </p>
                 </div>
               </div>
@@ -3243,25 +3701,41 @@ export default function RadiologyOrderDetailsPage() {
 
             <SectionCard
               title="Image Access"
-              subtitle="Web viewer and sharing"
+              subtitle="Uploaded PACS images are viewed in this page."
               icon={<Monitor className="w-4 h-4" />}
             >
               <div className="space-y-3">
+                <div className="p-4 rounded-xl bg-[#1b7b68]/5 border border-[#1b7b68]/10">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-[#1b7b68]/10 text-[#1b7b68] flex items-center justify-center">
+                      <ImageIcon className="w-4 h-4" />
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">
+                        PACS image viewer
+                      </p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        Click any thumbnail above to view it without leaving
+                        this page.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {order.pacsMetadata?.dicomViewerUrl ? (
                   <a
-                    href={
-                      order.pacsMetadata.dicomViewerUrl
-                    }
+                    href={order.pacsMetadata.dicomViewerUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="w-full py-3 rounded-xl bg-[#1b7b68] text-white text-xs font-bold flex items-center justify-center gap-2"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
-                    Open DICOM Viewer
+                    Open External DICOM Viewer
                   </a>
                 ) : (
                   <div className="p-4 rounded-xl bg-slate-50 text-center text-xs text-slate-400">
-                    No DICOM viewer URL configured.
+                    No external DICOM viewer URL configured.
                   </div>
                 )}
 
@@ -3277,13 +3751,11 @@ export default function RadiologyOrderDetailsPage() {
                   </a>
                 )}
 
-                {order.pacsMetadata
-                  ?.sharedLinkExpiresAt && (
+                {order.pacsMetadata?.sharedLinkExpiresAt && (
                   <p className="text-[10px] text-slate-400 text-center">
                     Link expires{' '}
                     {formatDateTime(
-                      order.pacsMetadata
-                        .sharedLinkExpiresAt
+                      order.pacsMetadata.sharedLinkExpiresAt
                     )}
                   </p>
                 )}
@@ -3295,26 +3767,23 @@ export default function RadiologyOrderDetailsPage() {
             order.pacsMetadata.keyImageIds.length > 0 && (
               <SectionCard
                 title="Key Images"
-                subtitle="Images marked as clinically significant"
+                subtitle="Image identifiers marked as clinically significant"
                 icon={<ImageIcon className="w-4 h-4" />}
               >
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {order.pacsMetadata.keyImageIds.map(
-                    (imageId) => (
-                      <div
-                        key={imageId}
-                        className="aspect-video rounded-xl bg-slate-900 flex items-center justify-center text-slate-500"
-                      >
-                        <div className="text-center">
-                          <ImageIcon className="w-6 h-6 mx-auto" />
-
-                          <p className="text-[9px] mt-2 font-mono px-2 truncate">
-                            {imageId}
-                          </p>
-                        </div>
-                      </div>
-                    )
-                  )}
+                  {order.pacsMetadata.keyImageIds.map((imageId) => (
+                    <div
+                      key={imageId}
+                      className="p-3 rounded-xl bg-slate-50 border border-slate-100"
+                    >
+                      <p className="text-[9px] uppercase tracking-wider font-bold text-slate-400">
+                        Image ID
+                      </p>
+                      <p className="text-[10px] font-mono text-slate-700 mt-1 break-all">
+                        {imageId}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               </SectionCard>
             )}
@@ -4302,99 +4771,125 @@ export default function RadiologyOrderDetailsPage() {
       <Modal
         open={showPacsModal}
         title="PACS Study Information"
-        subtitle="Update DICOM and image repository information."
+        subtitle="Update DICOM and image repository metadata."
         onClose={() => setShowPacsModal(false)}
         width="max-w-2xl"
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[
-            ['studyInstanceUid', 'Study Instance UID'],
-            ['seriesInstanceUid', 'Series Instance UID'],
-            ['accessionNumber', 'Accession Number'],
-            ['studyId', 'Study ID'],
-            ['studyDate', 'Study Date'],
-            ['imageCount', 'Image Count'],
-            ['seriesCount', 'Series Count'],
-            ['modality', 'Modality'],
-            ['dicomViewerUrl', 'DICOM Viewer URL'],
-            ['storageLocation', 'Storage Location'],
-            ['sharedLink', 'Shared Link'],
-            ['sharedLinkExpiresAt', 'Shared Link Expiry'],
-          ].map(([key, label]) => (
-            <div key={key}>
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[
+              ['studyInstanceUid', 'Study Instance UID'],
+              ['seriesInstanceUid', 'Series Instance UID'],
+              ['accessionNumber', 'Accession Number'],
+              ['studyId', 'Study ID'],
+              ['studyDate', 'Study Date'],
+              ['imageCount', 'Image Count'],
+              ['seriesCount', 'Series Count'],
+              ['modality', 'Modality'],
+              ['dicomViewerUrl', 'DICOM Viewer URL'],
+              ['storageLocation', 'Storage Location'],
+              ['sharedLink', 'Shared Link'],
+              ['sharedLinkExpiresAt', 'Shared Link Expiry'],
+            ].map(([key, label]) => (
+              <div key={key}>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  {label}
+                </label>
+
+                <input
+                  type={
+                    key === 'studyDate'
+                      ? 'date'
+                      : key === 'imageCount' ||
+                          key === 'seriesCount'
+                        ? 'number'
+                        : 'text'
+                  }
+                  value={
+                    pacsForm[
+                      key as keyof typeof pacsForm
+                    ] as string
+                  }
+                  onChange={(e) =>
+                    setPacsForm({
+                      ...pacsForm,
+                      [key]: e.target.value,
+                    })
+                  }
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-[#1b7b68]"
+                />
+              </div>
+            ))}
+
+            <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                {label}
+                Storage Status
               </label>
 
-              <input
-                type={
-                  key === 'studyDate'
-                    ? 'date'
-                    : key === 'imageCount' ||
-                        key === 'seriesCount'
-                      ? 'number'
-                      : 'text'
-                }
-                value={
-                  pacsForm[
-                    key as keyof typeof pacsForm
-                  ] as string
-                }
+              <select
+                value={pacsForm.storageStatus}
                 onChange={(e) =>
                   setPacsForm({
                     ...pacsForm,
-                    [key]: e.target.value,
+                    storageStatus: e.target.value,
                   })
                 }
                 className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-[#1b7b68]"
-              />
+              >
+                {[
+                  'PENDING',
+                  'STORED',
+                  'ARCHIVED',
+                  'FAILED',
+                ].map((status) => (
+                  <option key={status} value={status}>
+                    {formatLabel(status)}
+                  </option>
+                ))}
+              </select>
             </div>
-          ))}
 
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
-              Storage Status
+            <label className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-50 self-end cursor-pointer">
+              <input
+                type="checkbox"
+                checked={pacsForm.exportEnabled}
+                onChange={(e) =>
+                  setPacsForm({
+                    ...pacsForm,
+                    exportEnabled: e.target.checked,
+                  })
+                }
+              />
+
+              <span className="text-xs font-semibold text-slate-700">
+                Enable study export
+              </span>
             </label>
-
-            <select
-              value={pacsForm.storageStatus}
-              onChange={(e) =>
-                setPacsForm({
-                  ...pacsForm,
-                  storageStatus: e.target.value,
-                })
-              }
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs"
-            >
-              {[
-                'PENDING',
-                'STORED',
-                'ARCHIVED',
-                'FAILED',
-              ].map((status) => (
-                <option key={status} value={status}>
-                  {formatLabel(status)}
-                </option>
-              ))}
-            </select>
           </div>
 
-          <label className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-50 self-end cursor-pointer">
-            <input
-              type="checkbox"
-              checked={pacsForm.exportEnabled}
-              onChange={(e) =>
-                setPacsForm({
-                  ...pacsForm,
-                  exportEnabled: e.target.checked,
-                })
-              }
-            />
+          <div className="p-4 rounded-2xl bg-[#1b7b68]/5 border border-[#1b7b68]/10">
+            <div className="flex items-start gap-3">
+              <ImageIcon className="w-4 h-4 text-[#1b7b68] mt-0.5 shrink-0" />
 
-            <span className="text-xs font-semibold text-slate-700">
-              Enable study export
-            </span>
-          </label>
+              <div>
+                <p className="text-xs font-bold text-slate-800">
+                  PACS images
+                </p>
+                <p className="text-[10px] text-slate-500 mt-1 leading-5">
+                  Image uploads are managed from the PACS Image Repository
+                  section. Uploaded images are stored in Cloudinary and
+                  displayed directly inside this examination page.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowPacsModal(false)}
+                  className="mt-3 text-[10px] font-bold text-[#1b7b68] hover:underline"
+                >
+                  Go to PACS repository
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <ModalActions
@@ -4403,6 +4898,77 @@ export default function RadiologyOrderDetailsPage() {
           submitting={submitting}
           submitLabel="Save PACS Data"
         />
+      </Modal>
+
+      {/* ================================================================== */}
+      {/* PACS IMAGE VIEWER MODAL                                            */}
+      {/* ================================================================== */}
+
+      <Modal
+        open={Boolean(selectedPacsImage)}
+        title={
+          selectedPacsImage?.originalFilename ||
+          'PACS Image Viewer'
+        }
+        subtitle={
+          selectedPacsImage
+            ? `${selectedPacsImage.width && selectedPacsImage.height ? `${selectedPacsImage.width} × ${selectedPacsImage.height}` : 'Radiology image'}${selectedPacsImage.format ? ` • ${selectedPacsImage.format.toUpperCase()}` : ''}`
+            : undefined
+        }
+        onClose={() => setSelectedPacsImage(null)}
+        width="max-w-6xl"
+      >
+        {selectedPacsImage && (
+          <div className="space-y-4">
+            <div className="rounded-2xl bg-slate-950 min-h-[55vh] max-h-[70vh] flex items-center justify-center overflow-hidden p-3">
+              <img
+                src={
+                  selectedPacsImage.secureUrl ||
+                  selectedPacsImage.url
+                }
+                alt={
+                  selectedPacsImage.originalFilename ||
+                  'PACS radiology image'
+                }
+                className="max-w-full max-h-[65vh] object-contain"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-[10px] text-slate-400">
+                {selectedPacsImage.originalFilename ||
+                  'PACS image'}
+                {selectedPacsImage.bytes
+                  ? ` • ${(selectedPacsImage.bytes / 1024 / 1024).toFixed(2)} MB`
+                  : ''}
+              </div>
+
+              {selectedPacsImage._id && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleDeletePacsImage(
+                      selectedPacsImage._id as string
+                    )
+                  }
+                  disabled={
+                    deletingPacsImageId ===
+                    selectedPacsImage._id
+                  }
+                  className="px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-[10px] font-bold flex items-center gap-2 disabled:opacity-50"
+                >
+                  {deletingPacsImageId ===
+                  selectedPacsImage._id ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3.5 h-3.5" />
+                  )}
+                  Delete Image
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* ================================================================== */}
