@@ -65,6 +65,25 @@ type PatientRef =
   | null
   | undefined;
 
+const normalizeId = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+
+  if (value && typeof value === 'object') {
+    const candidate = (value as { _id?: unknown })._id;
+    if (typeof candidate === 'string' || typeof candidate === 'number') {
+      return String(candidate).trim();
+    }
+  }
+
+  if (typeof value === 'number') {
+    return String(value).trim();
+  }
+
+  return '';
+};
+
 type Charge = {
   _id: string;
   patientId?: PatientRef;
@@ -175,6 +194,7 @@ type BillingSummary = {
   totalDiscounts?: number;
   totalTax?: number;
   totalRefunds?: number;
+  availableCredit?: number;
 };
 
 /* ========================================================================== */
@@ -297,6 +317,19 @@ const getChargeOutstanding = (charge: Charge) =>
 const isChargeFullyPaid = (charge: Charge) =>
   charge.status?.toUpperCase() === 'PAID' ||
   getChargeOutstanding(charge) <= 0;
+
+const getChargePaid = (charge: Charge) =>
+  Math.max(
+    0,
+    Number(charge.amountPaid ?? 0)
+  );
+
+const getPaymentNetAmount = (payment: Payment) =>
+  Math.max(
+    0,
+    Number(payment.amount ?? 0) -
+      Number(payment.refundedAmount ?? 0)
+  );
 
 const statusClasses = (
   status?: string
@@ -1178,6 +1211,11 @@ export default function BillingPage() {
         setPayments(p.items || []);
         setCatalogue(ct.items || []);
 
+        /*
+         * These totals are page-local fallbacks only. The backend remains the
+         * source of truth for account balances and payment allocation.
+         * Do not permanently cache the first page's totals in state.
+         */
         const chargeTotal =
           (c.items || []).reduce(
             (sum, item) =>
@@ -1189,26 +1227,24 @@ export default function BillingPage() {
         const paymentTotal =
           (p.items || []).reduce(
             (sum, item) =>
-              sum +
-              Number(item.amount || 0),
+              sum + getPaymentNetAmount(item),
             0
           );
 
-        setSummary((previous) => ({
-          ...previous,
-          totalCharges:
-            previous.totalCharges ??
-            chargeTotal,
-          totalPayments:
-            previous.totalPayments ??
-            paymentTotal,
-          outstandingBalance:
-            previous.outstandingBalance ??
-            Math.max(
-              0,
-              chargeTotal - paymentTotal
-            ),
-        }));
+        const availableCredit = Math.max(
+          0,
+          paymentTotal - chargeTotal
+        );
+
+        setSummary({
+          totalCharges: chargeTotal,
+          totalPayments: paymentTotal,
+          outstandingBalance: Math.max(
+            0,
+            chargeTotal - paymentTotal
+          ),
+          availableCredit,
+        });
       } catch (err: any) {
         setError(
           err?.message ||
@@ -1255,8 +1291,7 @@ export default function BillingPage() {
     const paymentTotal =
       payments.reduce(
         (sum, item) =>
-          sum +
-          Number(item.amount || 0),
+          sum + getPaymentNetAmount(item),
         0
       );
 
@@ -1287,6 +1322,12 @@ export default function BillingPage() {
       totalRefunds:
         summary.totalRefunds ??
         refundTotal,
+      availableCredit:
+        summary.availableCredit ??
+        Math.max(
+          0,
+          paymentTotal - chargeTotal
+        ),
     };
   }, [
     charges,
@@ -1372,6 +1413,11 @@ export default function BillingPage() {
 
   const handleCreateCharge =
     async () => {
+      const quantity = Number(chargeForm.quantity || 1);
+      const unitPrice = Number(chargeForm.unitPrice);
+      const discountAmount = Number(chargeForm.discountAmount || 0);
+      const taxAmount = Number(chargeForm.taxAmount || 0);
+
       if (
         !chargeForm.patientId.trim() ||
         !chargeForm.description.trim() ||
@@ -1380,7 +1426,20 @@ export default function BillingPage() {
         setError(
           'Please select a patient, enter a description and enter a unit price.'
         );
+        return;
+      }
 
+      if (
+        !Number.isFinite(quantity) ||
+        quantity <= 0 ||
+        !Number.isFinite(unitPrice) ||
+        unitPrice < 0 ||
+        !Number.isFinite(discountAmount) ||
+        discountAmount < 0 ||
+        !Number.isFinite(taxAmount) ||
+        taxAmount < 0
+      ) {
+        setError('Please provide valid quantity, price, discount and tax values.');
         return;
       }
 
@@ -1392,6 +1451,10 @@ export default function BillingPage() {
             patientId:
               chargeForm.patientId.trim(),
 
+            serviceCode:
+              chargeForm.serviceCode.trim() ||
+              undefined,
+
             description:
               chargeForm.description.trim(),
 
@@ -1402,26 +1465,13 @@ export default function BillingPage() {
               chargeForm.departmentName.trim() ||
               undefined,
 
-            quantity:
-              Number(
-                chargeForm.quantity || 1
-              ),
+            quantity,
 
-            unitPrice:
-              Number(
-                chargeForm.unitPrice
-              ),
+            unitPrice,
 
-            discountAmount:
-              Number(
-                chargeForm.discountAmount ||
-                  0
-              ),
+            discountAmount,
 
-            taxAmount:
-              Number(
-                chargeForm.taxAmount || 0
-              ),
+            taxAmount,
 
             notes:
               chargeForm.notes.trim() ||
@@ -1573,24 +1623,45 @@ export default function BillingPage() {
       const patientMeta = getPatientMeta(payment.patientId) || 'No MRN';
       const amountPaid = Number(payment.amount ?? 0);
 
+      const totalPatientCharges = patientCharges.reduce(
+        (total, item) =>
+          total + Number(item.netAmount ?? item.grossAmount ?? 0),
+        0
+      );
+
+      const totalPatientPayments = patientPayments.reduce(
+        (total, item) =>
+          total + getPaymentNetAmount(item),
+        0
+      );
+
+      const totalAppliedToCharges = patientCharges.reduce(
+        (total, item) =>
+          total + getChargePaid(item),
+        0
+      );
+
+      /*
+       * A payment can exist before a charge. In that case payment.chargeId
+       * is absent and the full payment is NOT necessarily applied to a charge.
+       * Use charge.amountPaid to determine what has actually been consumed.
+       */
       const chargeAmount = charge
         ? Number(charge.netAmount ?? charge.grossAmount ?? 0)
-        : patientCharges.reduce(
-            (total, item) =>
-              total + Number(item.netAmount ?? item.grossAmount ?? 0),
-            0
-          );
+        : totalPatientCharges;
 
       const recordedPaid = charge
-        ? Number(charge.amountPaid ?? amountPaid)
-        : patientPayments.reduce(
-            (total, item) => total + Number(item.amount ?? 0),
-            0
-          );
+        ? getChargePaid(charge)
+        : totalAppliedToCharges;
+
+      const accountCredit = Math.max(
+        0,
+        totalPatientPayments - totalAppliedToCharges
+      );
 
       const balance = Math.max(
         0,
-        chargeAmount - recordedPaid
+        totalPatientCharges - totalAppliedToCharges
       );
 
       const currency =
@@ -1611,7 +1682,7 @@ export default function BillingPage() {
         payment.receiptNumber || payment._id
       );
       const description = escapeHtml(
-        charge?.description || 'Payment received'
+        charge?.description || 'Patient payment / account credit'
       );
       const department = escapeHtml(
         charge?.departmentName ||
@@ -1918,7 +1989,8 @@ export default function BillingPage() {
       <div class="totals">
         <div class="total-row"><span>Total Charge</span><span>${chargeAmountText}</span></div>
         <div class="total-row"><span>Amount Paid This Transaction</span><span>${amountPaidText}</span></div>
-        <div class="total-row"><span>Total Paid on Charge</span><span>${recordedPaidText}</span></div>
+        <div class="total-row"><span>Total Applied to Charges</span><span>${recordedPaidText}</span></div>
+        <div class="total-row"><span>Available Patient Credit</span><span>${escapeHtml(formatMoney(accountCredit, currency))}</span></div>
         <div class="total-row final"><span>Balance Due</span><span>${balanceText}</span></div>
       </div>
     </section>
@@ -1992,8 +2064,10 @@ export default function BillingPage() {
         typeof charge.patientId === 'string'
           ? charge.patientId
           : charge.patientId?._id || '',
-      billingAccountId:
-        charge.billingAccountId || '',
+      billingAccountId: normalizeId(
+        (charge as Charge & { billingAccountId?: unknown })
+          .billingAccountId
+      ),
       amount:
         getChargeOutstanding(charge).toFixed(2),
     }));
@@ -2002,16 +2076,39 @@ export default function BillingPage() {
     setShowPaymentModal(true);
   };
 
+  const openGeneralPaymentModal = () => {
+    setSelectedPaymentCharge(null);
+    setSelectedPaymentPatient(null);
+    setPaymentForm((previous) => ({
+      ...previous,
+      patientId: '',
+      billingAccountId: '',
+      amount: '',
+    }));
+    setError(null);
+    setShowPaymentModal(true);
+  };
+
   const handleCreatePayment =
     async () => {
+      const amount = Number(paymentForm.amount);
+      const patientId = String(paymentForm.patientId ?? '').trim();
+      const billingAccountId = normalizeId(
+        paymentForm.billingAccountId
+      );
+
       if (
-        !paymentForm.patientId.trim() ||
-        !paymentForm.amount.trim()
+        !patientId ||
+        !String(paymentForm.amount ?? '').trim()
       ) {
         setError(
           'Please select a patient and enter the payment amount.'
         );
+        return;
+      }
 
+      if (!Number.isFinite(amount) || amount <= 0) {
+        setError('Please enter a valid payment amount greater than zero.');
         return;
       }
 
@@ -2020,21 +2117,17 @@ export default function BillingPage() {
           '/payments',
           'POST',
           {
-            patientId:
-              paymentForm.patientId.trim(),
+            patientId,
 
             chargeId:
               selectedPaymentCharge?._id ||
               undefined,
 
             billingAccountId:
-              paymentForm.billingAccountId.trim() ||
+              billingAccountId ||
               undefined,
 
-            amount:
-              Number(
-                paymentForm.amount
-              ),
+            amount,
 
             method:
               paymentForm.method,
@@ -2430,7 +2523,7 @@ export default function BillingPage() {
   /* ======================================================================== */
 
   return (
-    <div className="p-6 w mx-auto space-y-6 font-sans pb-12">
+    <div className="p-6 w-full max-w-[1800px] mx-auto space-y-6 font-sans pb-12">
       {/* ==================================================================== */}
       {/* HEADER                                                                */}
       {/* ==================================================================== */}
@@ -2494,9 +2587,7 @@ export default function BillingPage() {
 
           <button
             type="button"
-            onClick={() =>
-              setShowPaymentModal(true)
-            }
+            onClick={openGeneralPaymentModal}
             className="px-3 py-2.5 rounded-xl bg-[#1b7b68] hover:bg-[#176c5c] text-white text-xs font-bold flex items-center gap-2"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -2545,7 +2636,7 @@ export default function BillingPage() {
       {/* SUMMARY CARDS                                                         */}
       {/* ==================================================================== */}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
         {[
           {
             label: 'Charges',
@@ -2884,8 +2975,7 @@ export default function BillingPage() {
                 {
                   label: 'Record Payment',
                   icon: Banknote,
-                  onClick: () =>
-                    setShowPaymentModal(true),
+                  onClick: openGeneralPaymentModal,
                 },
                 {
                   label: 'Add Price',
@@ -4094,7 +4184,7 @@ export default function BillingPage() {
       <Modal
         open={showPaymentModal}
         title="Record Payment"
-        subtitle="Record a patient payment and allocate it to outstanding charges."
+        subtitle="Record a patient payment. Existing balances are paid first; any unused amount remains as patient credit."
         onClose={() =>
           setShowPaymentModal(false)
         }
@@ -4347,11 +4437,11 @@ export default function BillingPage() {
             placeholder="Optional notes"
           />
 
-          {selectedPaymentCharge && (
-            <p className="text-[10px] text-slate-400">
-              This payment will be applied directly to the selected charge.
-            </p>
-          )}
+          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-[10px] text-emerald-700">
+            {selectedPaymentCharge
+              ? 'This payment is being recorded against the selected charge.'
+              : 'The billing system will apply the payment to outstanding charges first. If the patient has already paid more than the current charges, the unused amount remains available as patient credit and can be applied automatically to a future charge.'}
+          </div>
 
           <ModalActions
             onCancel={() => {
