@@ -62,7 +62,7 @@ function LoginForm() {
         {/* Header & Logo */}
         <div className="flex flex-col items-center mb-8 text-center">
           <div className="w-12 h-12 rounded-2xl bg-teal-600 flex items-center justify-center font-extrabold text-white text-2xl mb-3 shadow-md shadow-teal-600/20">
-            H
+            M
           </div>
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Welcome Back</h1>
           <p className="text-xs font-semibold text-teal-600 tracking-widest uppercase mt-0.5">
