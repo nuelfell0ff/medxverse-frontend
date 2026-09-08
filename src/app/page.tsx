@@ -1,24 +1,17 @@
-'use client';
-
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/store/useAuthStore';
-import { AccountType } from '@/types/auth.types';
+import Navbar from '@/components/landing/Navbar';
 import Hero from '@/components/landing/Hero';
+// import Product from '@/components/landing/Product';
+// import Solutions from '@/components/landing/Solutions';
+// import Pricing from '@/components/landing/Pricing';
+// import Footer from '@/components/landing/Footer';
 
 export default function RootPage() {
-  // const router = useRouter();
-  // const { account, isAuthenticated } = useAuthStore();
+  return (
+    <main className="min-h-screen bg-white">
+      <Navbar />
+      <Hero />
 
-  // useEffect(() => {
-  //   if (isAuthenticated && account) {
-  //     if (account.accountType === AccountType.HMO) {
-  //       router.replace('/hmo');
-  //     } else {
-  //       router.replace('/hms');
-  //     }
-  //   }
-  // }, [isAuthenticated, account, router]);
-
-  return <Hero />;
+      {/* More landing-page sections will go here */}
+    </main>
+  );
 }
