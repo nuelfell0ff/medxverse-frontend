@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import {
   Menu,
@@ -8,6 +9,8 @@ import {
   UserRound,
   ArrowRight,
 } from 'lucide-react';
+
+import medxverseLogo from '@/assets/images/IMG_0344-Photoroom (1).png';
 
 const navigationItems = [
   { label: 'Home', href: '#home' },
@@ -27,7 +30,7 @@ export default function Navbar() {
 
   return (
     <>
-      {/* Desktop / Main Navbar */}
+      {/* Main Navbar */}
       <header className="fixed inset-x-0 top-0 z-50 w-full border-b border-white/30 bg-white/20 font-sans backdrop-blur-xl">
         <div className="mx-auto flex h-[92px] w-full max-w-[1180px] items-center justify-between px-6 lg:px-8">
 
@@ -35,19 +38,15 @@ export default function Navbar() {
           <Link
             href="/"
             onClick={closeSidebar}
-            className="group flex items-center gap-3"
+            className="group flex items-center"
             aria-label="MedXverse home"
           >
-            <div
-              className="flex h-12 w-12 items-center justify-center rounded-xl text-2xl font-extrabold text-white shadow-md shadow-teal-600/20"
-              style={{ backgroundColor: '#1b7b68' }}
-            >
-              M
-            </div>
-
-            <span className="text-[21px] font-semibold tracking-[-0.03em] text-slate-800">
-              MedXverse
-            </span>
+            <Image
+              src={medxverseLogo}
+              alt="MedXverse"
+              priority
+              className="h-auto w-[190px] object-contain transition-opacity duration-200 group-hover:opacity-85 sm:w-[205px] lg:w-[215px]"
+            />
           </Link>
 
           {/* Desktop Navigation */}
@@ -107,28 +106,27 @@ export default function Navbar() {
       >
         {/* Sidebar Header */}
         <div className="flex h-[92px] items-center justify-between border-b border-slate-100 px-6">
+
+          {/* Mobile Logo */}
           <Link
             href="/"
             onClick={closeSidebar}
-            className="flex items-center gap-3"
+            className="flex items-center"
             aria-label="MedXverse home"
           >
-            <div
-              className="flex h-11 w-11 items-center justify-center rounded-xl text-xl font-extrabold text-white shadow-md shadow-teal-600/20"
-              style={{ backgroundColor: '#1b7b68' }}
-            >
-              M
-            </div>
-
-            <span className="font-sans text-[20px] font-semibold tracking-[-0.03em] text-slate-800">
-              MedXverse
-            </span>
+            <Image
+              src={medxverseLogo}
+              alt="MedXverse"
+              priority
+              className="h-auto w-[165px] object-contain sm:w-[175px]"
+            />
           </Link>
 
+          {/* Close Button */}
           <button
             type="button"
             onClick={closeSidebar}
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition-colors hover:border-[#1b7b68]/30 hover:text-[#1b7b68]"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition-colors hover:border-[#1b7b68]/30 hover:text-[#1b7b68]"
             aria-label="Close navigation menu"
           >
             <X className="h-5 w-5" />
@@ -154,6 +152,8 @@ export default function Navbar() {
 
           {/* Sidebar Actions */}
           <div className="mt-auto border-t border-slate-100 pt-6">
+
+            {/* Sign In */}
             <Link
               href="/auth/login"
               onClick={closeSidebar}
@@ -163,6 +163,7 @@ export default function Navbar() {
               Sign in
             </Link>
 
+            {/* Get Started */}
             <Link
               href="/auth/register"
               onClick={closeSidebar}
