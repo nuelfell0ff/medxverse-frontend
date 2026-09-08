@@ -10,7 +10,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 
-import medxverseLogo from '@/assets/images/IMG_0344-Photoroom (1).png';
+import medxverseLogo from '@/assets/images/IMG_0344-Photoroom.png';
 
 const navigationItems = [
   { label: 'Home', href: '#home' },
@@ -45,7 +45,7 @@ export default function Navbar() {
               src={medxverseLogo}
               alt="MedXverse"
               priority
-              className="h-auto w-[190px] object-contain transition-opacity duration-200 group-hover:opacity-85 sm:w-[205px] lg:w-[215px]"
+              className="h-auto w-[160px] object-contain transition-opacity duration-200 group-hover:opacity-85 sm:w-[170px] lg:w-[180px]"
             />
           </Link>
 
