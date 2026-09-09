@@ -1,40 +1,44 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
-import {
-  Menu,
-  X,
-  UserRound,
-  ArrowRight,
-} from 'lucide-react';
-
+import Image from 'next/image'
+import { Poppins } from 'next/font/google';
 import medxverseLogo from '@/assets/images/IMG_0344-Photoroom.png';
 
-const navigationItems = [
-  { label: 'Home', href: '#home' },
-  { label: 'Product', href: '#product' },
-  { label: 'Solutions', href: '#solutions' },
-  { label: 'Pricing', href: '#pricing' },
-  { label: 'About us', href: '#about' },
-  { label: 'Contact', href: '#contact' },
+const poppins = Poppins({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  display: 'swap',
+});
+
+const navigationLinks = [
+  { name: 'About', href: '#about' },
+  { name: 'Solutions', href: '#solutions' },
+  { name: 'How It Works', href: '#how-it-works' },
+  // { name: 'Features', href: '#features' },
+  // { name: 'Contact', href: '#contact' },
 ];
 
 export default function Navbar() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  const toggleSidebar = () => {
+    setIsSidebarOpen((previous) => !previous);
+  };
 
   const closeSidebar = () => {
-    setSidebarOpen(false);
+    setIsSidebarOpen(false);
   };
 
   return (
     <>
       {/* Main Navbar */}
-      <header className="fixed inset-x-0 top-0 z-50 w-full border-b border-white/30 bg-white/20 font-sans backdrop-blur-xl">
-        <div className="mx-auto flex h-[92px] w-full max-w-[1180px] items-center justify-between px-6 lg:px-8">
-
-          {/* Logo */}
+      <nav
+        className={`${poppins.className} fixed inset-x-0 top-0 z-[1040] h-[88px] w-full border-b border-black/[0.04] bg-white`}
+      >
+        <div className="flex h-full w-full items-center justify-between px-4 md:px-10 lg:px-12">
+          {/* Brand */}
           <Link
             href="/"
             onClick={closeSidebar}
@@ -49,76 +53,86 @@ export default function Navbar() {
             />
           </Link>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden items-center gap-10 md:flex">
-            {navigationItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="font-sans text-[14px] font-medium text-slate-600 transition-colors hover:text-[#1b7b68]"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-
-          {/* Desktop Sign In */}
-          <Link
-            href="/auth/login"
-            className="hidden items-center gap-2 rounded-[14px] border border-[#1b7b68]/15 bg-white/30 px-5 py-3 font-sans text-[14px] font-medium text-slate-700 backdrop-blur-sm transition-all hover:border-[#1b7b68]/30 hover:bg-white/60 md:flex"
-          >
-            <UserRound className="h-[17px] w-[17px]" />
-            <span>Sign in</span>
-          </Link>
-
           {/* Mobile Menu Button */}
           <button
             type="button"
-            onClick={() => setSidebarOpen(true)}
-            className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#1b7b68]/15 bg-white/30 text-slate-700 backdrop-blur-sm transition-all hover:border-[#1b7b68]/30 hover:bg-white/60 md:hidden"
-            aria-label="Open navigation menu"
-            aria-expanded={sidebarOpen}
+            onClick={toggleSidebar}
+            className="relative flex h-[46px] w-[46px] items-center justify-center border-0 bg-transparent p-0 lg:hidden"
+            aria-label="Toggle navigation"
+            aria-expanded={isSidebarOpen}
           >
-            <Menu className="h-5 w-5" />
+            <span className="relative block h-[2px] w-6 bg-[#0b1a2e]">
+              <span className="absolute left-0 top-[-6px] block h-[2px] w-6 bg-[#0b1a2e]" />
+              <span className="absolute bottom-[-6px] left-0 block h-[2px] w-6 bg-[#0b1a2e]" />
+            </span>
           </button>
-        </div>
-      </header>
 
-      {/* Mobile Sidebar Backdrop */}
-      <div
-        className={`fixed inset-0 z-[60] bg-slate-950/20 backdrop-blur-[2px] transition-opacity duration-300 md:hidden ${
-          sidebarOpen
-            ? 'pointer-events-auto opacity-100'
-            : 'pointer-events-none opacity-0'
-        }`}
-        onClick={closeSidebar}
-        aria-hidden="true"
-      />
+          {/* Desktop Navigation */}
+          <div className="hidden items-center lg:flex lg:flex-1 lg:justify-between lg:pl-10">
+            <ul className="mx-auto flex items-center gap-[22px]">
+              {navigationLinks.map((link) => (
+                <li key={link.name} className="list-none">
+                  <Link
+                    href={link.href}
+                    className="text-[13px] font-medium text-[#5b6e80] no-underline transition-all duration-300 hover:text-[#1b7b68]"
+                  >
+                    {link.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+
+            {/* Desktop Actions */}
+            <div className="flex shrink-0 items-center gap-3">
+              <Link
+                href="#how-it-works"
+                className="rounded-full border-[1.5px] border-[#dcdfe3] bg-transparent px-[22px] py-[10px] text-[13px] font-semibold text-[#0b1a2e] no-underline transition-all duration-300 hover:border-[#0b1a2e] hover:bg-[#f8f9fa]"
+              >
+                How It Works
+              </Link>
+
+              <Link
+                href="/auth/login"
+                className="rounded-full px-[26px] py-[10px] text-[13px] font-semibold text-white no-underline transition-all duration-300 hover:-translate-y-px hover:opacity-90"
+                style={{ backgroundColor: '#1b7b68' }}
+              >
+                Sign In
+              </Link>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      {/* Mobile Backdrop */}
+      {isSidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={closeSidebar}
+          className="fixed inset-0 z-[1050] h-screen w-screen border-0 bg-black/30 p-0 backdrop-blur-[2px] lg:hidden"
+        />
+      )}
 
       {/* Mobile Sidebar */}
       <aside
-        className={`fixed right-0 top-0 z-[70] flex h-screen w-[min(86vw,380px)] flex-col border-l border-slate-200/70 bg-white font-sans shadow-2xl transition-transform duration-300 ease-out md:hidden ${
-          sidebarOpen
-            ? 'translate-x-0'
-            : 'translate-x-full'
+        className={`${poppins.className} fixed right-0 top-0 z-[1060] flex h-screen w-[280px] flex-col bg-white shadow-[-5px_0_25px_rgba(0,0,0,0.08)] transition-transform duration-300 ease-in-out lg:hidden ${
+          isSidebarOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
         aria-label="Mobile navigation"
       >
         {/* Sidebar Header */}
-        <div className="flex h-[92px] items-center justify-between border-b border-slate-100 px-6">
-
-          {/* Mobile Logo */}
+        <div className="flex h-[76px] items-center justify-between border-b border-slate-100 px-6">
           <Link
             href="/"
             onClick={closeSidebar}
-            className="flex items-center"
+            className="group flex items-center"
             aria-label="MedXverse home"
           >
             <Image
               src={medxverseLogo}
               alt="MedXverse"
               priority
-              className="h-auto w-[165px] object-contain sm:w-[175px]"
+              className="h-auto w-[160px] object-contain transition-opacity duration-200 group-hover:opacity-85 sm:w-[170px] lg:w-[180px]"
             />
           </Link>
 
@@ -126,57 +140,52 @@ export default function Navbar() {
           <button
             type="button"
             onClick={closeSidebar}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition-colors hover:border-[#1b7b68]/30 hover:text-[#1b7b68]"
-            aria-label="Close navigation menu"
+            className="flex h-11 w-11 items-center justify-center border-0 bg-transparent p-0 text-[#0b1a2e] opacity-80"
+            aria-label="Close navigation"
           >
-            <X className="h-5 w-5" />
+            <span className="relative block h-5 w-5">
+              <span className="absolute left-1/2 top-1/2 block h-[2px] w-6 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-[#0b1a2e]" />
+              <span className="absolute left-1/2 top-1/2 block h-[2px] w-6 -translate-x-1/2 -translate-y-1/2 -rotate-45 bg-[#0b1a2e]" />
+            </span>
           </button>
         </div>
 
-        {/* Sidebar Navigation */}
-        <nav className="flex flex-1 flex-col px-6 py-8">
-          <div className="flex flex-col gap-2">
-            {navigationItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={closeSidebar}
-                className="group flex items-center justify-between rounded-xl px-4 py-3.5 font-sans text-[15px] font-medium text-slate-700 transition-all hover:bg-[#1b7b68]/5 hover:text-[#1b7b68]"
-              >
-                <span>{item.label}</span>
-
-                <ArrowRight className="h-4 w-4 -translate-x-1 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100" />
-              </Link>
+        {/* Sidebar Body */}
+        <div className="flex flex-1 flex-col px-6 py-7">
+          <ul className="m-0 flex list-none flex-col gap-6 p-0">
+            {navigationLinks.map((link) => (
+              <li key={link.name}>
+                <Link
+                  href={link.href}
+                  onClick={closeSidebar}
+                  className="block text-[18px] font-medium text-[#5b6e80] no-underline transition-all duration-300 hover:pl-[5px] hover:text-[#1b7b68]"
+                >
+                  {link.name}
+                </Link>
+              </li>
             ))}
-          </div>
+          </ul>
 
           {/* Sidebar Actions */}
-          <div className="mt-auto border-t border-slate-100 pt-6">
+          <div className="mt-auto flex flex-col gap-3 border-t border-slate-100 pt-6">
+            <Link
+              href="#how-it-works"
+              onClick={closeSidebar}
+              className="w-full rounded-full border-[1.5px] border-[#dcdfe3] bg-transparent px-[22px] py-3 text-center text-[14px] font-semibold text-[#0b1a2e] no-underline transition-all duration-300 hover:bg-[#f8f9fa]"
+            >
+              How It Works
+            </Link>
 
-            {/* Sign In */}
             <Link
               href="/auth/login"
               onClick={closeSidebar}
-              className="mb-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#1b7b68]/25 bg-white px-5 font-sans text-[14px] font-medium text-[#1b7b68] transition-all hover:bg-[#1b7b68]/5"
+              className="w-full rounded-full px-[26px] py-3 text-center text-[14px] font-semibold text-white no-underline transition-all duration-300 hover:opacity-90"
+              style={{ backgroundColor: '#1b7b68' }}
             >
-              <UserRound className="h-4 w-4" />
-              Sign in
-            </Link>
-
-            {/* Get Started */}
-            <Link
-              href="/auth/register"
-              onClick={closeSidebar}
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-xl px-5 font-sans text-[14px] font-medium text-white shadow-lg shadow-[#1b7b68]/20 transition-all hover:-translate-y-0.5"
-              style={{
-                backgroundColor: '#1b7b68',
-              }}
-            >
-              Get started
-              <ArrowRight className="h-4 w-4" />
+              Sign In
             </Link>
           </div>
-        </nav>
+        </div>
       </aside>
     </>
   );

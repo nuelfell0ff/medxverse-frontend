@@ -1,17 +1,21 @@
 import Navbar from '@/components/landing/Navbar';
 import Hero from '@/components/landing/Hero';
-// import Product from '@/components/landing/Product';
-// import Solutions from '@/components/landing/Solutions';
-// import Pricing from '@/components/landing/Pricing';
-// import Footer from '@/components/landing/Footer';
+import About from '@/components/landing/About';
+import Solutions from '@/components/landing/Solutions';
+import HowItWorks from '@/components/landing/HowItWorks';
+import CTASection from '@/components/landing/CTASection';
+import Footer from '@/components/landing/Footer';
 
 export default function RootPage() {
   return (
     <main className="min-h-screen bg-white">
       <Navbar />
       <Hero />
-
-      {/* More landing-page sections will go here */}
+      <About />
+      <Solutions />
+      <HowItWorks />
+      <CTASection />
+      <Footer />
     </main>
   );
 }
