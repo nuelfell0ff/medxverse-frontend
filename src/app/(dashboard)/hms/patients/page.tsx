@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Users,
   UserPlus,
@@ -9,21 +10,12 @@ import {
   Activity,
   Phone,
   Mail,
-  Calendar,
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
   X,
   Eye,
-  Plus,
   HeartPulse,
-  Thermometer,
-  ShieldAlert,
-  Clock,
-  MapPin,
-  CheckCircle2,
-  FileText,
-  Receipt,
 } from 'lucide-react';
 import {
   IPatient,
@@ -32,12 +24,11 @@ import {
   Genotype,
   CreatePatientDTO,
   AddVitalsDTO,
-  PatientWithClinicalSummary,
 } from '@/types/patient';
 import { PatientApiService } from '@/services/patient.service';
-import { PatientClinicalSummary } from '@/components/patient/PatientClinicalSummary';
 
 export default function PatientsPage() {
+  const router = useRouter();
   const [patients, setPatients] = useState<IPatient[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [search, setSearch] = useState<string>('');
@@ -49,25 +40,6 @@ export default function PatientsPage() {
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [isVitalsOpen, setIsVitalsOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<IPatient | null>(null);
-  const [activeTab, setActiveTab] = useState<'details' | 'summary'>('details');
-
-  // Clinical Summary States
-  const [clinicalSummary, setClinicalSummary] =
-    useState<PatientWithClinicalSummary | null>(null);
-  const [loadingClinicalSummary, setLoadingClinicalSummary] = useState(false);
-
-  type PatientBillingSummary = {
-    totalCharges?: number | string | null;
-    totalPaid?: number | string | null;
-    totalPayments?: number | string | null;
-    outstandingBalance?: number | string | null;
-  };
-
-  const [patientBillingSummary, setPatientBillingSummary] =
-    useState<PatientBillingSummary | null>(null);
-  const [loadingPatientBilling, setLoadingPatientBilling] = useState(false);
-  const [patientBillingError, setPatientBillingError] = useState<string | null>(null);
-
   // Form States
   const [registerForm, setRegisterForm] = useState<CreatePatientDTO>({
     firstName: '',
@@ -103,90 +75,6 @@ export default function PatientsPage() {
   const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     'https://medxverse-backend.onrender.com';
-
-  const loadPatientBilling = useCallback(async (patientId: string) => {
-    setLoadingPatientBilling(true);
-    setPatientBillingError(null);
-    setPatientBillingSummary(null);
-
-    try {
-      const token =
-        typeof window !== 'undefined'
-          ? localStorage.getItem('token')
-          : null;
-
-      const response = await fetch(
-        `${API_BASE_URL}/api/v1/billing/patients/${encodeURIComponent(patientId)}`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token
-              ? {
-                  Authorization: `Bearer ${token}`,
-                }
-              : {}),
-          },
-        }
-      );
-
-      const json = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(
-          json?.message ||
-            json?.error ||
-            'Unable to load patient billing information.'
-        );
-      }
-
-      const billingData = json?.data ?? json;
-      setPatientBillingSummary(billingData?.summary ?? null);
-    } catch (err: any) {
-      console.error('Failed to load patient billing:', err);
-      setPatientBillingError(
-        err?.message || 'Unable to load patient billing information.'
-      );
-      setPatientBillingSummary(null);
-    } finally {
-      setLoadingPatientBilling(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!selectedPatient?._id) {
-      setPatientBillingSummary(null);
-      setPatientBillingError(null);
-      setLoadingPatientBilling(false);
-      return;
-    }
-
-    loadPatientBilling(selectedPatient._id);
-  }, [selectedPatient?._id, loadPatientBilling]);
-
-  // Load Clinical Summary
-  useEffect(() => {
-    if (!selectedPatient?._id) {
-      setClinicalSummary(null);
-      setLoadingClinicalSummary(false);
-      return;
-    }
-
-    const loadClinicalSummary = async () => {
-      setLoadingClinicalSummary(true);
-      try {
-        const summary = await PatientApiService.getClinicalSummary(selectedPatient._id);
-        setClinicalSummary(summary);
-      } catch (err: any) {
-        console.error('Failed to load clinical summary:', err);
-        setClinicalSummary(null);
-      } finally {
-        setLoadingClinicalSummary(false);
-      }
-    };
-
-    loadClinicalSummary();
-  }, [selectedPatient?._id]);
 
   // Fetch Patients List
   const loadPatients = useCallback(async () => {
@@ -271,21 +159,6 @@ export default function PatientsPage() {
       genotype: 'AA',
       policyNumber: '',
     });
-  };
-
-  const formatPatientBillingMoney = (value?: number | string | null) => {
-    const amount = Number(value ?? 0);
-
-    if (!Number.isFinite(amount)) {
-      return '₦0.00';
-    }
-
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
   };
 
   const calculateAge = (dobString: string) => {
@@ -432,7 +305,8 @@ export default function PatientsPage() {
                   return (
                     <tr
                       key={patient._id}
-                      className="hover:bg-slate-50/80 transition-colors group"
+                      className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
+                      onClick={() => router.push(`/hms/patients/${patient._id}`)}
                     >
                       {/* Name & Avatar */}
                       <td className="py-3.5 px-5">
@@ -517,7 +391,7 @@ export default function PatientsPage() {
 
                       {/* Actions */}
                       <td className="py-3.5 px-5 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => {
                               setSelectedPatient(patient);
@@ -530,7 +404,7 @@ export default function PatientsPage() {
                           </button>
 
                           <button
-                            onClick={() => setSelectedPatient(patient)}
+                            onClick={() => router.push(`/hms/patients/${patient._id}`)}
                             className="flex items-center gap-1 px-3 py-1.5 bg-[#1b7b68]/10 hover:bg-[#1b7b68] text-[#1b7b68] hover:text-white rounded-xl text-xs font-bold transition-all"
                           >
                             <Eye className="w-3.5 h-3.5" />
@@ -920,272 +794,6 @@ export default function PatientsPage() {
         </div>
       )}
 
-      {/* ------------------- DRAWER 3: PATIENT CHART DETAILS ------------------- */}
-      {selectedPatient && !isVitalsOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex justify-end">
-          <div className="bg-white w-full max-w-xl h-full shadow-2xl p-6 overflow-y-auto space-y-6 animate-in slide-in-from-right duration-300">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-[#e8f5f3] border-2 border-[#1b7b68]/30 flex items-center justify-center text-[#1b7b68] font-bold overflow-hidden">
-                  <img
-                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedPatient.firstName}_${selectedPatient.lastName}`}
-                    alt="Avatar"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div>
-                  <h2 className="text-lg font-extrabold text-slate-800">
-                    {selectedPatient.firstName} {selectedPatient.lastName}
-                  </h2>
-                  <p className="text-xs font-mono text-[#1b7b68] font-bold">
-                    {selectedPatient.mrn} • {calculateAge(selectedPatient.dateOfBirth)} Yrs
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setSelectedPatient(null)}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Tab Navigation */}
-            <div className="flex gap-2 border-b border-slate-100">
-              <button
-                onClick={() => setActiveTab('details')}
-                className={`px-4 py-2.5 font-semibold text-sm border-b-2 transition-colors ${
-                  activeTab === 'details'
-                    ? 'text-[#1b7b68] border-[#1b7b68]'
-                    : 'text-slate-500 border-transparent hover:text-slate-700'
-                }`}
-              >
-                Patient Details
-              </button>
-              <button
-                onClick={() => setActiveTab('summary')}
-                className={`px-4 py-2.5 font-semibold text-sm border-b-2 transition-colors ${
-                  activeTab === 'summary'
-                    ? 'text-[#1b7b68] border-[#1b7b68]'
-                    : 'text-slate-500 border-transparent hover:text-slate-700'
-                }`}
-              >
-                Clinical Summary
-              </button>
-            </div>
-
-            {/* Tab Content */}
-            {activeTab === 'details' ? (
-              <div className="space-y-6">
-                {/* Quick Badges */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
-                <p className="text-[10px] text-slate-400 font-medium">Blood Group</p>
-                <p className="text-sm font-extrabold text-rose-600">{selectedPatient.bloodGroup || 'N/A'}</p>
-              </div>
-              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
-                <p className="text-[10px] text-slate-400 font-medium">Genotype</p>
-                <p className="text-sm font-extrabold text-slate-700">{selectedPatient.genotype || 'N/A'}</p>
-              </div>
-              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
-                <p className="text-[10px] text-slate-400 font-medium">Gender</p>
-                <p className="text-sm font-extrabold text-slate-700 capitalize">
-                  {selectedPatient.gender?.toLowerCase()}
-                </p>
-              </div>
-            </div>
-
-            {/* Contact Information */}
-            <div className="space-y-2.5 bg-slate-50/60 p-4 rounded-2xl border border-slate-100 text-xs">
-              <h3 className="font-extrabold text-slate-800 border-b border-slate-200/60 pb-2">
-                Contact & HMO Info
-              </h3>
-              <div className="grid grid-cols-2 gap-2 text-slate-600">
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Phone</span>
-                  <span className="font-semibold">{selectedPatient.phone}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Email</span>
-                  <span className="font-semibold">{selectedPatient.email || 'N/A'}</span>
-                </div>
-                <div className="col-span-2">
-                  <span className="text-slate-400 block text-[10px]">Address</span>
-                  <span className="font-semibold">{selectedPatient.address || 'N/A'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Marital Status</span>
-                  <span className="font-semibold">{selectedPatient.maritalStatus || 'N/A'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Occupation</span>
-                  <span className="font-semibold">{selectedPatient.occupation || 'N/A'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Next of Kin</span>
-                  <span className="font-semibold">{selectedPatient.nextOfKin || 'N/A'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Informant</span>
-                  <span className="font-semibold">{selectedPatient.informant || 'N/A'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Policy Number</span>
-                  <span className="font-semibold">{selectedPatient.policyNumber || 'N/A'}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Billing Summary */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-extrabold text-slate-800 flex items-center gap-2">
-                  <Receipt className="w-4 h-4 text-[#1b7b68]" />
-                  <span>Billing Summary</span>
-                </h3>
-              </div>
-
-              {loadingPatientBilling ? (
-                <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                    <div className="w-4 h-4 rounded-full border-2 border-[#1b7b68]/30 border-t-[#1b7b68] animate-spin" />
-                    Loading billing information...
-                  </div>
-                </div>
-              ) : patientBillingError ? (
-                <div className="rounded-2xl border border-rose-100 bg-rose-50/60 p-4">
-                  <p className="text-xs font-semibold text-rose-600">
-                    {patientBillingError}
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
-                    <p className="text-[10px] font-medium text-slate-400">
-                      Total Charges
-                    </p>
-                    <p className="mt-1 text-sm font-extrabold text-slate-800">
-                      {formatPatientBillingMoney(
-                        patientBillingSummary?.totalCharges
-                      )}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
-                    <p className="text-[10px] font-medium text-slate-400">
-                      Amount Paid
-                    </p>
-                    <p className="mt-1 text-sm font-extrabold text-emerald-700">
-                      {formatPatientBillingMoney(
-                        patientBillingSummary?.totalPaid ??
-                          patientBillingSummary?.totalPayments
-                      )}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4">
-                    <p className="text-[10px] font-medium text-slate-400">
-                      Balance Owed
-                    </p>
-                    <p className="mt-1 text-sm font-extrabold text-amber-700">
-                      {formatPatientBillingMoney(
-                        patientBillingSummary?.outstandingBalance
-                      )}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Vitals History */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-extrabold text-slate-800 flex items-center gap-2">
-                  <HeartPulse className="w-4 h-4 text-[#1b7b68]" />
-                  <span>Vitals History</span>
-                </h3>
-                <button
-                  onClick={() => setIsVitalsOpen(true)}
-                  className="text-[11px] font-bold text-[#1b7b68] hover:underline"
-                >
-                  + Add Vitals
-                </button>
-              </div>
-
-              {selectedPatient.vitalsHistory?.length ? (
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {selectedPatient.vitalsHistory.slice().reverse().map((v, i) => (
-                    <div key={i} className="p-3 bg-white border border-slate-100 rounded-2xl shadow-sm text-xs space-y-1">
-                      <div className="flex justify-between text-[10px] text-slate-400 font-medium">
-                        <span>{new Date(v.recordedAt).toLocaleString()}</span>
-                        <span>BP: <strong className="text-slate-700">{v.systolicBp}/{v.diastolicBp}</strong> mmHg</span>
-                      </div>
-                      <div className="grid grid-cols-4 gap-1 text-[11px] font-semibold text-slate-600 pt-1">
-                        <span>Temp: {v.temperature}°C</span>
-                        <span>Pulse: {v.pulseRate}bpm</span>
-                        <span>SpO2: {v.spo2}%</span>
-                        <span>Weight: {v.weight}kg</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-slate-400 italic">No vitals recorded yet.</p>
-              )}
-            </div>
-
-            {/* Allergies & Medical History */}
-            <div className="space-y-3 pt-2">
-              <h3 className="text-xs font-extrabold text-slate-800 flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 text-rose-500" />
-                <span>Allergies</span>
-              </h3>
-              {selectedPatient.allergies?.length ? (
-                <div className="flex flex-wrap gap-2">
-                  {selectedPatient.allergies.map((alg, i) => (
-                    <span key={i} className="px-3 py-1 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl text-xs font-semibold">
-                      {alg.allergen} ({alg.severity})
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-slate-400 italic">No known allergies registered.</p>
-              )}
-            </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {clinicalSummary?.clinicalSummary ? (
-                  <PatientClinicalSummary
-                    clinicalSummary={clinicalSummary.clinicalSummary}
-                    isLoading={loadingClinicalSummary}
-                    patientBilling={patientBillingSummary}
-                    isLoadingBilling={loadingPatientBilling}
-                    billingError={patientBillingError}
-                    formatMoney={formatPatientBillingMoney}
-                  />
-                ) : (
-                  <div className="bg-slate-50 rounded-2xl p-8 text-center border border-slate-100">
-                    {loadingClinicalSummary ? (
-                      <div className="flex flex-col items-center justify-center gap-3">
-                        <div className="w-8 h-8 rounded-full border-2 border-[#1b7b68]/20 border-t-[#1b7b68] animate-spin" />
-                        <p className="text-sm text-slate-500">Loading clinical summary...</p>
-                      </div>
-                    ) : (
-                      <>
-                        <FileText className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-                        <p className="text-sm text-slate-500">No clinical summary available</p>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
