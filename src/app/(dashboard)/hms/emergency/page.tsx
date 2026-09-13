@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentType, FormEvent, ReactNode } from 'react';
 import { PatientApiService } from '@/services/patient.service';
 import {
@@ -248,22 +248,114 @@ export default function EmergencyPage() {
     loadBays();
   }, [loadBoard, loadBays]);
 
+  // WebSocket is the primary live-update transport. Polling is only a
+  // degraded-mode fallback when the socket is not connected.
+  const socketRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const intentionalSocketCloseRef = useRef(false);
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) return;
-    const wsBase = API_BASE_URL.replace(/^http/, 'ws');
-    const socket = new WebSocket(`${wsBase}/ws/emergency?token=${encodeURIComponent(token)}`);
-    socket.onopen = () => setConnected(true);
-    socket.onclose = () => setConnected(false);
-    socket.onerror = () => setConnected(false);
-    socket.onmessage = () => loadBoard(true);
-    return () => socket.close();
-  }, [loadBoard]);
 
+    const wsBase = API_BASE_URL.replace(/^http/, 'ws');
+    const wsUrl = `${wsBase}/ws/emergency?token=${encodeURIComponent(token)}`;
+
+    intentionalSocketCloseRef.current = false;
+
+    const clearReconnectTimer = () => {
+      if (reconnectTimerRef.current !== null) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+    };
+
+    const connect = () => {
+      if (intentionalSocketCloseRef.current) return;
+
+      // Prevent duplicate sockets if a reconnect is already in progress.
+      const current = socketRef.current;
+      if (current && (current.readyState === WebSocket.OPEN || current.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
+
+      const socket = new WebSocket(wsUrl);
+      socketRef.current = socket;
+
+      socket.onopen = () => {
+        clearReconnectTimer();
+        setConnected(true);
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+
+          // The server already sends the complete board snapshot. Apply it
+          // directly instead of making another HTTP request on every event.
+          if (message?.type === 'board.snapshot' && message?.data) {
+            setBoard(Array.isArray(message.data.items) ? message.data.items : []);
+            setError(null);
+            setLoading(false);
+            setRefreshing(false);
+          }
+        } catch (error) {
+          console.error('[Emergency WebSocket] Invalid message:', error);
+        }
+      };
+
+      socket.onerror = () => {
+        // onclose will handle the degraded-mode transition and reconnect.
+        setConnected(false);
+      };
+
+      socket.onclose = () => {
+        if (socketRef.current === socket) {
+          socketRef.current = null;
+        }
+
+        setConnected(false);
+
+        if (!intentionalSocketCloseRef.current) {
+          // Reconnect automatically. While disconnected, the fallback
+          // polling effect below keeps the board reasonably fresh.
+          clearReconnectTimer();
+          reconnectTimerRef.current = window.setTimeout(connect, 5000);
+        }
+      };
+    };
+
+    connect();
+
+    return () => {
+      intentionalSocketCloseRef.current = true;
+      clearReconnectTimer();
+
+      const socket = socketRef.current;
+      socketRef.current = null;
+
+      if (socket) {
+        socket.close();
+      }
+
+      setConnected(false);
+    };
+  }, []);
+
+  // Degraded/offline fallback only. When the WebSocket is live, there is
+  // intentionally NO polling, which removes unnecessary board requests.
+  // Two minutes is used here to reduce backend load while still providing
+  // a safety net during temporary WebSocket outages.
   useEffect(() => {
-    const timer = window.setInterval(() => loadBoard(true), 30000);
+    if (connected) return;
+
+    const FALLBACK_POLL_INTERVAL_MS = 120000;
+    const timer = window.setInterval(() => {
+      loadBoard(true);
+    }, FALLBACK_POLL_INTERVAL_MS);
+
     return () => window.clearInterval(timer);
-  }, [loadBoard]);
+  }, [connected, loadBoard]);
 
   const filteredBoard = useMemo(() => {
     const term = search.trim().toLowerCase();
