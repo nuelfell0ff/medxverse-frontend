@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   Ambulance,
   BedDouble,
+  Settings2,
   CheckCircle2,
   ChevronDown,
   ClipboardList,
@@ -32,10 +33,10 @@ import {
   XCircle,
 } from 'lucide-react';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://medxverse-backend.onrender.com';
 
 const inputClass = 'mt-2 h-11 w-full rounded-2xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition placeholder:text-slate-300 hover:border-slate-300 focus:border-[#1b7b68] focus:ring-4 focus:ring-[#1b7b68]/10';
-const textareaClass = 'mt-2 min-h-28 w-full resize-y rounded-2xl border border-slate-200 bg-white px-3.5 py-3 text-sm font-medium leading-6 text-slate-700 shadow-sm outline-none transition placeholder:text-slate-300 hover:border-slate-300 focus:border-[#1b7b68] focus:ring-4 focus:ring-[#1b7b68]/10';
+const textareaClass = 'mt-2 min-h-28 w-full resize-y rounded-2xl border border-slate-200 bg-white px-3.5 py-3 text-[11px] font-medium leading-5 text-slate-700 shadow-sm outline-none transition placeholder:text-slate-300 hover:border-slate-300 focus:border-[#1b7b68] focus:ring-4 focus:ring-[#1b7b68]/10';
 const selectClass = 'mt-2 h-11 w-full appearance-none rounded-2xl border border-slate-200 bg-white px-3.5 pr-10 text-sm font-medium text-slate-700 shadow-sm outline-none transition hover:border-slate-300 focus:border-[#1b7b68] focus:ring-4 focus:ring-[#1b7b68]/10';
 
 type EDVisitStatus =
@@ -158,7 +159,7 @@ export default function EmergencyPage() {
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [selected, setSelected] = useState<BoardItem | null>(null);
-  const [activeModal, setActiveModal] = useState<'visit' | 'triage' | 'bay' | 'order' | 'disposition' | null>(null);
+  const [activeModal, setActiveModal] = useState<'visit' | 'triage' | 'bay' | 'order' | 'disposition' | 'bay-config' | null>(null);
   const [search, setSearch] = useState('');
   const [acuityFilter, setAcuityFilter] = useState('ALL');
   const [zoneFilter, setZoneFilter] = useState('ALL');
@@ -174,6 +175,7 @@ export default function EmergencyPage() {
   const [visitForm, setVisitForm] = useState({ patientId: '', arrivalMode: 'WALK_IN' as ArrivalMode, chiefComplaint: '', traumaType: 'NONE', notes: '' });
   const [triageForm, setTriageForm] = useState({ scale: 'ESI' as TriageScale, acuityLevel: 3 as AcuityLevel, chiefComplaint: '', heartRateBpm: '', systolicBpMmHg: '', diastolicBpMmHg: '', respiratoryRateBpm: '', oxygenSaturationPct: '', temperatureCelsius: '', painScale: '', notes: '' });
   const [bayForm, setBayForm] = useState({ bayId: '', reason: '' });
+  const [bayConfigForm, setBayConfigForm] = useState({ bayCode: '', zone: 'MAIN_ED', type: 'TREATMENT', capacity: '1', supportedAcuityLevels: ['1','2','3','4','5'], resources: [] as string[] });
   const [orderForm, setOrderForm] = useState({ type: 'LAB' as OrderType, name: '', notes: '' });
   const [dispositionForm, setDispositionForm] = useState({ disposition: 'DISCHARGE' as DispositionType, notes: '', wardId: '', transferFacility: '' });
 
@@ -235,7 +237,7 @@ export default function EmergencyPage() {
   const loadBays = useCallback(async () => {
     try {
       const data = await api<Bay[]>('/api/v1/emergency/bays');
-      setBays(data || []);
+      setBays(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
     }
@@ -278,14 +280,19 @@ export default function EmergencyPage() {
 
   const columns = useMemo(() => statusColumns.map((column) => ({ ...column, items: filteredBoard.filter((item) => item.visit?.status === column.key) })), [filteredBoard]);
 
-  const metrics = useMemo(() => ({
-    active: board.length,
-    critical: board.filter((x) => x.visit?.currentAcuityLevel === 1 || x.visit?.currentAcuityLevel === 2).length,
-    waiting: board.filter((x) => ['ARRIVED', 'TRIAGED', 'WAITING_FOR_BAY'].includes(x.visit?.status)).length,
-    treatment: board.filter((x) => ['IN_TREATMENT', 'AWAITING_RESULTS'].includes(x.visit?.status)).length,
-    baysOccupied: bays.filter((b) => b.status === 'OCCUPIED').length,
-    baysAvailable: bays.filter((b) => b.status === 'AVAILABLE').length,
-  }), [board, bays]);
+  const metrics = useMemo(() => {
+    const totalCapacity = bays.reduce((sum, bay) => sum + Math.max(0, Number(bay.capacity) || 1), 0);
+    const occupiedCapacity = bays.reduce((sum, bay) => sum + Math.min(Math.max(0, Number(bay.occupiedCount) || 0), Math.max(0, Number(bay.capacity) || 1)), 0);
+    const baysOccupied = bays.filter((bay) => (Number(bay.occupiedCount) || 0) > 0).length;
+    return {
+      active: board.length,
+      critical: board.filter((x) => x.visit?.currentAcuityLevel === 1 || x.visit?.currentAcuityLevel === 2).length,
+      waiting: board.filter((x) => ['ARRIVED', 'TRIAGED', 'WAITING_FOR_BAY'].includes(x.visit?.status)).length,
+      treatment: board.filter((x) => ['IN_TREATMENT', 'AWAITING_RESULTS'].includes(x.visit?.status)).length,
+      baysOccupied,
+      baysAvailable: Math.max(0, totalCapacity - occupiedCapacity),
+    };
+  }, [board, bays]);
 
   const zones = useMemo(() => Array.from(new Set(bays.map((b) => b.zone).filter(Boolean))), [bays]);
 
@@ -339,6 +346,42 @@ export default function EmergencyPage() {
       setActiveModal(null); notify('Triage assessment saved.'); await loadBoard(true);
     } catch (err: any) { notify(err.message || 'Unable to save triage.'); }
     finally { setSubmitting(false); }
+  };
+
+  const submitBayConfig = async (e: FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const resourceCapabilities = {
+        cardiacMonitor: bayConfigForm.resources.includes('CARDIAC_MONITOR'),
+        oxygen: bayConfigForm.resources.includes('OXYGEN'),
+        isolation: bayConfigForm.resources.includes('ISOLATION'),
+        pediatric: bayConfigForm.resources.includes('PEDIATRIC_EQUIPMENT'),
+        resuscitation: bayConfigForm.resources.includes('RESUSCITATION'),
+        negativePressure: bayConfigForm.resources.includes('NEGATIVE_PRESSURE'),
+        bariatric: bayConfigForm.resources.includes('BARIATRIC'),
+        mentalHealthSafeSpace: bayConfigForm.resources.includes('MENTAL_HEALTH_SAFE_SPACE'),
+      };
+
+      await api('/api/v1/emergency/bays', { method: 'POST', body: JSON.stringify({
+        bayCode: bayConfigForm.bayCode.trim(),
+        name: `${bayConfigForm.type.replaceAll('_', ' ')} Bay`,
+        zone: bayConfigForm.zone,
+        type: bayConfigForm.type,
+        capacity: Math.max(1, Number(bayConfigForm.capacity) || 1),
+        supportedAcuityLevels: bayConfigForm.supportedAcuityLevels.map(Number),
+        resourceCapabilities,
+      }) });
+      setActiveModal(null);
+      setBayConfigForm({ bayCode: '', zone: 'MAIN_ED', type: 'TREATMENT', capacity: '1', supportedAcuityLevels: ['1','2','3','4','5'], resources: [] });
+      notify('ED bay configured successfully.');
+      await loadBays();
+    } catch (err: any) { notify(err.message || 'Unable to configure ED bay.'); }
+    finally { setSubmitting(false); }
+  };
+
+  const toggleBayConfigValue = (field: 'supportedAcuityLevels' | 'resources', value: string) => {
+    setBayConfigForm((current) => ({ ...current, [field]: current[field].includes(value) ? current[field].filter((item) => item !== value) : [...current[field], value] }));
   };
 
   const submitBay = async (e: FormEvent) => {
@@ -416,8 +459,8 @@ export default function EmergencyPage() {
           ['Critical', metrics.critical, ShieldAlert, 'text-rose-600'],
           ['Waiting', metrics.waiting, Clock3, 'text-amber-600'],
           ['Treatment', metrics.treatment, Stethoscope, 'text-sky-600'],
-          ['Bays Occupied', metrics.baysOccupied, BedDouble, 'text-violet-600'],
-          ['Bays Available', metrics.baysAvailable, CheckCircle2, 'text-emerald-600'],
+          ['Bay Slots Occupied', metrics.baysOccupied, BedDouble, 'text-violet-600'],
+          ['Bay Slots Available', metrics.baysAvailable, CheckCircle2, 'text-emerald-600'],
         ].map(([label, value, Icon, color]) => {
           const IconComponent = Icon as ComponentType<{ size?: number; className?: string }>;
           return <div key={String(label)} className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
@@ -483,20 +526,26 @@ export default function EmergencyPage() {
 
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm xl:col-span-2">
-          <div className="flex items-center justify-between"><div><h2 className="text-sm font-extrabold text-slate-800">Bay Availability</h2><p className="mt-0.5 text-[10px] text-slate-400">Current emergency treatment spaces</p></div><BedDouble size={18} className="text-[#1b7b68]" /></div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-[12px] font-extrabold text-slate-800">Bay Availability</h2><p className="mt-0.5 text-[10px] text-slate-400">Current emergency treatment spaces and capacity</p></div><button onClick={() => setActiveModal('bay-config')} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#1b7b68] px-3.5 py-2.5 text-[10px] font-extrabold text-white shadow-sm transition hover:bg-[#176b5b]"><Plus size={14} /> Configure Bay</button></div>
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-            {bays.map((bay) => <div key={String(bay._id)} className="rounded-2xl border border-slate-100 bg-slate-50 p-3"><div className="flex items-center justify-between"><span className="text-xs font-extrabold text-slate-700">{bay.bayCode}</span><span className={`h-2 w-2 rounded-full ${bay.status === 'AVAILABLE' ? 'bg-emerald-500' : bay.status === 'OCCUPIED' ? 'bg-rose-500' : 'bg-amber-500'}`} /></div><p className="mt-1 text-[10px] text-slate-400">{bay.zone || 'General'} · {String(bay.status || '').replaceAll('_', ' ')}</p></div>)}
-            {!bays.length && <p className="col-span-full py-6 text-center text-xs text-slate-400">No ED bays configured yet.</p>}
+            {bays.map((bay) => {
+              const capacity = Math.max(1, Number(bay.capacity) || 1);
+              const occupied = Math.min(capacity, Math.max(0, Number(bay.occupiedCount) || 0));
+              const available = Math.max(0, capacity - occupied);
+              const full = available === 0;
+              return <div key={String(bay._id)} className="rounded-2xl border border-slate-100 bg-slate-50 p-3"><div className="flex items-center justify-between"><span className="text-xs font-extrabold text-slate-700">{bay.bayCode}</span><span className={`h-2 w-2 rounded-full ${full ? 'bg-rose-500' : occupied > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`} /></div><p className="mt-1 text-[10px] text-slate-400">{bay.zone || 'General'} · {full ? 'FULL' : 'AVAILABLE'}</p><div className="mt-2 flex items-end justify-between"><p className="text-[9px] font-semibold text-slate-500">{occupied}/{capacity} occupied</p><p className={`text-[9px] font-extrabold ${full ? 'text-rose-600' : 'text-emerald-600'}`}>{available} available</p></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className={`h-full rounded-full ${full ? 'bg-rose-400' : 'bg-[#1b7b68]'}`} style={{ width: `${Math.min(100, (occupied / capacity) * 100)}%` }} /></div></div>;
+            })}
+            {!bays.length && <div className="col-span-full rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 py-8 text-center"><BedDouble size={20} className="mx-auto text-slate-300" /><p className="mt-2 text-xs font-bold text-slate-500">No ED bays configured yet.</p><p className="mt-1 text-[10px] text-slate-400">Add your physical emergency treatment spaces to start assigning patients.</p></div>}
           </div>
         </div>
-        <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="text-sm font-extrabold text-slate-800">Operational Notes</h2><p className="mt-0.5 text-[10px] text-slate-400">Live board safeguards</p></div><LayoutDashboard size={18} className="text-[#1b7b68]" /></div><div className="mt-4 space-y-3 text-[10px] leading-5 text-slate-500"><p className="rounded-2xl bg-slate-50 p-3">Patients are prioritized using acuity and waiting time rather than arrival order alone.</p><p className="rounded-2xl bg-slate-50 p-3">The board listens for real-time updates and falls back to polling when the WebSocket is unavailable.</p><p className="rounded-2xl bg-slate-50 p-3">Every ED status transition is retained by the backend audit history.</p></div></div>
+        <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="text-[12px] font-extrabold text-slate-800">Operational Notes</h2><p className="mt-0.5 text-[10px] text-slate-400">Live board safeguards</p></div><LayoutDashboard size={18} className="text-[#1b7b68]" /></div><div className="mt-4 space-y-3 text-[10px] leading-5 text-slate-500"><p className="rounded-2xl bg-slate-50 p-3">Patients are prioritized using acuity and waiting time rather than arrival order alone.</p><p className="rounded-2xl bg-slate-50 p-3">The board listens for real-time updates and falls back to polling when the WebSocket is unavailable.</p><p className="rounded-2xl bg-slate-50 p-3">Every ED status transition is retained by the backend audit history.</p></div></div>
       </div>
 
       {selected && <div className="fixed inset-0 z-50 flex items-end justify-end bg-slate-900/20 backdrop-blur-[1px]" onMouseDown={(e) => { if (e.target === e.currentTarget) setSelected(null); }}>
         <div className="h-full w-full max-w-xl overflow-y-auto bg-white p-5 shadow-2xl sm:rounded-l-3xl">
           <div className="flex items-start justify-between gap-4"><div><div className="flex items-center gap-2"><span className={`rounded-lg border px-2 py-1 text-[9px] font-extrabold ${acuityClass(selected.visit?.currentAcuityLevel)}`}>{acuityLabel(selected.visit?.currentAcuityLevel)}</span><span className={`rounded-lg border px-2 py-1 text-[9px] font-bold ${statusClass(selected.visit?.status)}`}>{String(selected.visit?.status || '').replaceAll('_', ' ')}</span></div><h2 className="mt-3 text-xl font-extrabold text-slate-800">{patientName(selected.patient, selected.visit)}</h2><p className="mt-1 text-xs text-slate-400">{selected.patient?.mrn || selected.visit?.visitNumber} · Arrived {formatDateTime(selected.visit?.arrivalAt)}</p></div><button onClick={() => setSelected(null)} className="rounded-xl bg-slate-50 p-2 text-slate-500 hover:bg-slate-100"><X size={18} /></button></div>
 
-          <div className="mt-5 grid grid-cols-2 gap-2"><div className="rounded-2xl bg-slate-50 p-3"><p className="text-[9px] font-bold text-slate-400">Chief Complaint</p><p className="mt-1 text-xs font-bold text-slate-700">{selected.visit?.chiefComplaint || '—'}</p></div><div className="rounded-2xl bg-slate-50 p-3"><p className="text-[9px] font-bold text-slate-400">Bay</p><p className="mt-1 text-xs font-bold text-slate-700">{selected.bay?.bayCode || 'Not assigned'}</p></div></div>
+          <div className="mt-5 grid grid-cols-2 gap-2"><div className="rounded-2xl bg-slate-50 p-3"><p className="text-[9px] font-bold text-slate-400">Chief Complaint</p><p className="mt-1 text-[11px] font-bold text-slate-700">{selected.visit?.chiefComplaint || '—'}</p></div><div className="rounded-2xl bg-slate-50 p-3"><p className="text-[9px] font-bold text-slate-400">Bay</p><p className="mt-1 text-[11px] font-bold text-slate-700">{selected.bay?.bayCode || 'Not assigned'}</p></div></div>
 
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4"><button onClick={() => setActiveModal('triage')} className="rounded-2xl border border-slate-200 bg-white p-3 text-left hover:border-[#1b7b68]"><ClipboardList size={17} className="text-[#1b7b68]" /><p className="mt-2 text-[10px] font-extrabold">Triage</p></button><button onClick={() => setActiveModal('bay')} className="rounded-2xl border border-slate-200 bg-white p-3 text-left hover:border-[#1b7b68]"><BedDouble size={17} className="text-[#1b7b68]" /><p className="mt-2 text-[10px] font-extrabold">Assign Bay</p></button><button onClick={() => setActiveModal('order')} className="rounded-2xl border border-slate-200 bg-white p-3 text-left hover:border-[#1b7b68]"><PackageCheck size={17} className="text-[#1b7b68]" /><p className="mt-2 text-[10px] font-extrabold">Add Order</p></button><button onClick={() => setActiveModal('disposition')} className="rounded-2xl border border-slate-200 bg-white p-3 text-left hover:border-[#1b7b68]"><Hospital size={17} className="text-[#1b7b68]" /><p className="mt-2 text-[10px] font-extrabold">Disposition</p></button></div>
 
@@ -511,11 +560,11 @@ export default function EmergencyPage() {
 
       {activeModal && (
         <Modal
-          title={activeModal === 'visit' ? 'Register Emergency Visit' : activeModal === 'triage' ? 'Structured Triage Assessment' : activeModal === 'bay' ? 'Assign Emergency Bay' : activeModal === 'order' ? 'Create ED Order' : 'Record Disposition'}
-          eyebrow={activeModal === 'visit' ? 'Patient intake' : activeModal === 'triage' ? 'Clinical assessment' : activeModal === 'bay' ? 'Capacity management' : activeModal === 'order' ? 'Clinical orders' : 'Care transition'}
-          description={activeModal === 'visit' ? 'Start a new emergency encounter and capture the reason for presentation.' : activeModal === 'triage' ? 'Record acuity and vital signs for emergency prioritization.' : activeModal === 'bay' ? 'Choose an available treatment space for this patient.' : activeModal === 'order' ? 'Create a laboratory, imaging, medication or other ED order.' : 'Record the patient’s next destination and trigger the appropriate downstream workflow.'}
+          title={activeModal === 'visit' ? 'Register Emergency Visit' : activeModal === 'triage' ? 'Structured Triage Assessment' : activeModal === 'bay' ? 'Assign Emergency Bay' : activeModal === 'bay-config' ? 'Configure ED Bay' : activeModal === 'order' ? 'Create ED Order' : 'Record Disposition'}
+          eyebrow={activeModal === 'visit' ? 'Patient intake' : activeModal === 'triage' ? 'Clinical assessment' : activeModal === 'bay' ? 'Capacity management' : activeModal === 'bay-config' ? 'ED configuration' : activeModal === 'order' ? 'Clinical orders' : 'Care transition'}
+          description={activeModal === 'visit' ? 'Start a new emergency encounter and capture the reason for presentation.' : activeModal === 'triage' ? 'Record acuity and vital signs for emergency prioritization.' : activeModal === 'bay' ? 'Choose an available treatment space for this patient.' : activeModal === 'bay-config' ? 'Define a physical emergency treatment space and the resources it can safely support.' : activeModal === 'order' ? 'Create a laboratory, imaging, medication or other ED order.' : 'Record the patient’s next destination and trigger the appropriate downstream workflow.'}
           onClose={() => !submitting && setActiveModal(null)}
-          icon={activeModal === 'visit' ? <Plus size={19} /> : activeModal === 'triage' ? <ClipboardList size={19} /> : activeModal === 'bay' ? <BedDouble size={19} /> : activeModal === 'order' ? <PackageCheck size={19} /> : <Hospital size={19} />}
+          icon={activeModal === 'visit' ? <Plus size={19} /> : activeModal === 'triage' ? <ClipboardList size={19} /> : activeModal === 'bay' ? <BedDouble size={19} /> : activeModal === 'bay-config' ? <Settings2 size={19} /> : activeModal === 'order' ? <PackageCheck size={19} /> : <Hospital size={19} />}
         >
           {activeModal === 'visit' && (
             <form onSubmit={submitVisit} className="space-y-5">
@@ -527,8 +576,8 @@ export default function EmergencyPage() {
                         <div className="flex min-w-0 items-center gap-3">
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#1b7b68] shadow-sm"><UserCheck size={17} /></div>
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-bold text-slate-800">{patientName(selectedPatientForVisit, {})}</p>
-                            <p className="text-[11px] font-medium text-slate-500">{selectedPatientForVisit.mrn || 'No MRN'} · {selectedPatientForVisit.phone || 'No phone'}</p>
+                            <p className="truncate text-[12px] font-bold text-slate-800">{patientName(selectedPatientForVisit, {})}</p>
+                            <p className="text-[10px] font-medium text-slate-500">{selectedPatientForVisit.mrn || 'No MRN'} · {selectedPatientForVisit.phone || 'No phone'}</p>
                           </div>
                         </div>
                         <button type="button" onClick={() => { setSelectedPatientForVisit(null); setVisitForm({ ...visitForm, patientId: '' }); setPatientSearch(''); }} className="shrink-0 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-500 hover:bg-white hover:text-slate-800">Change</button>
@@ -564,8 +613,8 @@ export default function EmergencyPage() {
                                   >
                                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500"><UserRound size={16} /></div>
                                     <div className="min-w-0 flex-1">
-                                      <p className="truncate text-sm font-bold text-slate-800">{patientName(patient, {})}</p>
-                                      <p className="mt-0.5 truncate text-[11px] font-medium text-slate-500">MRN: {patient.mrn || '—'} · {patient.phone || 'No phone'}</p>
+                                      <p className="truncate text-[12px] font-bold text-slate-800">{patientName(patient, {})}</p>
+                                      <p className="mt-0.5 truncate text-[10px] font-medium text-slate-500">MRN: {patient.mrn || '—'} · {patient.phone || 'No phone'}</p>
                                     </div>
                                     <span className="text-[10px] font-bold uppercase tracking-wider text-[#1b7b68]">Select</span>
                                   </button>
@@ -573,7 +622,7 @@ export default function EmergencyPage() {
                               </div>
                             ) : (
                               <div className="px-4 py-4">
-                                <p className="text-xs font-bold text-slate-700">No matching patient found</p>
+                                <p className="text-[11px] font-bold text-slate-700">No matching patient found</p>
                                 <p className="mt-1 text-[11px] text-slate-400">You can leave the patient blank and continue the emergency registration.</p>
                               </div>
                             )}
@@ -635,13 +684,35 @@ export default function EmergencyPage() {
             </form>
           )}
 
+          {activeModal === 'bay-config' && (
+            <form onSubmit={submitBayConfig} className="space-y-4">
+              <FormSection title="Bay identity" description="Define the physical treatment space and where it belongs.">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Bay Code" required hint="Unique within ED"><input required className={inputClass} value={bayConfigForm.bayCode} onChange={(e) => setBayConfigForm({ ...bayConfigForm, bayCode: e.target.value })} placeholder="e.g. RESUS-01" /></Field>
+                  <Field label="Zone" required><Select required value={bayConfigForm.zone} onChange={(value) => setBayConfigForm({ ...bayConfigForm, zone: value })} options={['RESUSCITATION','TRAUMA','MAIN_ED','PEDIATRIC','OBSERVATION','ISOLATION']} labels={{ RESUSCITATION:'Resuscitation', TRAUMA:'Trauma', MAIN_ED:'Main ED', PEDIATRIC:'Pediatric', OBSERVATION:'Observation', ISOLATION:'Isolation' }} /></Field>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Bay Type" required><Select required value={bayConfigForm.type} onChange={(value) => setBayConfigForm({ ...bayConfigForm, type: value })} options={['RESUSCITATION','TRAUMA','TREATMENT','OBSERVATION','ISOLATION','PEDIATRIC']} labels={{ RESUSCITATION:'Resuscitation', TRAUMA:'Trauma', TREATMENT:'Treatment', OBSERVATION:'Observation', ISOLATION:'Isolation', PEDIATRIC:'Pediatric' }} /></Field>
+                  <Field label="Capacity" required hint="Patients"><input required min="1" type="number" className={inputClass} value={bayConfigForm.capacity} onChange={(e) => setBayConfigForm({ ...bayConfigForm, capacity: e.target.value })} /></Field>
+                </div>
+              </FormSection>
+              <FormSection title="Supported acuity" description="Select the emergency acuity levels this bay is intended to accommodate.">
+                <div className="grid grid-cols-5 gap-2">{['1','2','3','4','5'].map((level) => { const active = bayConfigForm.supportedAcuityLevels.includes(level); return <button key={level} type="button" onClick={() => toggleBayConfigValue('supportedAcuityLevels', level)} className={`rounded-2xl border px-2 py-2.5 text-center transition ${active ? 'border-[#1b7b68] bg-[#1b7b68]/10 text-[#1b7b68]' : 'border-slate-200 bg-white text-slate-400 hover:border-slate-300'}`}><span className="block text-[11px] font-extrabold">ESI {level}</span><span className="mt-0.5 block text-[8px] font-semibold">{level === '1' ? 'Resus' : level === '2' ? 'Emergent' : level === '3' ? 'Urgent' : level === '4' ? 'Less urgent' : 'Non-urgent'}</span></button>; })}</div>
+              </FormSection>
+              <FormSection title="Resources & capabilities" description="Record equipment and capabilities available in this bay.">
+                <div className="grid gap-2 sm:grid-cols-2">{['RESUSCITATION','CARDIAC_MONITOR','OXYGEN','ISOLATION','NEGATIVE_PRESSURE','BARIATRIC','PEDIATRIC_EQUIPMENT','MENTAL_HEALTH_SAFE_SPACE'].map((resource) => { const active = bayConfigForm.resources.includes(resource); return <button key={resource} type="button" onClick={() => toggleBayConfigValue('resources', resource)} className={`flex items-center gap-3 rounded-2xl border px-3 py-2.5 text-left transition ${active ? 'border-[#1b7b68] bg-[#1b7b68]/5 text-[#1b7b68]' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'}`}><span className={`flex h-7 w-7 items-center justify-center rounded-xl ${active ? 'bg-[#1b7b68] text-white' : 'bg-slate-100 text-slate-400'}`}>{active ? <CheckCircle2 size={13} /> : <BedDouble size={13} />}</span><span className="text-[9px] font-extrabold">{resource.replaceAll('_',' ')}</span></button>; })}</div>
+              </FormSection>
+              <ModalFooter onCancel={() => setActiveModal(null)} loading={submitting} submitLabel="Create ED Bay" disabled={!bayConfigForm.bayCode.trim() || bayConfigForm.supportedAcuityLevels.length === 0} />
+            </form>
+          )}
+
           {activeModal === 'bay' && (
             <form onSubmit={submitBay} className="space-y-5">
               <FormSection title="Treatment space" description="Available bays are listed based on current capacity.">
                 <Field label="Available Bay" required>
-                  <Select required value={bayForm.bayId} onChange={(value) => setBayForm({ ...bayForm, bayId: value })} options={['', ...bays.filter((b) => b.status === 'AVAILABLE').map((b) => String(b._id))]} labels={Object.fromEntries(bays.map((b) => [String(b._id), `${b.bayCode}${b.zone ? ` · ${b.zone}` : ''}`]))} placeholder="Select an available bay" />
+                  <Select required value={bayForm.bayId} onChange={(value) => setBayForm({ ...bayForm, bayId: value })} options={['', ...bays.filter((b) => (Number(b.availableCapacity) || 0) > 0).map((b) => String(b._id))]} labels={Object.fromEntries(bays.map((b) => [String(b._id), `${b.bayCode}${b.zone ? ` · ${b.zone}` : ''} · ${Number(b.availableCapacity) || 0}/${Number(b.capacity) || 1} available`]))} placeholder="Select an available bay" />
                 </Field>
-                {!bays.some((b) => b.status === 'AVAILABLE') && <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 text-xs font-semibold text-amber-700">No bays are currently marked available.</div>}
+                {!bays.some((b) => (Number(b.availableCapacity) || 0) > 0) && <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 text-xs font-semibold text-amber-700">No bay capacity is currently available.</div>}
                 <Field label="Assignment reason" hint="Optional"><textarea className={textareaClass} value={bayForm.reason} onChange={(e) => setBayForm({ ...bayForm, reason: e.target.value })} placeholder="Optional assignment note..." /></Field>
               </FormSection>
               <ModalFooter onCancel={() => setActiveModal(null)} loading={submitting} submitLabel="Assign Bay" disabled={!bays.some((b) => b.status === 'AVAILABLE')} />
@@ -683,7 +754,7 @@ export default function EmergencyPage() {
 function Field({ label, children, hint, required }: { label: string; children: ReactNode; hint?: string; required?: boolean }) {
   return (
     <label className="block">
-      <span className="flex items-center justify-between gap-3 text-[11px] font-extrabold uppercase tracking-[0.06em] text-slate-500">
+      <span className="flex items-center justify-between gap-3 text-[9px] font-extrabold uppercase tracking-[0.06em] text-slate-500">
         <span>{label}{required && <span className="ml-1 text-rose-500">*</span>}</span>
         {hint && <span className="normal-case tracking-normal text-[10px] font-semibold text-slate-400">{hint}</span>}
       </span>
@@ -708,8 +779,8 @@ function FormSection({ title, description, children }: { title: string; descript
   return (
     <section className="rounded-3xl border border-slate-100 bg-slate-50/70 p-4 sm:p-5">
       <div className="mb-4">
-        <h3 className="text-sm font-extrabold text-slate-800">{title}</h3>
-        {description && <p className="mt-1 text-[11px] leading-5 text-slate-400">{description}</p>}
+        <h3 className="text-[12px] font-extrabold text-slate-800">{title}</h3>
+        {description && <p className="mt-1 text-[10px] leading-5 text-slate-400">{description}</p>}
       </div>
       <div className="space-y-4">{children}</div>
     </section>
@@ -741,8 +812,8 @@ function Modal({ title, eyebrow, description, icon, onClose, children }: { title
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#1b7b68]/10 text-[#1b7b68]">{icon}</div>
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#1b7b68]">{eyebrow}</p>
-              <h2 className="mt-0.5 text-lg font-extrabold tracking-tight text-slate-800 sm:text-xl">{title}</h2>
-              <p className="mt-1 text-[11px] leading-5 text-slate-400">{description}</p>
+              <h2 className="mt-0.5 text-base font-extrabold tracking-tight text-slate-800 sm:text-lg">{title}</h2>
+              <p className="mt-1 text-[10px] leading-5 text-slate-400">{description}</p>
             </div>
             <button type="button" onClick={onClose} className="shrink-0 rounded-xl border border-slate-100 bg-slate-50 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700" aria-label="Close modal">
               <X size={18} />
