@@ -51,6 +51,13 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
     },
 
     {
+      label: 'Bed & Ward Management',
+      href: '/hms/bed-ward',
+      icon: Bed,
+      moduleKey: 'bed_ward',
+    },
+
+    {
       label: 'Outpatient Clinic',
       href: '/hms/outpatients',
       icon: Stethoscope,
@@ -105,13 +112,6 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       icon: Pill,
       moduleKey: 'pharmacy',
     },
-
-    // {
-    //   label: 'Bed Management',
-    //   href: '/hms/beds',
-    //   icon: Bed,
-    //   moduleKey: 'beds',
-    // },
 
     {
       label: 'Billing & Invoices',
