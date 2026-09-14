@@ -1084,7 +1084,7 @@ export default function StaffPage() {
   /* ------------------------------------------------------------------------ */
 
   return (
-    <div className="min-h-full w-full bg-slate-50 p-4 md:p-6 xl:p-8">
+    <div className="min-h-full space-y-6 font-sans text-slate-800 animate-in fade-in duration-300">
       <div className="w-full max-w-[1800px] mx-auto space-y-6">
 
         {/* HEADER */}

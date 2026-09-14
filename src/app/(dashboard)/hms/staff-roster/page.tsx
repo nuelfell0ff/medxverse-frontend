@@ -2744,7 +2744,7 @@ export default function RosteringPage() {
   ========================================================================== */
 
   return (
-    <div className="min-h-full bg-slate-50/30 p-4 sm:p-6 max-w-[1600px] mx-auto font-sans pb-12">
+    <div className="min-h-full space-y-6 font-sans text-slate-800 animate-in fade-in duration-300">
       {/* =====================================================================
          HEADER
       ===================================================================== */}

@@ -206,7 +206,7 @@ export default function OutpatientsPage() {
   });
 
   return (
-    <div className="p-6 font-sans w-full mx-auto space-y-6 bg-slate-50/50 min-h-screen">
+    <div className="min-h-full space-y-6 font-sans text-slate-800 animate-in fade-in duration-300">
       
       {/* Action Error Banner */}
       {actionError && (

@@ -6,96 +6,103 @@ import {
   IPatient,
   PatientWithClinicalSummary,
 } from '@/types/patient';
-import { useAuthStore } from '@/store/useAuthStore';
+import { getAuthHeaders, API_BASE_URL as APPOINTMENT_API_BASE_URL } from '@/services/appointment.service';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medxverse-backend.onrender.com/api/v1';
+const API_BASE_URL = APPOINTMENT_API_BASE_URL;
 
-function getAuthHeaders(): HeadersInit {
-  // 1. Get token directly from Zustand store state
-  let token: string | null = useAuthStore.getState().token;
+async function requestJson<T>(url: string, init: RequestInit = {}, message: string): Promise<T> {
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      ...getAuthHeaders(),
+      ...(init.headers || {}),
+    },
+    cache: 'no-store',
+  });
 
-  // 2. Fallback to direct localStorage if token isn't in Zustand store root
-  if (!token && typeof window !== 'undefined') {
-    token = localStorage.getItem('token');
+  const text = await res.text();
+  let json: any = {};
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    // Preserve a useful error below.
   }
 
+  if (!res.ok) {
+    throw new Error(json?.message || `${message} (${res.status})`);
+  }
+
+  return json as T;
+}
+
+function normalizePatients(payload: any): PaginatedPatientsResponse {
+  const data = payload?.data;
+  const patients = Array.isArray(payload?.patients)
+    ? payload.patients
+    : Array.isArray(data)
+      ? data
+      : Array.isArray(data?.patients)
+        ? data.patients
+        : [];
+
   return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    success: payload?.success !== false,
+    patients,
+    total: Number(payload?.total ?? data?.total ?? patients.length),
+    page: Number(payload?.page ?? data?.page ?? 1),
+    limit: Number(payload?.limit ?? data?.limit ?? 25),
+    pages: Number(payload?.pages ?? data?.pages ?? 1),
   };
 }
 
 export const PatientApiService = {
-  async getPatients(query: GetPatientsQueryDTO): Promise<PaginatedPatientsResponse> {
+  async getPatients(query: GetPatientsQueryDTO = {}): Promise<PaginatedPatientsResponse> {
     const params = new URLSearchParams();
-    if (query.search) params.append('search', query.search);
-    if (query.page) params.append('page', query.page.toString());
-    if (query.limit) params.append('limit', query.limit.toString());
+    if (query.search) params.set('search', query.search);
+    if (query.page) params.set('page', String(query.page));
+    if (query.limit) params.set('limit', String(query.limit));
 
-    const res = await fetch(`${API_BASE_URL}/patients?${params.toString()}`, {
-      headers: getAuthHeaders(),
-    });
-
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.message || 'Failed to fetch patients list');
-    }
-    return res.json();
+    const payload = await requestJson<any>(
+      `${API_BASE_URL}/patients?${params.toString()}`,
+      {},
+      'Failed to fetch patients list'
+    );
+    return normalizePatients(payload);
   },
 
   async getPatientById(id: string): Promise<IPatient> {
-    const res = await fetch(`${API_BASE_URL}/patients/${id}`, {
-      headers: getAuthHeaders(),
-    });
-
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.message || 'Failed to fetch patient details');
-    }
-    const data = await res.json();
-    return data.data;
+    const payload = await requestJson<any>(
+      `${API_BASE_URL}/patients/${encodeURIComponent(id)}`,
+      {},
+      'Failed to fetch patient details'
+    );
+    return (payload?.data || payload) as IPatient;
   },
 
   async registerPatient(dto: CreatePatientDTO): Promise<IPatient> {
-    const res = await fetch(`${API_BASE_URL}/patients`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(dto),
-    });
-
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.message || 'Failed to register patient');
-    }
-    const data = await res.json();
-    return data.data;
+    const payload = await requestJson<any>(
+      `${API_BASE_URL}/patients`,
+      { method: 'POST', body: JSON.stringify(dto) },
+      'Failed to register patient'
+    );
+    return (payload?.data || payload) as IPatient;
   },
 
   async recordVitals(patientId: string, dto: AddVitalsDTO): Promise<IPatient> {
-    const res = await fetch(`${API_BASE_URL}/patients/${patientId}/vitals`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(dto),
-    });
-
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.message || 'Failed to record vitals');
-    }
-    const data = await res.json();
-    return data.data;
+    const payload = await requestJson<any>(
+      `${API_BASE_URL}/patients/${encodeURIComponent(patientId)}/vitals`,
+      { method: 'POST', body: JSON.stringify(dto) },
+      'Failed to record vitals'
+    );
+    return (payload?.data || payload) as IPatient;
   },
 
   async getClinicalSummary(patientId: string): Promise<PatientWithClinicalSummary> {
-    const res = await fetch(`${API_BASE_URL}/patients/${patientId}/clinical-summary`, {
-      headers: getAuthHeaders(),
-    });
-
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.message || 'Failed to fetch clinical summary');
-    }
-    const data = await res.json();
-    return data.data;
+    const payload = await requestJson<any>(
+      `${API_BASE_URL}/patients/${encodeURIComponent(patientId)}/clinical-summary`,
+      {},
+      'Failed to fetch clinical summary'
+    );
+    return (payload?.data || payload) as PatientWithClinicalSummary;
   },
 };

@@ -30,28 +30,53 @@ export interface IVitals {
   weight?: number;
   height?: number;
   recordedBy?: string;
-  recordedAt: string;
+  recordedAt?: string;
 }
 
 export interface IAllergy {
   _id?: string;
-  allergen: string;
-  reaction: string;
-  severity: AllergySeverity;
+  allergen?: string;
+  reaction?: string;
+  severity?: AllergySeverity;
 }
 
 export interface IMedicalHistory {
   _id?: string;
-  condition: string;
+  condition?: string;
   diagnosedDate?: string;
-  status: MedicalHistoryStatus;
+  status?: MedicalHistoryStatus;
   notes?: string;
 }
 
 export interface IPatient {
   _id: string;
-  hospitalId: string;
-  mrn: string;
+  hospitalId?: string;
+  mrn?: string;
+  firstName?: string;
+  lastName?: string;
+  dateOfBirth?: string;
+  gender?: Gender | string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  maritalStatus?: string;
+  occupation?: string;
+  nextOfKin?: string;
+  informant?: string;
+  bloodGroup?: BloodGroup;
+  genotype?: Genotype;
+  policyNumber?: string;
+  hmoId?: string;
+  vitalsHistory?: IVitals[];
+  allergies?: IAllergy[];
+  medicalHistory?: IMedicalHistory[];
+  isFlagged?: boolean;
+  flagReason?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreatePatientDTO {
   firstName: string;
   lastName: string;
   dateOfBirth: string;
@@ -63,31 +88,6 @@ export interface IPatient {
   occupation?: string;
   nextOfKin?: string;
   informant?: string;
-  bloodGroup?: BloodGroup;
-  genotype?: Genotype;
-  policyNumber?: string;
-  hmoId?: string;
-  vitalsHistory: IVitals[];
-  allergies: IAllergy[];
-  medicalHistory: IMedicalHistory[];
-  isFlagged: boolean;
-  flagReason?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CreatePatientDTO {
-  firstName: string;
-  lastName: string;
-  dateOfBirth: string;
-  gender: Gender;
-  phone: string;
-  email?: string;
-  address?: string;
-  maritalStatus: string;
-  occupation: string;
-  nextOfKin: string;
-  informant: string;
   bloodGroup?: BloodGroup;
   genotype?: Genotype;
   policyNumber?: string;
@@ -113,11 +113,12 @@ export interface GetPatientsQueryDTO {
 
 export interface PaginatedPatientsResponse {
   success: boolean;
-  patients: IPatient[];
-  total: number;
-  page: number;
-  limit: number;
-  pages: number;
+  patients?: IPatient[];
+  data?: IPatient[];
+  total?: number;
+  page?: number;
+  limit?: number;
+  pages?: number;
 }
 
 export interface ClinicalSummaryItem {
