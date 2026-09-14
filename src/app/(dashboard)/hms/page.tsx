@@ -161,8 +161,17 @@ function getLocalDateString(date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
-function formatAppointmentTime(time: string): string {
+function formatAppointmentTime(time?: string): string {
+  if (!time) return 'N/A';
+
   const [hours, minutes] = time.split(':').map(Number);
+
+  if (
+    Number.isNaN(hours) ||
+    Number.isNaN(minutes)
+  ) {
+    return 'N/A';
+  }
 
   const suffix = hours >= 12 ? 'PM' : 'AM';
   const displayHours = hours % 12 || 12;
