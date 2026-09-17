@@ -84,6 +84,16 @@ interface IPatient {
   allergies?: unknown[];
 }
 
+interface Staff {
+  _id: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  role?: string;
+  department?: string;
+  isActive?: boolean;
+}
+
 interface IPrescriptionMedication {
   medicationName: string;
   genericName?: string;
@@ -102,7 +112,7 @@ interface IPrescriptionMedication {
 interface IPrescription {
   _id: string;
   patientId: IPatient | string;
-  prescriberId?:
+  prescriberId:
     | {
         _id?: string;
         firstName?: string;
@@ -192,6 +202,7 @@ interface DispenseItemDraft {
 interface DispenseModalProps {
   prescription: IPrescription | null;
   inventory: PharmacyInventoryItem[];
+  inventoryLoading?: boolean;
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (dto: PharmacyCreateDispenseRecordDTO) => Promise<void>;
@@ -318,14 +329,34 @@ function getPrescriberName(
     | undefined,
   prescriberName?: string,
 ) {
-  if (!prescriber && prescriberName) return prescriberName;
+  if (prescriberName?.trim()) return prescriberName.trim();
   if (!prescriber) return 'Unknown prescriber';
-
   if (typeof prescriber === 'string') return prescriber;
-
   const name = `${prescriber.firstName || ''} ${prescriber.lastName || ''}`.trim();
-
   return name || prescriber.email || 'Unknown prescriber';
+}
+
+function normalizeStaffRecord(raw: any): Staff | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const source = raw.user || raw.account || raw.profile || raw;
+  const id = raw._id || raw.id || source._id || source.id;
+  if (!id) return null;
+  return {
+    ...raw,
+    _id: typeof id === 'string' ? id : String(id),
+    firstName: raw.firstName ?? source.firstName ?? source.givenName ?? '',
+    lastName: raw.lastName ?? source.lastName ?? source.familyName ?? '',
+    email: raw.email ?? source.email ?? '',
+    role: raw.role ?? source.role ?? source.staffRole ?? source.jobRole ?? '',
+    department: raw.department ?? source.department ?? '',
+    isActive: raw.isActive ?? source.isActive ?? true,
+  };
+}
+
+function extractStaffRows(json: any): any[] {
+  const data = json?.data ?? json;
+  const rows = data?.staff ?? data?.users ?? data?.accounts ?? data?.items ?? data?.results ?? data?.records ?? data;
+  return Array.isArray(rows) ? rows : [];
 }
 
 function getStatusClasses(status?: string) {
@@ -501,11 +532,17 @@ function PrescriptionDetails({
   approving: boolean;
 }) {
   const blocked = prescription.screeningStatus === ScreeningStatus.BLOCKED;
+  const isPostReview =
+    prescription.status === PrescriptionStatus.APPROVED ||
+    prescription.status === PrescriptionStatus.PARTIALLY_DISPENSED ||
+    prescription.status === PrescriptionStatus.DISPENSED ||
+    prescription.status === PrescriptionStatus.REJECTED;
+  const isScreeningDisabled = screening || approving || isPostReview;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+      <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white shadow-2xl">
+        <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-6 py-5 sm:px-7">
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-black text-slate-800">
@@ -701,9 +738,14 @@ function PrescriptionDetails({
 
           <button
             type="button"
-            disabled={screening}
+            disabled={isScreeningDisabled}
             onClick={onScreen}
-            className="inline-flex items-center gap-2 rounded-xl border border-[#1b7b68]/20 bg-[#e8f5f3] px-4 py-2.5 text-xs font-bold text-[#1b7b68] disabled:opacity-50"
+            title={
+              isPostReview
+                ? 'Screening cannot be re-run after prescription is approved or dispensed'
+                : undefined
+            }
+            className="inline-flex items-center gap-2 rounded-xl border border-[#1b7b68]/20 bg-[#e8f5f3] px-4 py-2.5 text-xs font-bold text-[#1b7b68] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {screening ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -715,7 +757,9 @@ function PrescriptionDetails({
 
           {!blocked &&
             prescription.status !== PrescriptionStatus.APPROVED &&
-            prescription.status !== PrescriptionStatus.DISPENSED && (
+            prescription.status !== PrescriptionStatus.PARTIALLY_DISPENSED &&
+            prescription.status !== PrescriptionStatus.DISPENSED &&
+            prescription.status !== PrescriptionStatus.REJECTED && (
               <button
                 type="button"
                 disabled={approving}
@@ -752,6 +796,7 @@ function PrescriptionDetails({
 function DispenseModal({
   prescription,
   inventory,
+  inventoryLoading = false,
   isOpen,
   onClose,
   onSubmit,
@@ -858,8 +903,8 @@ function DispenseModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+      <div className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white shadow-2xl">
+        <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-6 py-5 sm:px-7">
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-black text-slate-800">
@@ -893,7 +938,7 @@ function DispenseModal({
             </div>
           )}
 
-          <div className="p-6">
+          <div className="p-6 sm:p-7">
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
               <div className="flex gap-3">
                 <Barcode className="h-5 w-5 shrink-0 text-amber-600" />
@@ -958,16 +1003,22 @@ function DispenseModal({
                         >
                           <option value="">Select inventory item</option>
 
-                          {inventory.map((inventoryItem) => (
-                            <option
-                              key={inventoryItem._id}
-                              value={inventoryItem._id}
-                              disabled={inventoryItem.quantityInStock <= 0}
-                            >
-                              {inventoryItem.name} — Stock:{' '}
-                              {inventoryItem.quantityInStock}
-                            </option>
-                          ))}
+                          {inventoryLoading ? (
+                            <option value="" disabled>Loading inventory...</option>
+                          ) : inventory.length ? (
+                            inventory.map((inventoryItem) => (
+                              <option
+                                key={inventoryItem._id}
+                                value={inventoryItem._id}
+                                disabled={inventoryItem.quantityInStock <= 0}
+                              >
+                                {inventoryItem.name} — Stock:{' '}
+                                {inventoryItem.quantityInStock}
+                              </option>
+                            ))
+                          ) : (
+                            <option value="" disabled>No inventory available</option>
+                          )}
                         </select>
                       </div>
 
@@ -1114,7 +1165,7 @@ function CreatePrescriptionModal({
 }) {
   const [form, setForm] = useState<CreatePrescriptionFormDTO>({
     patientId: '',
-    prescriberId: undefined,
+    prescriberId: '',
     prescriberName: '',
     source: 'PHARMACY',
     sourceSystem: 'MEDXVERSE',
@@ -1134,27 +1185,14 @@ function CreatePrescriptionModal({
   });
   const [patientSearch, setPatientSearch] = useState('');
   const [patientResults, setPatientResults] = useState<IPatient[]>([]);
-  const [prescriberSearch, setPrescriberSearch] = useState('');
-  const [prescriberResults, setPrescriberResults] = useState<Array<{
-    _id: string;
-    firstName?: string;
-    lastName?: string;
-    email?: string;
-    staffId?: string;
-  }>>([]);
-  const [selectedPrescriber, setSelectedPrescriber] = useState<{
-    _id: string;
-    firstName?: string;
-    lastName?: string;
-    email?: string;
-    staffId?: string;
-  } | null>(null);
-  const [prescriberMode, setPrescriberMode] = useState<'registered' | 'external'>('registered');
-  const [searchingPrescribers, setSearchingPrescribers] = useState(false);
-  const [showPrescriberResults, setShowPrescriberResults] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<IPatient | null>(null);
   const [searchingPatients, setSearchingPatients] = useState(false);
   const [showPatientResults, setShowPatientResults] = useState(false);
+  const [prescriberSearch, setPrescriberSearch] = useState('');
+  const [prescriberResults, setPrescriberResults] = useState<Staff[]>([]);
+  const [selectedPrescriber, setSelectedPrescriber] = useState<Staff | null>(null);
+  const [searchingPrescribers, setSearchingPrescribers] = useState(false);
+  const [showPrescriberResults, setShowPrescriberResults] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1190,7 +1228,7 @@ function CreatePrescriptionModal({
   }, [isOpen, patientSearch, selectedPatient]);
 
   useEffect(() => {
-    if (!isOpen || prescriberMode !== 'registered' || selectedPrescriber || prescriberSearch.trim().length < 2) {
+    if (!isOpen || prescriberSearch.trim().length < 2 || selectedPrescriber) {
       setPrescriberResults([]);
       setShowPrescriberResults(false);
       return;
@@ -1199,15 +1237,14 @@ function CreatePrescriptionModal({
     const timer = window.setTimeout(async () => {
       setSearchingPrescribers(true);
       try {
-        const response = await apiRequest<Array<{
-          _id: string;
-          firstName?: string;
-          lastName?: string;
-          email?: string;
-          staffId?: string;
-        }>>(`/api/v1/pharmacy/prescribers?search=${encodeURIComponent(prescriberSearch.trim())}`);
-
-        setPrescriberResults(Array.isArray(response) ? response : []);
+        const response = await apiRequest<any>(
+          `/api/v1/staff?isActive=true&search=${encodeURIComponent(prescriberSearch.trim())}`,
+        );
+        const normalized = extractStaffRows(response)
+          .map(normalizeStaffRecord)
+          .filter((person): person is Staff => Boolean(person))
+          .filter((person) => person.isActive !== false);
+        setPrescriberResults(normalized.slice(0, 8));
         setShowPrescriberResults(true);
       } catch {
         setPrescriberResults([]);
@@ -1218,7 +1255,7 @@ function CreatePrescriptionModal({
     }, 300);
 
     return () => window.clearTimeout(timer);
-  }, [isOpen, prescriberMode, prescriberSearch, selectedPrescriber]);
+  }, [isOpen, prescriberSearch, selectedPrescriber]);
 
   if (!isOpen) return null;
 
@@ -1244,6 +1281,26 @@ function CreatePrescriptionModal({
     setShowPatientResults(false);
   };
 
+  const selectPrescriber = (person: Staff) => {
+    setSelectedPrescriber(person);
+    const name = `${person.firstName || ''} ${person.lastName || ''}`.trim();
+    setPrescriberSearch(name || person.email || '');
+    update('prescriberId', person._id);
+    update('prescriberName', name || person.email || undefined);
+    setPrescriberResults([]);
+    setShowPrescriberResults(false);
+    setError(null);
+  };
+
+  const clearPrescriber = () => {
+    setSelectedPrescriber(null);
+    setPrescriberSearch('');
+    update('prescriberId', '');
+    update('prescriberName', '');
+    setPrescriberResults([]);
+    setShowPrescriberResults(false);
+  };
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
@@ -1253,13 +1310,8 @@ function CreatePrescriptionModal({
       return;
     }
 
-    if (prescriberMode === 'registered' && (!form.prescriberId || !selectedPrescriber)) {
-      setError('Search for and select a registered prescriber, or switch to external prescriber.');
-      return;
-    }
-
-    if (prescriberMode === 'external' && !form.prescriberName?.trim()) {
-      setError('Enter the prescriber name.');
+    if (!form.prescriberId?.trim() && !form.prescriberName?.trim()) {
+      setError('Search for a registered prescriber or enter the prescriber name.');
       return;
     }
 
@@ -1282,8 +1334,8 @@ function CreatePrescriptionModal({
       await onSubmit({
         ...form,
         patientId: form.patientId.trim(),
-        prescriberId: prescriberMode === 'registered' ? form.prescriberId?.trim() : undefined,
-        prescriberName: prescriberMode === 'external' ? form.prescriberName?.trim() : undefined,
+        prescriberId: form.prescriberId?.trim() || undefined,
+        prescriberName: form.prescriberName?.trim() || prescriberSearch.trim() || undefined,
         medicationName: form.medicationName.trim(),
         genericName: form.genericName?.trim() || undefined,
         dosage: form.dosage?.trim() || undefined,
@@ -1301,12 +1353,16 @@ function CreatePrescriptionModal({
       onClose();
       setSelectedPatient(null);
       setPatientSearch('');
+      setSelectedPrescriber(null);
+      setPrescriberSearch('');
+      setPrescriberResults([]);
+      setShowPrescriberResults(false);
       setPatientResults([]);
       setShowPatientResults(false);
       setForm((current) => ({
         ...current,
         patientId: '',
-        prescriberId: undefined,
+        prescriberId: '',
         prescriberName: '',
         medicationName: '',
         genericName: '',
@@ -1329,8 +1385,8 @@ function CreatePrescriptionModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-      <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-[1.75rem] border border-slate-100 bg-white shadow-2xl">
+        <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-6 py-5 sm:px-7">
           <div>
             <h2 className="text-lg font-black text-slate-800">New prescription</h2>
             <p className="mt-1 text-xs text-slate-400">Create a prescription for pharmacy clinical screening.</p>
@@ -1347,7 +1403,7 @@ function CreatePrescriptionModal({
             </div>
           )}
 
-          <div className="grid gap-4 p-6 md:grid-cols-2">
+          <div className="grid gap-5 p-6 sm:p-7 md:grid-cols-2">
             <div className="relative">
               <label className="field-label">Patient</label>
               <div className="relative">
@@ -1421,131 +1477,79 @@ function CreatePrescriptionModal({
               )}
             </div>
 
-            <div className="md:col-span-2">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <label className="field-label mb-0">Prescriber</label>
-                <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPrescriberMode('registered');
-                      update('prescriberName', '');
-                    }}
-                    className={`rounded-lg px-3 py-1.5 text-[11px] font-bold ${prescriberMode === 'registered' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}
-                  >
-                    Registered staff
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPrescriberMode('external');
+            <div className="relative">
+              <label className="field-label">Prescriber</label>
+              <div className="relative">
+                <input
+                  value={prescriberSearch}
+                  onChange={(e) => {
+                    setPrescriberSearch(e.target.value);
+                    if (selectedPrescriber) {
                       setSelectedPrescriber(null);
-                      setPrescriberSearch('');
-                      setPrescriberResults([]);
-                      update('prescriberId', undefined);
-                      setShowPrescriberResults(false);
-                    }}
-                    className={`rounded-lg px-3 py-1.5 text-[11px] font-bold ${prescriberMode === 'external' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}
+                      update('prescriberId', '');
+                    }
+                    update('prescriberName', e.target.value);
+                    setShowPrescriberResults(true);
+                  }}
+                  onFocus={() => {
+                    if (prescriberResults.length) setShowPrescriberResults(true);
+                  }}
+                  className="field-input pr-10"
+                  placeholder="Search staff by name or enter a name"
+                  autoComplete="off"
+                />
+                {searchingPrescribers ? (
+                  <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400" />
+                ) : prescriberSearch ? (
+                  <button
+                    type="button"
+                    onClick={clearPrescriber}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1 text-slate-400 hover:bg-slate-100"
                   >
-                    External / unregistered
+                    <X className="h-4 w-4" />
                   </button>
-                </div>
+                ) : null}
               </div>
 
-              {prescriberMode === 'registered' ? (
-                <div className="relative">
-                  <input
-                    value={prescriberSearch}
-                    onChange={(e) => {
-                      setPrescriberSearch(e.target.value);
-                      setSelectedPrescriber(null);
-                      update('prescriberId', undefined);
-                      setShowPrescriberResults(true);
-                    }}
-                    onFocus={() => {
-                      if (prescriberResults.length) setShowPrescriberResults(true);
-                    }}
-                    className="field-input pr-10"
-                    placeholder="Search staff by name, email or staff ID"
-                    autoComplete="off"
-                  />
-                  {searchingPrescribers ? (
-                    <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400" />
-                  ) : prescriberSearch ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPrescriberSearch('');
-                        setSelectedPrescriber(null);
-                        update('prescriberId', undefined);
-                        setPrescriberResults([]);
-                        setShowPrescriberResults(false);
-                      }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1 text-slate-400 hover:bg-slate-100"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
+              {showPrescriberResults && prescriberSearch.trim().length >= 2 && (
+                <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1 shadow-xl">
+                  {prescriberResults.length ? (
+                    prescriberResults.map((person) => (
+                      <button
+                        key={person._id}
+                        type="button"
+                        onClick={() => selectPrescriber(person)}
+                        className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left hover:bg-slate-50"
+                      >
+                        <span>
+                          <span className="block text-sm font-bold text-slate-800">
+                            {`${person.firstName || ''} ${person.lastName || ''}`.trim() || 'Unnamed Staff'}
+                          </span>
+                          <span className="block text-[11px] text-slate-400">
+                            {person.role || 'Staff'}{person.department ? ` • ${person.department}` : ''}{person.email ? ` • ${person.email}` : ''}
+                          </span>
+                        </span>
+                        <CheckCircle2 className="h-4 w-4 text-slate-300" />
+                      </button>
+                    ))
+                  ) : !searchingPrescribers ? (
+                    <div className="px-3 py-4 text-xs text-slate-400">No registered staff found. You can continue with the entered name.</div>
                   ) : null}
-
-                  {showPrescriberResults && prescriberSearch.trim().length >= 2 && (
-                    <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1 shadow-xl">
-                      {prescriberResults.length ? (
-                        prescriberResults.map((staff) => (
-                          <button
-                            key={staff._id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedPrescriber(staff);
-                              setPrescriberSearch(`${staff.firstName || ''} ${staff.lastName || ''}`.trim() || staff.email || '');
-                              update('prescriberId', staff._id);
-                              update('prescriberName', '');
-                              setPrescriberResults([]);
-                              setShowPrescriberResults(false);
-                              setError(null);
-                            }}
-                            className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left hover:bg-slate-50"
-                          >
-                            <span>
-                              <span className="block text-sm font-bold text-slate-800">
-                                {`${staff.firstName || ''} ${staff.lastName || ''}`.trim() || 'Unnamed staff'}
-                              </span>
-                              <span className="block text-[11px] text-slate-400">
-                                {staff.email || 'Email unavailable'}{staff.staffId ? ` • Staff ID: ${staff.staffId}` : ''}
-                              </span>
-                            </span>
-                            <CheckCircle2 className="h-4 w-4 text-slate-300" />
-                          </button>
-                        ))
-                      ) : !searchingPrescribers ? (
-                        <div className="px-3 py-4 text-xs text-slate-400">No registered staff found.</div>
-                      ) : null}
-                    </div>
-                  )}
-
-                  {selectedPrescriber && (
-                    <div className="mt-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2">
-                      <div className="text-xs font-bold text-emerald-800">
-                        {`${selectedPrescriber.firstName || ''} ${selectedPrescriber.lastName || ''}`.trim() || selectedPrescriber.email}
-                      </div>
-                      <div className="text-[11px] text-emerald-600">
-                        {selectedPrescriber.email || 'Registered staff'}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div>
-                  <input
-                    value={form.prescriberName || ''}
-                    onChange={(e) => update('prescriberName', e.target.value)}
-                    className="field-input"
-                    placeholder="Enter prescriber full name"
-                  />
-                  <p className="mt-1.5 text-[11px] text-slate-400">
-                    Use this when the prescriber is not registered in MedXVerse.
-                  </p>
                 </div>
               )}
+
+              {selectedPrescriber ? (
+                <div className="mt-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2">
+                  <div className="text-xs font-bold text-emerald-800">
+                    {`${selectedPrescriber.firstName || ''} ${selectedPrescriber.lastName || ''}`.trim() || selectedPrescriber.email || 'Selected staff'}
+                  </div>
+                  <div className="text-[11px] text-emerald-600">Registered staff prescriber</div>
+                </div>
+              ) : prescriberSearch.trim() ? (
+                <div className="mt-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+                  Entered as an unregistered prescriber name unless you select a matching staff member above.
+                </div>
+              ) : null}
             </div>
             <div>
               <label className="field-label">Medication name</label>
@@ -1692,7 +1696,7 @@ function CreateFormularyModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-2xl rounded-3xl bg-white shadow-2xl">
+      <div className="w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
           <div>
             <h2 className="text-lg font-black text-slate-800">New formulary entry</h2>
@@ -1710,7 +1714,7 @@ function CreateFormularyModal({
             </div>
           )}
 
-          <div className="grid gap-4 p-6 md:grid-cols-2">
+          <div className="grid gap-5 p-6 sm:p-7 md:grid-cols-2">
             <div>
               <label className="field-label">Medication name</label>
               <input value={form.medicationName} onChange={(e) => setForm((v) => ({ ...v, medicationName: e.target.value }))} className="field-input" />
@@ -1866,7 +1870,7 @@ function AddInventoryModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-2xl overflow-hidden rounded-3xl bg-white shadow-2xl">
+      <div className="w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
           <div>
             <h2 className="text-lg font-black text-slate-800">
@@ -1894,7 +1898,7 @@ function AddInventoryModal({
             </div>
           )}
 
-          <div className="grid gap-4 p-6 md:grid-cols-2">
+          <div className="grid gap-5 p-6 sm:p-7 md:grid-cols-2">
             <div className="md:col-span-2">
               <label className="field-label">Drug name *</label>
               <input
@@ -2113,7 +2117,7 @@ function AdjustStockModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl">
+      <div className="w-full max-w-lg overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
           <div>
             <h2 className="text-lg font-black text-slate-800">
@@ -2139,7 +2143,7 @@ function AdjustStockModal({
             </div>
           )}
 
-          <div className="space-y-4 p-6">
+          <div className="space-y-5 p-6 sm:p-7">
             <div className="rounded-2xl bg-slate-50 p-4">
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 Current stock
@@ -2213,6 +2217,7 @@ export default function PharmacyPage() {
 
   const [prescriptions, setPrescriptions] = useState<IPrescription[]>([]);
   const [inventory, setInventory] = useState<PharmacyInventoryItem[]>([]);
+  const [dispenseInventory, setDispenseInventory] = useState<PharmacyInventoryItem[]>([]);
   const [dispenseRecords, setDispenseRecords] = useState<IDispenseRecord[]>([]);
   const [formulary, setFormulary] = useState<IFormularyEntry[]>([]);
 
@@ -2225,6 +2230,11 @@ export default function PharmacyPage() {
   const [inventoryPages, setInventoryPages] = useState(1);
   const [dispensePages, setDispensePages] = useState(1);
   const [formularyPages, setFormularyPages] = useState(1);
+
+  const [prescriptionTotal, setPrescriptionTotal] = useState(0);
+  const [inventoryTotal, setInventoryTotal] = useState(0);
+  const [dispenseTotal, setDispenseTotal] = useState(0);
+  const [formularyTotal, setFormularyTotal] = useState(0);
 
   const [prescriptionSearch, setPrescriptionSearch] = useState('');
   const [prescriptionStatus, setPrescriptionStatus] = useState('');
@@ -2262,6 +2272,7 @@ export default function PharmacyPage() {
   const [approveLoading, setApproveLoading] = useState(false);
 
   const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [dispenseInventoryLoading, setDispenseInventoryLoading] = useState(false);
   const [prescriptionLoading, setPrescriptionLoading] = useState(false);
   const [dispenseLoading, setDispenseLoading] = useState(false);
   const [formularyLoading, setFormularyLoading] = useState(false);
@@ -2286,10 +2297,12 @@ export default function PharmacyPage() {
 
       const response = await apiRequest<{
         prescriptions?: IPrescription[];
+        total?: number;
         pages?: number;
       }>(`/api/v1/pharmacy/prescriptions?${params.toString()}`);
 
       setPrescriptions(response.prescriptions || []);
+      setPrescriptionTotal(response.total || 0);
       setPrescriptionPages(response.pages || 1);
     } catch (err) {
       setActionError(
@@ -2326,10 +2339,12 @@ export default function PharmacyPage() {
 
       const response = await apiRequest<{
         items?: PharmacyInventoryItem[];
+        total?: number;
         pages?: number;
       }>(`/api/v1/pharmacy/inventory?${params.toString()}`);
 
       setInventory(response.items || []);
+      setInventoryTotal(response.total || 0);
       setInventoryPages(response.pages || 1);
     } catch (err) {
       setActionError(
@@ -2340,6 +2355,40 @@ export default function PharmacyPage() {
       setInventoryLoading(false);
     }
   }, [inventoryPage, inventorySearch, inventoryCategory, lowStockOnly]);
+
+  const fetchDispenseInventory = useCallback(async () => {
+    setDispenseInventoryLoading(true);
+    try {
+      const firstPage = await apiRequest<{ items?: PharmacyInventoryItem[]; total?: number; pages?: number }>(
+        '/api/v1/pharmacy/inventory?page=1&limit=100',
+      );
+      const firstItems = firstPage.items || [];
+      const totalPages = Math.max(1, Number(firstPage.pages) || 1);
+
+      if (totalPages === 1) {
+        setDispenseInventory(firstItems);
+        return;
+      }
+
+      const remainingPages = await Promise.all(
+        Array.from({ length: totalPages - 1 }, (_, index) =>
+          apiRequest<{ items?: PharmacyInventoryItem[] }>(
+            `/api/v1/pharmacy/inventory?page=${index + 2}&limit=100`,
+          ),
+        ),
+      );
+
+      setDispenseInventory([
+        ...firstItems,
+        ...remainingPages.flatMap((page) => page.items || []),
+      ]);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to load inventory for dispensing.');
+      setDispenseInventory([]);
+    } finally {
+      setDispenseInventoryLoading(false);
+    }
+  }, []);
 
   const fetchDispenseRecords = useCallback(async () => {
     setDispenseLoading(true);
@@ -2352,10 +2401,12 @@ export default function PharmacyPage() {
 
       const response = await apiRequest<{
         records?: IDispenseRecord[];
+        total?: number;
         pages?: number;
       }>(`/api/v1/pharmacy/dispense?${params.toString()}`);
 
       setDispenseRecords(response.records || []);
+      setDispenseTotal(response.total || 0);
       setDispensePages(response.pages || 1);
     } catch (err) {
       setActionError(
@@ -2386,10 +2437,12 @@ export default function PharmacyPage() {
 
       const response = await apiRequest<{
         entries?: IFormularyEntry[];
+        total?: number;
         pages?: number;
       }>(`/api/v1/pharmacy/formulary?${params.toString()}`);
 
       setFormulary(response.entries || []);
+      setFormularyTotal(response.total || 0);
       setFormularyPages(response.pages || 1);
     } catch (err) {
       setActionError(
@@ -2400,6 +2453,51 @@ export default function PharmacyPage() {
       setFormularyLoading(false);
     }
   }, [formularyPage, formularySearch, formularyStatus]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadOverviewCounts = async () => {
+      try {
+        const [prescriptionsResult, inventoryResult, dispenseResult, formularyResult] =
+          await Promise.all([
+            apiRequest<{ total?: number }>(
+              '/api/v1/pharmacy/prescriptions?page=1&limit=1',
+            ),
+            apiRequest<{ total?: number }>(
+              '/api/v1/pharmacy/inventory?page=1&limit=1',
+            ),
+            apiRequest<{ total?: number }>(
+              '/api/v1/pharmacy/dispense?page=1&limit=1',
+            ),
+            apiRequest<{ total?: number }>(
+              '/api/v1/pharmacy/formulary?page=1&limit=1',
+            ),
+          ]);
+
+        if (cancelled) return;
+
+        setPrescriptionTotal(prescriptionsResult.total || 0);
+        setInventoryTotal(inventoryResult.total || 0);
+        setDispenseTotal(dispenseResult.total || 0);
+        setFormularyTotal(formularyResult.total || 0);
+      } catch {
+        if (!cancelled) {
+          setPrescriptionTotal(0);
+          setInventoryTotal(0);
+          setDispenseTotal(0);
+          setFormularyTotal(0);
+        }
+      }
+    };
+
+    loadOverviewCounts();
+    fetchDispenseInventory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchDispenseInventory]);
 
   useEffect(() => {
     clearFeedback();
@@ -2458,6 +2556,18 @@ export default function PharmacyPage() {
 
   const handleScreenPrescription = async () => {
     if (!selectedPrescription) return;
+
+    if (
+      selectedPrescription.status === PrescriptionStatus.APPROVED ||
+      selectedPrescription.status === PrescriptionStatus.PARTIALLY_DISPENSED ||
+      selectedPrescription.status === PrescriptionStatus.DISPENSED ||
+      selectedPrescription.status === PrescriptionStatus.REJECTED
+    ) {
+      setActionError(
+        'Screening cannot be run once a prescription has been approved or dispensed.',
+      );
+      return;
+    }
 
     setScreeningLoading(true);
     clearFeedback();
@@ -2551,8 +2661,9 @@ export default function PharmacyPage() {
       method: 'POST',
       body: JSON.stringify({
         patientId: form.patientId,
+        prescriptionNumber: `RX-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
         prescriberId: form.prescriberId || undefined,
-        prescriberName: form.prescriberName?.trim() || undefined,
+        prescriberName: form.prescriberName || undefined,
         source: form.source,
         sourceRecordId: form.sourceRecordId || undefined,
         sourceSystem: form.sourceSystem || undefined,
@@ -2590,7 +2701,7 @@ export default function PharmacyPage() {
     });
 
     setActionSuccess('Inventory item created successfully.');
-    await fetchInventory();
+    await Promise.all([fetchInventory(), fetchDispenseInventory()]);
   };
 
   const handleAdjustStock = async (
@@ -2633,7 +2744,7 @@ export default function PharmacyPage() {
     setIsPrescriptionDetailsOpen(false);
     setSelectedPrescription(null);
 
-    await Promise.all([fetchPrescriptions(), fetchInventory(), fetchDispenseRecords()]);
+    await Promise.all([fetchPrescriptions(), fetchInventory(), fetchDispenseRecords(), fetchDispenseInventory()]);
   };
 
   const lowStockCount = useMemo(
@@ -2706,42 +2817,119 @@ export default function PharmacyPage() {
       <style jsx global>{`
         .field-label {
           display: block;
-          margin-bottom: 0.35rem;
-          font-size: 10px;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-          color: rgb(148 163 184);
+          margin-bottom: 0.5rem;
+          color: #334155;
+          font-size: 0.72rem;
+          font-weight: 800;
+          letter-spacing: 0.01em;
         }
 
         .field-input {
           width: 100%;
-          border-radius: 0.75rem;
-          border: 1px solid rgb(226 232 240);
-          background: white;
-          padding: 0.625rem 0.75rem;
-          font-size: 0.75rem;
+          min-height: 2.75rem;
+          border: 1px solid #e2e8f0;
+          border-radius: 0.9rem;
+          background: #ffffff;
+          padding: 0.7rem 0.85rem;
+          color: #0f172a;
+          font-size: 0.78rem;
+          line-height: 1.35;
           outline: none;
+          transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+        }
+
+        .field-input::placeholder {
+          color: #94a3b8;
+        }
+
+        .field-input:hover {
+          border-color: #cbd5e1;
         }
 
         .field-input:focus {
           border-color: #1b7b68;
-          box-shadow: 0 0 0 3px rgb(27 123 104 / 0.1);
+          box-shadow: 0 0 0 3px rgba(27, 123, 104, 0.1);
+        }
+
+        textarea.field-input {
+          min-height: 6rem;
+          line-height: 1.5;
+        }
+
+        select.field-input {
+          cursor: pointer;
+          padding-right: 2.25rem;
+        }
+
+        input[type='date'].field-input,
+        input[type='number'].field-input {
+          font-variant-numeric: tabular-nums;
         }
       `}</style>
 
-      <main className="min-h-screen w-full space-y-6 bg-slate-50/60 p-4 font-sans md:p-6">
-        {actionError && (
-          <div className="flex items-center justify-between gap-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-700">
+      <main className="min-h-full space-y-6 bg-slate-50/60 p-1 font-sans text-slate-800 animate-in fade-in duration-300">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
             <div className="flex items-center gap-3">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span className="font-medium">{actionError}</span>
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#1b7b68] text-white shadow-sm">
+                <Pill className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">Pharmacy Command Center</h1>
+                  <span className="rounded-full bg-[#e8f5f3] px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-wider text-[#1b7b68]">
+                    Clinical workflow
+                  </span>
+                </div>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  Prescriptions, clinical screening, dispensing, formulary control and medication inventory.
+                </p>
+              </div>
             </div>
+          </div>
 
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={refreshCurrentTab}
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-600 shadow-sm transition hover:border-slate-300"
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${
+                  loading || prescriptionLoading || inventoryLoading || dispenseLoading || formularyLoading
+                    ? 'animate-spin'
+                    : ''
+                }`}
+              />
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsCreatePrescriptionOpen(true)}
+              className="inline-flex items-center gap-2 rounded-2xl bg-[#1b7b68] px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:opacity-95"
+            >
+              <Plus className="h-4 w-4" />
+              New Prescription
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsAddInventoryOpen(true)}
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-600 shadow-sm transition hover:border-slate-300"
+            >
+              <Plus className="h-4 w-4" />
+              Add Inventory
+            </button>
+          </div>
+        </div>
+
+        {actionError && (
+          <div className="flex items-center gap-3 rounded-3xl border border-rose-100 bg-rose-50 p-4 text-xs text-rose-700">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{actionError}</span>
             <button
               type="button"
               onClick={() => setActionError(null)}
-              className="rounded-lg p-1 hover:bg-rose-100"
+              className="ml-auto rounded-xl p-1 hover:bg-rose-100"
             >
               <X className="h-4 w-4" />
             </button>
@@ -2749,214 +2937,105 @@ export default function PharmacyPage() {
         )}
 
         {actionSuccess && (
-          <div className="flex items-center justify-between gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-700">
-            <div className="flex items-center gap-3">
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-              <span className="font-medium">{actionSuccess}</span>
-            </div>
-
+          <div className="flex items-center gap-3 rounded-3xl border border-emerald-100 bg-emerald-50 p-4 text-xs text-emerald-700">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>{actionSuccess}</span>
             <button
               type="button"
               onClick={() => setActionSuccess(null)}
-              className="rounded-lg p-1 hover:bg-emerald-100"
+              className="ml-auto rounded-xl p-1 hover:bg-emerald-100"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
         )}
 
-        <section className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-          <div className="flex flex-col justify-between gap-5 xl:flex-row xl:items-center">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#e8f5f3] text-[#1b7b68]">
-                  <Pill className="h-6 w-6" />
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          {[
+            ['Prescriptions', prescriptions.length, FileCheck2, 'text-[#1b7b68]'],
+            ['Screening Warnings', warningCount, AlertTriangle, 'text-amber-600'],
+            ['Blocked', blockedCount, ShieldAlert, 'text-rose-600'],
+            ['Low Stock', lowStockCount, AlertTriangle, 'text-orange-600'],
+            ['Controlled Items', controlledCount, ShieldAlert, 'text-violet-600'],
+            ['Dispensed', dispenseRecords.length, PackageCheck, 'text-blue-600'],
+          ].map(([label, value, Icon, color]) => {
+            const IconComponent = Icon as React.ComponentType<{ className?: string; size?: number }>;
+            return (
+              <div key={String(label)} className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold text-slate-400">{String(label)}</span>
+                  <IconComponent size={17} className={String(color)} />
                 </div>
-
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="text-2xl font-black tracking-tight text-slate-800">
-                      Pharmacy
-                    </h1>
-
-                    <span className="rounded-full bg-[#e8f5f3] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#1b7b68]">
-                      Clinical workflow
-                    </span>
-                  </div>
-
-                  <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-400">
-                    Review prescriptions, complete pharmacy screening, approve
-                    medication orders, verify dispensing by barcode, and manage
-                    the medication inventory ledger.
-                  </p>
-                </div>
+                <p className="mt-2 text-2xl font-extrabold tracking-tight text-slate-800">{String(value)}</p>
               </div>
-            </div>
+            );
+          })}
+        </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={refreshCurrentTab}
-                className="rounded-2xl border border-slate-200 bg-white p-3 text-slate-500 hover:bg-slate-50 hover:text-[#1b7b68]"
-                title="Refresh"
-              >
-                <RefreshCw
-                  className={`h-4 w-4 ${
-                    loading ||
-                    prescriptionLoading ||
-                    inventoryLoading ||
-                    dispenseLoading ||
-                    formularyLoading
-                      ? 'animate-spin'
-                      : ''
-                  }`}
-                />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsCreatePrescriptionOpen(true)}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-700 hover:border-[#1b7b68] hover:text-[#1b7b68]"
-              >
-                <Plus className="h-4 w-4" />
-                New prescription
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsCreateFormularyOpen(true)}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-700 hover:border-[#1b7b68] hover:text-[#1b7b68]"
-              >
-                <Plus className="h-4 w-4" />
-                New formulary
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsAddInventoryOpen(true)}
-                className="inline-flex items-center gap-2 rounded-2xl bg-slate-800 px-4 py-3 text-xs font-bold uppercase tracking-wide text-white hover:bg-slate-700"
-              >
-                <Plus className="h-4 w-4" />
-                Add inventory
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard
-            label="Prescriptions in view"
-            value={prescriptions.length}
-            icon={<FileCheck2 className="h-6 w-6" />}
-            tone="teal"
-          />
-
-          <StatCard
-            label="Screening warnings"
-            value={warningCount}
-            icon={<AlertTriangle className="h-6 w-6" />}
-            tone="amber"
-          />
-
-          <StatCard
-            label="Blocked prescriptions"
-            value={blockedCount}
-            icon={<ShieldAlert className="h-6 w-6" />}
-            tone="rose"
-          />
-
-          <StatCard
-            label="Low stock items"
-            value={lowStockCount}
-            icon={<TrendingDownIcon />}
-            tone="blue"
-          />
-        </section>
-
-        <section className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
-          <div className="flex flex-col gap-4 border-b border-slate-100 bg-slate-50/30 p-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex flex-wrap items-center gap-1 rounded-2xl bg-slate-100 p-1">
+        <div className="rounded-3xl border border-slate-100 bg-white p-3 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-1 rounded-2xl bg-slate-50 p-1">
               {[
-                {
-                  id: 'prescriptions' as const,
-                  label: 'Prescriptions',
-                  icon: <FileCheck2 className="h-3.5 w-3.5" />,
-                },
-                {
-                  id: 'inventory' as const,
-                  label: 'Inventory',
-                  icon: <Pill className="h-3.5 w-3.5" />,
-                },
-                {
-                  id: 'dispenses' as const,
-                  label: 'Dispense history',
-                  icon: <History className="h-3.5 w-3.5" />,
-                },
-                {
-                  id: 'formulary' as const,
-                  label: 'Formulary',
-                  icon: <Stethoscope className="h-3.5 w-3.5" />,
-                },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition ${
-                    activeTab === tab.id
-                      ? 'bg-white text-slate-800 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  {tab.icon}
-                  {tab.label}
-                </button>
-              ))}
+                ['prescriptions', 'Prescriptions', FileCheck2],
+                ['inventory', 'Inventory', Pill],
+                ['dispenses', 'Dispense History', History],
+                ['formulary', 'Formulary', Stethoscope],
+              ].map(([id, label, Icon]) => {
+                const IconComponent = Icon as React.ComponentType<{ className?: string; size?: number }>;
+                return (
+                  <button
+                    key={String(id)}
+                    type="button"
+                    onClick={() => setActiveTab(id as Tab)}
+                    className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-[10px] font-extrabold transition ${
+                      activeTab === id ? 'bg-white text-[#1b7b68] shadow-sm' : 'text-slate-400 hover:text-slate-700'
+                    }`}
+                  >
+                    <IconComponent size={14} />
+                    {String(label)}
+                  </button>
+                );
+              })}
             </div>
 
             {activeTab === 'prescriptions' && (
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative min-w-[230px]">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-
                   <input
                     value={prescriptionSearch}
-                    onChange={(event) =>
-                      setPrescriptionSearch(event.target.value)
-                    }
-                    placeholder="Search patient, ID, department..."
-                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none focus:border-[#1b7b68]"
+                    onChange={(event) => {
+                      setPrescriptionPage(1);
+                      setPrescriptionSearch(event.target.value);
+                    }}
+                    placeholder="Search patient, ID or department..."
+                    className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none focus:border-[#1b7b68]"
                   />
                 </div>
-
                 <select
                   value={prescriptionStatus}
                   onChange={(event) => {
                     setPrescriptionPage(1);
                     setPrescriptionStatus(event.target.value);
                   }}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-600 outline-none"
+                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-[10px] font-bold text-slate-600 outline-none"
                 >
                   <option value="">All prescription statuses</option>
                   {Object.values(PrescriptionStatus).map((status) => (
-                    <option key={status} value={status}>
-                      {status.replaceAll('_', ' ')}
-                    </option>
+                    <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>
                   ))}
                 </select>
-
                 <select
                   value={screeningStatus}
-                  onChange={(event) =>
-                    setScreeningStatus(event.target.value)
-                  }
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-600 outline-none"
+                  onChange={(event) => {
+                    setPrescriptionPage(1);
+                    setScreeningStatus(event.target.value);
+                  }}
+                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-[10px] font-bold text-slate-600 outline-none"
                 >
                   <option value="">All screening states</option>
                   {Object.values(ScreeningStatus).map((status) => (
-                    <option key={status} value={status}>
-                      {status.replaceAll('_', ' ')}
-                    </option>
+                    <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>
                   ))}
                 </select>
               </div>
@@ -2966,48 +3045,37 @@ export default function PharmacyPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative min-w-[220px]">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-
                   <input
                     value={inventorySearch}
                     onChange={(event) => {
                       setInventoryPage(1);
                       setInventorySearch(event.target.value);
                     }}
-                    placeholder="Search medication, batch, barcode..."
-                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none focus:border-[#1b7b68]"
+                    placeholder="Search medication, batch or barcode..."
+                    className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none focus:border-[#1b7b68]"
                   />
                 </div>
-
-                <div className="relative">
-                  <Filter className="pointer-events-none absolute left-3 top-3 h-3.5 w-3.5 text-slate-400" />
-
-                  <select
-                    value={inventoryCategory}
-                    onChange={(event) => {
-                      setInventoryPage(1);
-                      setInventoryCategory(event.target.value);
-                    }}
-                    className="rounded-xl border border-slate-200 bg-white py-2.5 pl-8 pr-3 text-xs font-bold text-slate-600 outline-none"
-                  >
-                    <option value="ALL">All categories</option>
-                    {Object.values(DrugCategory).map((category) => (
-                      <option key={category} value={category}>
-                        {category}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
+                <select
+                  value={inventoryCategory}
+                  onChange={(event) => {
+                    setInventoryPage(1);
+                    setInventoryCategory(event.target.value);
+                  }}
+                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-[10px] font-bold text-slate-600 outline-none"
+                >
+                  <option value="ALL">All categories</option>
+                  {Object.values(DrugCategory).map((category) => (
+                    <option key={category} value={category}>{category.replaceAll('_', ' ')}</option>
+                  ))}
+                </select>
                 <button
                   type="button"
                   onClick={() => {
                     setInventoryPage(1);
-                    setLowStockOnly((current) => !current);
+                    setLowStockOnly((value) => !value);
                   }}
-                  className={`rounded-xl border px-3 py-2.5 text-xs font-bold ${
-                    lowStockOnly
-                      ? 'border-amber-500 bg-amber-500 text-white'
-                      : 'border-slate-200 bg-white text-slate-600'
+                  className={`rounded-2xl px-3 py-2.5 text-[10px] font-extrabold ${
+                    lowStockOnly ? 'bg-amber-50 text-amber-700' : 'bg-slate-50 text-slate-500'
                   }`}
                 >
                   Low stock only
@@ -3016,14 +3084,16 @@ export default function PharmacyPage() {
             )}
 
             {activeTab === 'dispenses' && (
-              <div className="relative min-w-[250px]">
+              <div className="relative min-w-[230px]">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-
                 <input
                   value={dispenseSearch}
-                  onChange={(event) => setDispenseSearch(event.target.value)}
+                  onChange={(event) => {
+                    setDispensePage(1);
+                    setDispenseSearch(event.target.value);
+                  }}
                   placeholder="Search patient or dispense ID..."
-                  className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none focus:border-[#1b7b68]"
+                  className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none focus:border-[#1b7b68]"
                 />
               </div>
             )}
@@ -3032,7 +3102,6 @@ export default function PharmacyPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative min-w-[220px]">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-
                   <input
                     value={formularySearch}
                     onChange={(event) => {
@@ -3040,569 +3109,411 @@ export default function PharmacyPage() {
                       setFormularySearch(event.target.value);
                     }}
                     placeholder="Search medication or generic..."
-                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none focus:border-[#1b7b68]"
+                    className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none focus:border-[#1b7b68]"
                   />
                 </div>
-
                 <select
                   value={formularyStatus}
                   onChange={(event) => {
                     setFormularyPage(1);
                     setFormularyStatus(event.target.value);
                   }}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-600 outline-none"
+                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-[10px] font-bold text-slate-600 outline-none"
                 >
-                  <option value="">All formulary statuses</option>
+                  <option value="">All formulary states</option>
                   {Object.values(FormularyStatus).map((status) => (
-                    <option key={status} value={status}>
-                      {status.replaceAll('_', ' ')}
-                    </option>
+                    <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>
                   ))}
                 </select>
               </div>
             )}
           </div>
+        </div>
 
-          {activeTab === 'prescriptions' && (
-            <>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[950px] text-left">
-                  <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      <th className="px-5 py-4">Patient</th>
-                      <th className="px-5 py-4">Medications</th>
-                      <th className="px-5 py-4">Prescriber</th>
-                      <th className="px-5 py-4">Screening</th>
-                      <th className="px-5 py-4">Status</th>
-                      <th className="px-5 py-4">Requested</th>
-                      <th className="px-5 py-4 text-right">Action</th>
-                    </tr>
-                  </thead>
+        {loading && !prescriptions.length && !inventory.length && !dispenseRecords.length && !formulary.length ? (
+          <div className="flex min-h-105 items-center justify-center rounded-3xl border border-slate-100 bg-white shadow-sm">
+            <div className="text-center">
+              <Loader2 className="mx-auto animate-spin text-[#1b7b68]" size={28} />
+              <p className="mt-3 text-xs font-semibold text-slate-400">Loading pharmacy command center...</p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-3">
+            <section className="min-w-0 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm xl:col-span-2">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <div>
+                  <h2 className="text-[12px] font-extrabold text-slate-800">
+                    {activeTab === 'prescriptions' ? 'Prescription Board' :
+                     activeTab === 'inventory' ? 'Medication Inventory' :
+                     activeTab === 'dispenses' ? 'Dispense Activity' : 'Formulary Board'}
+                  </h2>
+                  <p className="mt-0.5 text-[10px] text-slate-400">
+                    {activeTab === 'prescriptions'
+                      ? 'Review, screen, approve and dispense medication orders.'
+                      : activeTab === 'inventory'
+                        ? 'Live stock, pricing, expiry and controlled-substance visibility.'
+                        : activeTab === 'dispenses'
+                          ? 'Authoritative dispensing transactions recorded by the pharmacy workflow.'
+                          : 'Active medication policy and department coverage.'}
+                  </p>
+                </div>
+                {activeTab === 'formulary' && (
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateFormularyOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-2xl bg-[#1b7b68] px-3 py-2 text-[10px] font-extrabold text-white"
+                  >
+                    <Plus size={14} />
+                    Add Formulary
+                  </button>
+                )}
+                {activeTab === 'dispenses' && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('prescriptions')}
+                    className="inline-flex items-center gap-2 rounded-2xl bg-[#1b7b68]/5 px-3 py-2 text-[10px] font-extrabold text-[#1b7b68]"
+                  >
+                    <PackageCheck size={14} />
+                    Dispense from prescription
+                  </button>
+                )}
+              </div>
 
-                  <tbody className="divide-y divide-slate-100">
+              {activeTab === 'prescriptions' && (
+                <>
+                  <div className="mt-4 space-y-2">
                     {prescriptionLoading ? (
-                      <LoadingRows columns={7} />
+                      <div className="overflow-hidden rounded-2xl border border-slate-100">
+                        <table className="w-full text-left">
+                          <tbody><LoadingRows columns={6} /></tbody>
+                        </table>
+                      </div>
                     ) : filteredPrescriptions.length === 0 ? (
-                      <tr>
-                        <td colSpan={7}>
-                          <EmptyState
-                            icon={<FileCheck2 className="h-6 w-6" />}
-                            title="No prescriptions found"
-                            description="There are no prescriptions matching the current workflow filters."
-                          />
-                        </td>
-                      </tr>
+                      <div className="rounded-2xl border border-dashed border-slate-200">
+                        <EmptyState icon={<FileCheck2 className="h-6 w-6" />} title="No prescriptions found" description="New medication orders will appear here for screening and pharmacy review." />
+                      </div>
                     ) : (
-                      filteredPrescriptions.map((prescription) => (
-                        <tr
-                          key={prescription._id}
-                          className="transition hover:bg-[#e8f5f3]/20"
-                        >
-                          <td className="px-5 py-4">
-                            <p className="text-xs font-black text-slate-800">
-                              {getPatientName(prescription.patientId)}
-                            </p>
-
-                            {typeof prescription.patientId !== 'string' && (
-                              <p className="mt-1 font-mono text-[10px] text-slate-400">
-                                MRN: {getPatientMrn(prescription.patientId)}
-                              </p>
-                            )}
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <div className="max-w-[250px] space-y-1">
-                              {prescription.medications.slice(0, 2).map(
-                                (medication, index) => (
-                                  <p
-                                    key={index}
-                                    className="truncate text-[11px] text-slate-600"
-                                  >
-                                    <span className="font-bold">
-                                      {medication.medicationName}
-                                    </span>{' '}
-                                    {medication.dosage || ''}
-                                  </p>
-                                ),
-                              )}
-
-                              {prescription.medications.length > 2 && (
-                                <p className="text-[10px] font-bold text-[#1b7b68]">
-                                  +{prescription.medications.length - 2} more
-                                </p>
-                              )}
-                            </div>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <p className="text-[11px] font-bold text-slate-700">
-                              {getPrescriberName(prescription.prescriberId, prescription.prescriberName)}
-                            </p>
-
-                            <p className="mt-1 text-[10px] text-slate-400">
-                              {prescription.department || '—'}
-                            </p>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <StatusBadge status={prescription.screeningStatus} />
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <StatusBadge status={prescription.status} />
-                          </td>
-
-                          <td className="px-5 py-4 text-[10px] text-slate-400">
-                            {formatDateTime(
-                              prescription.requestedAt || prescription.createdAt,
-                            )}
-                          </td>
-
-                          <td className="px-5 py-4 text-right">
-                            <div className="flex items-center justify-end gap-2">
+                      filteredPrescriptions.map((prescription) => {
+                        const blocked = prescription.screeningStatus === ScreeningStatus.BLOCKED;
+                        const canDispense =
+                          !blocked &&
+                          (prescription.status === PrescriptionStatus.APPROVED ||
+                            prescription.status === PrescriptionStatus.PARTIALLY_DISPENSED);
+                        return (
+                          <div key={prescription._id} className="rounded-2xl border border-slate-100 bg-slate-50/50 p-4 transition hover:border-slate-200 hover:bg-white hover:shadow-sm">
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                               <button
                                 type="button"
-                                onClick={() => handleOpenPrescription(prescription)}
-                                className="rounded-xl bg-slate-100 px-3 py-2 text-[10px] font-bold text-slate-700 hover:bg-[#1b7b68] hover:text-white"
+                                onClick={() => void handleOpenPrescription(prescription)}
+                                className="min-w-0 flex-1 text-left"
                               >
-                                Review
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-sm font-black text-slate-800">{getPatientName(prescription.patientId)}</span>
+                                  <StatusBadge status={prescription.status} />
+                                  <StatusBadge status={prescription.screeningStatus} />
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-2 text-[9px] font-semibold text-slate-400">
+                                  <span>{getPatientMrn(prescription.patientId) !== 'N/A' ? `MRN ${getPatientMrn(prescription.patientId)}` : 'Patient record'}</span>
+                                  <span>•</span>
+                                  <span>{getPrescriberName(prescription.prescriberId, prescription.prescriberName)}</span>
+                                  <span>•</span>
+                                  <span>{prescription.department || 'Department not specified'}</span>
+                                  <span>•</span>
+                                  <span>{prescription.medications.length} medication{prescription.medications.length === 1 ? '' : 's'}</span>
+                                </div>
+                                {prescription.screeningSummary && (
+                                  <p className={`mt-2 text-[10px] font-semibold ${blocked ? 'text-rose-600' : prescription.screeningStatus === ScreeningStatus.WARNING ? 'text-amber-700' : 'text-slate-400'}`}>
+                                    {prescription.screeningSummary}
+                                  </p>
+                                )}
                               </button>
-
-                              {prescription.screeningStatus !== ScreeningStatus.BLOCKED &&
-                                (prescription.status === PrescriptionStatus.APPROVED ||
-                                  prescription.status === PrescriptionStatus.PARTIALLY_DISPENSED) && (
+                              <div className="flex shrink-0 flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleOpenPrescription(prescription)}
+                                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-extrabold text-slate-600 hover:bg-slate-50"
+                                >
+                                  Review
+                                </button>
+                                {canDispense && (
                                   <button
                                     type="button"
                                     onClick={() => {
                                       setSelectedPrescription(prescription);
                                       setIsDispenseOpen(true);
                                     }}
-                                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#1b7b68] px-3 py-2 text-[10px] font-bold text-white hover:bg-[#145f50]"
+                                    className="inline-flex items-center gap-1.5 rounded-2xl bg-[#1b7b68] px-3 py-2 text-[10px] font-extrabold text-white"
                                   >
-                                    <PackageCheck className="h-3.5 w-3.5" />
+                                    <PackageCheck size={13} />
                                     Dispense
                                   </button>
                                 )}
+                              </div>
                             </div>
-                          </td>
-                        </tr>
-                      ))
+                          </div>
+                        );
+                      })
                     )}
-                  </tbody>
-                </table>
-              </div>
+                  </div>
+                  <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100">
+                    <Pagination page={prescriptionPage} pages={prescriptionPages} onPrevious={() => setPrescriptionPage((page) => Math.max(1, page - 1))} onNext={() => setPrescriptionPage((page) => Math.min(prescriptionPages, page + 1))} />
+                  </div>
+                </>
+              )}
 
-              <Pagination
-                page={prescriptionPage}
-                pages={prescriptionPages}
-                onPrevious={() =>
-                  setPrescriptionPage((page) => Math.max(1, page - 1))
-                }
-                onNext={() =>
-                  setPrescriptionPage((page) =>
-                    Math.min(prescriptionPages, page + 1),
-                  )
-                }
-              />
-            </>
-          )}
-
-          {activeTab === 'inventory' && (
-            <>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1000px] text-left">
-                  <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      <th className="px-5 py-4">Medication</th>
-                      <th className="px-5 py-4">Category</th>
-                      <th className="px-5 py-4">Batch</th>
-                      <th className="px-5 py-4">Stock</th>
-                      <th className="px-5 py-4">Price</th>
-                      <th className="px-5 py-4">Expiry</th>
-                      <th className="px-5 py-4">Control</th>
-                      <th className="px-5 py-4 text-right">Action</th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-slate-100">
-                    {inventoryLoading ? (
-                      <LoadingRows columns={8} />
-                    ) : inventory.length === 0 ? (
-                      <tr>
-                        <td colSpan={8}>
-                          <EmptyState
-                            icon={<Pill className="h-6 w-6" />}
-                            title="No inventory items found"
-                            description="Adjust the search or filters, or add a new medication to inventory."
-                          />
-                        </td>
-                      </tr>
-                    ) : (
-                      inventory.map((item) => (
-                        <tr
-                          key={item._id}
-                          className="transition hover:bg-[#e8f5f3]/20"
-                        >
-                          <td className="px-5 py-4">
-                            <p className="text-xs font-black text-slate-800">
-                              {item.name}
-                            </p>
-
-                            {item.genericName && (
-                              <p className="mt-1 text-[10px] italic text-slate-400">
-                                {item.genericName}
-                              </p>
-                            )}
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-bold text-slate-600">
-                              {item.category}
-                            </span>
-                          </td>
-
-                          <td className="px-5 py-4 font-mono text-[10px] text-slate-500">
-                            {item.batchNumber}
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={`text-sm font-black ${
-                                  item.isLowStock
-                                    ? 'text-amber-600'
-                                    : 'text-slate-800'
-                                }`}
-                              >
-                                {item.quantityInStock}
-                              </span>
-
-                              {item.isLowStock && (
-                                <span className="rounded bg-amber-100 px-2 py-0.5 text-[9px] font-bold uppercase text-amber-700">
-                                  Low
-                                </span>
-                              )}
-                            </div>
-                          </td>
-
-                          <td className="px-5 py-4 text-xs font-black text-slate-800">
-                            {formatMoney(item.unitPrice)}
-                          </td>
-
-                          <td className="px-5 py-4 text-[10px] text-slate-500">
-                            {formatDate(item.expiryDate)}
-                          </td>
-
-                          <td className="px-5 py-4">
-                            {item.controlledSubstance ? (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-rose-100 bg-rose-50 px-2.5 py-1 text-[9px] font-bold text-rose-700">
-                                <ShieldAlert className="h-3 w-3" />
-                                Controlled
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-slate-400">
-                                Standard
-                              </span>
-                            )}
-                          </td>
-
-                          <td className="px-5 py-4 text-right">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedInventoryItem(item);
-                                setIsAdjustStockOpen(true);
-                              }}
-                              className="rounded-xl bg-slate-100 px-3 py-2 text-[10px] font-bold text-slate-700 hover:bg-[#1b7b68] hover:text-white"
-                            >
-                              Adjust stock
-                            </button>
-                          </td>
+              {activeTab === 'inventory' && (
+                <>
+                  <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-100">
+                    <table className="w-full min-w-[950px] text-left">
+                      <thead>
+                        <tr className="border-b border-slate-100 bg-slate-50/60 text-[9px] font-extrabold uppercase tracking-wider text-slate-400">
+                          <th className="px-4 py-3">Medication</th>
+                          <th className="px-4 py-3">Category</th>
+                          <th className="px-4 py-3">Stock</th>
+                          <th className="px-4 py-3">Price</th>
+                          <th className="px-4 py-3">Expiry</th>
+                          <th className="px-4 py-3">Control</th>
+                          <th className="px-4 py-3 text-right">Action</th>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {inventoryLoading ? (
+                          <LoadingRows columns={7} />
+                        ) : inventory.length === 0 ? (
+                          <tr><td colSpan={7}><EmptyState icon={<Pill className="h-6 w-6" />} title="No inventory found" description="Add medication stock to begin pharmacy inventory management." /></td></tr>
+                        ) : inventory.map((item) => (
+                          <tr key={item._id} className="transition hover:bg-[#e8f5f3]/20">
+                            <td className="px-4 py-3">
+                              <p className="text-xs font-black text-slate-800">{item.name}</p>
+                              <p className="mt-0.5 text-[9px] italic text-slate-400">{item.genericName || 'Generic not specified'}</p>
+                              {item.barcode && <p className="mt-1 font-mono text-[8px] text-slate-400">{item.barcode}</p>}
+                            </td>
+                            <td className="px-4 py-3"><span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-extrabold text-slate-600">{item.category}</span></td>
+                            <td className="px-4 py-3"><div className="flex items-center gap-2"><span className={`text-sm font-black ${item.isLowStock ? 'text-amber-600' : 'text-slate-800'}`}>{item.quantityInStock}</span><span className="text-[9px] font-semibold text-slate-400">{item.unitOfMeasure}</span>{item.isLowStock && <span className="rounded-full bg-amber-50 px-2 py-1 text-[8px] font-extrabold text-amber-700">LOW</span>}</div></td>
+                            <td className="px-4 py-3 text-xs font-black text-slate-800">{formatMoney(item.unitPrice)}</td>
+                            <td className="px-4 py-3 text-[9px] font-semibold text-slate-500">{formatDate(item.expiryDate)}</td>
+                            <td className="px-4 py-3">{item.controlledSubstance ? <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-1 text-[8px] font-extrabold text-rose-700"><ShieldAlert size={10} /> Controlled</span> : <span className="text-[9px] font-semibold text-slate-400">Standard</span>}</td>
+                            <td className="px-4 py-3 text-right"><button type="button" onClick={() => { setSelectedInventoryItem(item); setIsAdjustStockOpen(true); }} className="rounded-2xl bg-slate-100 px-3 py-2 text-[9px] font-extrabold text-slate-700 hover:bg-[#1b7b68] hover:text-white">Adjust Stock</button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100">
+                    <Pagination page={inventoryPage} pages={inventoryPages} onPrevious={() => setInventoryPage((page) => Math.max(1, page - 1))} onNext={() => setInventoryPage((page) => Math.min(inventoryPages, page + 1))} />
+                  </div>
+                </>
+              )}
 
-              <Pagination
-                page={inventoryPage}
-                pages={inventoryPages}
-                onPrevious={() =>
-                  setInventoryPage((page) => Math.max(1, page - 1))
-                }
-                onNext={() =>
-                  setInventoryPage((page) =>
-                    Math.min(inventoryPages, page + 1),
-                  )
-                }
-              />
-            </>
-          )}
-
-          {activeTab === 'dispenses' && (
-            <>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[900px] text-left">
-                  <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      <th className="px-5 py-4">Patient</th>
-                      <th className="px-5 py-4">Prescription</th>
-                      <th className="px-5 py-4">Items</th>
-                      <th className="px-5 py-4">Amount</th>
-                      <th className="px-5 py-4">Status</th>
-                      <th className="px-5 py-4">Date</th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-slate-100">
-                    {dispenseLoading ? (
-                      <LoadingRows columns={6} />
-                    ) : filteredDispenses.length === 0 ? (
-                      <tr>
-                        <td colSpan={6}>
-                          <EmptyState
-                            icon={<History className="h-6 w-6" />}
-                            title="No dispense records"
-                            description="Completed medication dispensing transactions will appear here."
-                          />
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredDispenses.map((record) => (
-                        <tr
-                          key={record._id}
-                          className="transition hover:bg-[#e8f5f3]/20"
-                        >
-                          <td className="px-5 py-4">
-                            <p className="text-xs font-black text-slate-800">
-                              {getDispensePatientName(record.patientId)}
-                            </p>
-
-                            <p className="mt-1 text-[10px] text-slate-400">
-                              MRN: {getPatientMrn(record.patientId)}
-                            </p>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <p className="font-mono text-[10px] text-slate-500">
-                              {String(record.prescriptionId)}
-                            </p>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <div className="space-y-1">
-                              {record.items.map((item, index) => (
-                                <p key={index} className="text-[10px] text-slate-600">
-                                  {typeof item.inventoryItemId === 'object'
-                                    ? item.inventoryItemId.name
-                                    : 'Medication'}{' '}
-                                  <span className="font-bold">
-                                    × {item.quantity}
-                                  </span>
-                                </p>
-                              ))}
-                            </div>
-                          </td>
-
-                          <td className="px-5 py-4 text-xs font-black text-slate-800">
-                            {formatMoney(record.totalAmount)}
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <StatusBadge status={record.status} />
-                          </td>
-
-                          <td className="px-5 py-4 text-[10px] text-slate-400">
-                            {formatDateTime(record.createdAt)}
-                          </td>
+              {activeTab === 'dispenses' && (
+                <>
+                  <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-100">
+                    <table className="w-full min-w-[950px] text-left">
+                      <thead>
+                        <tr className="border-b border-slate-100 bg-slate-50/60 text-[9px] font-extrabold uppercase tracking-wider text-slate-400">
+                          <th className="px-4 py-3">Patient</th>
+                          <th className="px-4 py-3">Prescription</th>
+                          <th className="px-4 py-3">Items</th>
+                          <th className="px-4 py-3">Amount</th>
+                          <th className="px-4 py-3">Status</th>
+                          <th className="px-4 py-3">Date</th>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {dispenseLoading ? (
+                          <LoadingRows columns={6} />
+                        ) : filteredDispenses.length === 0 ? (
+                          <tr><td colSpan={6}><EmptyState icon={<History className="h-6 w-6" />} title="No dispense records" description="Completed medication dispensing transactions will appear here." /></td></tr>
+                        ) : filteredDispenses.map((record) => (
+                          <tr key={record._id} className="transition hover:bg-[#e8f5f3]/20">
+                            <td className="px-4 py-3"><p className="text-xs font-black text-slate-800">{getDispensePatientName(record.patientId)}</p><p className="mt-0.5 text-[9px] text-slate-400">MRN: {getPatientMrn(record.patientId)}</p></td>
+                            <td className="px-4 py-3 font-mono text-[9px] text-slate-500">{String(record.prescriptionId)}</td>
+                            <td className="px-4 py-3"><div className="space-y-1">{record.items.map((item, index) => <p key={index} className="text-[9px] text-slate-600">{typeof item.inventoryItemId === 'object' ? item.inventoryItemId.name : 'Medication'} <span className="font-bold">× {item.quantity}</span></p>)}</div></td>
+                            <td className="px-4 py-3 text-xs font-black text-slate-800">{formatMoney(record.totalAmount)}</td>
+                            <td className="px-4 py-3"><StatusBadge status={record.status} /></td>
+                            <td className="px-4 py-3 text-[9px] text-slate-400">{formatDateTime(record.createdAt)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100">
+                    <Pagination page={dispensePage} pages={dispensePages} onPrevious={() => setDispensePage((page) => Math.max(1, page - 1))} onNext={() => setDispensePage((page) => Math.min(dispensePages, page + 1))} />
+                  </div>
+                </>
+              )}
 
-              <Pagination
-                page={dispensePage}
-                pages={dispensePages}
-                onPrevious={() =>
-                  setDispensePage((page) => Math.max(1, page - 1))
-                }
-                onNext={() =>
-                  setDispensePage((page) =>
-                    Math.min(dispensePages, page + 1),
-                  )
-                }
-              />
-            </>
-          )}
-
-          {activeTab === 'formulary' && (
-            <>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[800px] text-left">
-                  <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      <th className="px-5 py-4">Medication</th>
-                      <th className="px-5 py-4">Generic</th>
-                      <th className="px-5 py-4">Department</th>
-                      <th className="px-5 py-4">Status</th>
-                      <th className="px-5 py-4">Effective from</th>
-                      <th className="px-5 py-4">Effective to</th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-slate-100">
-                    {formularyLoading ? (
-                      <LoadingRows columns={6} />
-                    ) : formulary.length === 0 ? (
-                      <tr>
-                        <td colSpan={6}>
-                          <EmptyState
-                            icon={<Stethoscope className="h-6 w-6" />}
-                            title="No formulary entries"
-                            description="Active and historical medication formulary policies will appear here."
-                          />
-                        </td>
-                      </tr>
-                    ) : (
-                      formulary.map((entry) => (
-                        <tr
-                          key={entry._id}
-                          className="transition hover:bg-[#e8f5f3]/20"
-                        >
-                          <td className="px-5 py-4 text-xs font-black text-slate-800">
-                            {entry.medicationName}
-                          </td>
-
-                          <td className="px-5 py-4 text-[11px] italic text-slate-400">
-                            {entry.genericName || '—'}
-                          </td>
-
-                          <td className="px-5 py-4 text-[11px] text-slate-600">
-                            {entry.department || 'All departments'}
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <StatusBadge status={entry.status} />
-                          </td>
-
-                          <td className="px-5 py-4 text-[10px] text-slate-500">
-                            {formatDate(entry.effectiveFrom)}
-                          </td>
-
-                          <td className="px-5 py-4 text-[10px] text-slate-500">
-                            {formatDate(entry.effectiveTo)}
-                          </td>
+              {activeTab === 'formulary' && (
+                <>
+                  <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-100">
+                    <table className="w-full min-w-[800px] text-left">
+                      <thead>
+                        <tr className="border-b border-slate-100 bg-slate-50/60 text-[9px] font-extrabold uppercase tracking-wider text-slate-400">
+                          <th className="px-4 py-3">Medication</th>
+                          <th className="px-4 py-3">Generic</th>
+                          <th className="px-4 py-3">Department</th>
+                          <th className="px-4 py-3">Status</th>
+                          <th className="px-4 py-3">Effective</th>
+                          <th className="px-4 py-3">Expiry</th>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {formularyLoading ? (
+                          <LoadingRows columns={6} />
+                        ) : formulary.length === 0 ? (
+                          <tr><td colSpan={6}><EmptyState icon={<Stethoscope className="h-6 w-6" />} title="No formulary entries" description="Create formulary policies for medication approval and restriction." /></td></tr>
+                        ) : formulary.map((entry) => (
+                          <tr key={entry._id} className="transition hover:bg-[#e8f5f3]/20">
+                            <td className="px-4 py-3 text-xs font-black text-slate-800">{entry.medicationName}</td>
+                            <td className="px-4 py-3 text-[9px] italic text-slate-400">{entry.genericName || '—'}</td>
+                            <td className="px-4 py-3 text-[9px] font-semibold text-slate-600">{entry.department || 'All departments'}</td>
+                            <td className="px-4 py-3"><StatusBadge status={entry.status} /></td>
+                            <td className="px-4 py-3 text-[9px] text-slate-500">{formatDate(entry.effectiveFrom)}</td>
+                            <td className="px-4 py-3 text-[9px] text-slate-500">{formatDate(entry.effectiveTo)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100">
+                    <Pagination page={formularyPage} pages={formularyPages} onPrevious={() => setFormularyPage((page) => Math.max(1, page - 1))} onNext={() => setFormularyPage((page) => Math.min(formularyPages, page + 1))} />
+                  </div>
+                </>
+              )}
+            </section>
 
-              <Pagination
-                page={formularyPage}
-                pages={formularyPages}
-                onPrevious={() =>
-                  setFormularyPage((page) => Math.max(1, page - 1))
-                }
-                onNext={() =>
-                  setFormularyPage((page) =>
-                    Math.min(formularyPages, page + 1),
-                  )
-                }
-              />
-            </>
-          )}
-        </section>
+            <aside className="space-y-4">
+              <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-[12px] font-extrabold text-slate-800">Clinical Screening</h2>
+                    <p className="mt-0.5 text-[10px] text-slate-400">Prescription safety queue</p>
+                  </div>
+                  <ShieldAlert size={18} className="text-[#1b7b68]" />
+                </div>
+                <div className="mt-4 space-y-2">
+                  <div className="rounded-2xl bg-rose-50 p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-extrabold text-rose-700">Blocked</span>
+                      <span className="text-sm font-black text-rose-700">{blockedCount}</span>
+                    </div>
+                    <p className="mt-1 text-[9px] font-semibold text-rose-600">Requires clinical review before approval.</p>
+                  </div>
+                  <div className="rounded-2xl bg-amber-50 p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-extrabold text-amber-700">Warnings</span>
+                      <span className="text-sm font-black text-amber-700">{warningCount}</span>
+                    </div>
+                    <p className="mt-1 text-[9px] font-semibold text-amber-600">Review formulary or duplicate-therapy warnings.</p>
+                  </div>
+                  <button type="button" onClick={() => setActiveTab('prescriptions')} className="w-full rounded-2xl bg-[#1b7b68] py-2.5 text-[10px] font-extrabold text-white">
+                    Open Prescription Board
+                  </button>
+                </div>
+              </section>
 
-        <section className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="rounded-2xl bg-[#e8f5f3] p-3 text-[#1b7b68]">
-                <ShieldAlert className="h-5 w-5" />
-              </div>
+              <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-[12px] font-extrabold text-slate-800">Inventory Health</h2>
+                    <p className="mt-0.5 text-[10px] text-slate-400">Stock and controlled medicines</p>
+                  </div>
+                  <Pill size={18} className="text-[#1b7b68]" />
+                </div>
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-3"><span className="text-[10px] font-bold text-slate-500">Loaded inventory</span><span className="text-sm font-black text-slate-800">{inventory.length}</span></div>
+                  <div className="flex items-center justify-between rounded-2xl bg-amber-50 p-3"><span className="text-[10px] font-bold text-amber-700">Low stock</span><span className="text-sm font-black text-amber-700">{lowStockCount}</span></div>
+                  <div className="flex items-center justify-between rounded-2xl bg-violet-50 p-3"><span className="text-[10px] font-bold text-violet-700">Controlled</span><span className="text-sm font-black text-violet-700">{controlledCount}</span></div>
+                  <button type="button" onClick={() => setActiveTab('inventory')} className="w-full rounded-2xl bg-slate-900 py-2.5 text-[10px] font-extrabold text-white">
+                    Open Inventory
+                  </button>
+                </div>
+              </section>
 
-              <div>
-                <p className="text-xs font-black text-slate-800">
-                  Clinical screening
-                </p>
+              <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-[12px] font-extrabold text-slate-800">Dispensing Workflow</h2>
+                    <p className="mt-0.5 text-[10px] text-slate-400">Verified medication release</p>
+                  </div>
+                  <Barcode size={18} className="text-[#1b7b68]" />
+                </div>
+                <div className="mt-4 space-y-2">
+                  {[
+                    ['1', 'Screen prescription', 'Clinical checks'],
+                    ['2', 'Approve order', 'Pharmacist review'],
+                    ['3', 'Scan and dispense', 'Barcode verification'],
+                    ['4', 'Record transaction', 'Inventory + EHR'],
+                  ].map(([step, title, detail]) => (
+                    <div key={step} className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-[10px] font-black text-[#1b7b68]">{step}</span>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-extrabold text-slate-700">{title}</p>
+                        <p className="mt-0.5 text-[9px] font-semibold text-slate-400">{detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button type="button" onClick={() => setActiveTab('dispenses')} className="mt-3 w-full rounded-2xl border border-slate-200 py-2.5 text-[10px] font-extrabold text-slate-600 hover:bg-slate-50">
+                  View Dispense History
+                </button>
+              </section>
 
-                <p className="mt-1 text-[10px] leading-5 text-slate-400">
-                  Allergy matching, formulary review and duplicate-therapy
-                  checks are completed before approval.
-                </p>
-              </div>
-            </div>
+              <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-[12px] font-extrabold text-slate-800">Formulary Control</h2>
+                    <p className="mt-0.5 text-[10px] text-slate-400">Medication policy management</p>
+                  </div>
+                  <Stethoscope size={17} className="text-[#1b7b68]" />
+                </div>
+                <div className="mt-4 rounded-2xl bg-slate-50 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-500">Active entries loaded</span>
+                    <span className="text-sm font-black text-slate-800">{formulary.length}</span>
+                  </div>
+                  <p className="mt-1 text-[9px] leading-4 text-slate-400">Use formulary rules during screening to identify approved and restricted medicines.</p>
+                </div>
+                <button type="button" onClick={() => setIsCreateFormularyOpen(true)} className="mt-3 w-full rounded-2xl bg-[#1b7b68]/5 py-2.5 text-[10px] font-extrabold text-[#1b7b68]">
+                  Create Formulary Entry
+                </button>
+              </section>
+            </aside>
           </div>
+        )}
 
-          <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="rounded-2xl bg-blue-50 p-3 text-blue-600">
-                <Barcode className="h-5 w-5" />
-              </div>
-
+        <div className="grid gap-4 xl:grid-cols-3">
+          <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm xl:col-span-2">
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-black text-slate-800">
-                  Verified dispensing
-                </p>
-
-                <p className="mt-1 text-[10px] leading-5 text-slate-400">
-                  Dispensing is tied to the prescription medication index and
-                  requires barcode verification.
-                </p>
+                <h2 className="text-[12px] font-extrabold text-slate-800">Pharmacy Operations Snapshot</h2>
+                <p className="mt-0.5 text-[10px] text-slate-400">Current workflow volume loaded into the command center</p>
               </div>
+              <Clock3 size={18} className="text-[#1b7b68]" />
             </div>
-          </div>
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <MiniMetric label="Prescriptions" value={prescriptionTotal} icon={<FileCheck2 className="h-4 w-4" />} />
+              <MiniMetric label="Inventory" value={inventoryTotal} icon={<Pill className="h-4 w-4" />} />
+              <MiniMetric label="Dispenses" value={dispenseTotal} icon={<PackageCheck className="h-4 w-4" />} />
+              <MiniMetric label="Formulary" value={formularyTotal} icon={<Stethoscope className="h-4 w-4" />} />
+            </div>
+          </section>
 
-          <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="rounded-2xl bg-amber-50 p-3 text-amber-600">
-                <Clock3 className="h-5 w-5" />
-              </div>
-
+          <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-black text-slate-800">
-                  Transactional integrity
-                </p>
-
-                <p className="mt-1 text-[10px] leading-5 text-slate-400">
-                  Inventory decrement, controlled-substance logging and
-                  prescription status updates are handled by the backend
-                  transaction.
-                </p>
+                <h2 className="text-[12px] font-extrabold text-slate-800">Operational Notes</h2>
+                <p className="mt-0.5 text-[10px] text-slate-400">Workflow safeguards</p>
               </div>
+              <Clock3 size={18} className="text-[#1b7b68]" />
             </div>
-          </div>
-        </section>
-
-        <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <MiniMetric
-            label="Inventory loaded"
-            value={inventory.length}
-            icon={<Pill className="h-4 w-4" />}
-          />
-
-          <MiniMetric
-            label="Controlled items"
-            value={controlledCount}
-            icon={<ShieldAlert className="h-4 w-4" />}
-          />
-
-          <MiniMetric
-            label="Dispenses loaded"
-            value={dispenseRecords.length}
-            icon={<PackageCheck className="h-4 w-4" />}
-          />
-
-          <MiniMetric
-            label="Formulary entries"
-            value={formulary.length}
-            icon={<Stethoscope className="h-4 w-4" />}
-          />
-        </section>
+            <div className="mt-4 space-y-2 text-[9px] leading-5 text-slate-500">
+              <p className="rounded-2xl bg-slate-50 p-3">Clinical screening is completed before a prescription can be approved.</p>
+              <p className="rounded-2xl bg-slate-50 p-3">Dispensing requires a valid prescription medication index and barcode verification.</p>
+              <p className="rounded-2xl bg-slate-50 p-3">Inventory decrement and controlled-substance logging are handled by the backend transaction.</p>
+            </div>
+          </section>
+        </div>
       </main>
 
       {isPrescriptionDetailsOpen && selectedPrescription && (
@@ -3625,11 +3536,10 @@ export default function PharmacyPage() {
 
       <DispenseModal
         prescription={selectedPrescription}
-        inventory={inventory}
+        inventory={dispenseInventory}
+        inventoryLoading={dispenseInventoryLoading}
         isOpen={isDispenseOpen}
-        onClose={() => {
-          setIsDispenseOpen(false);
-        }}
+        onClose={() => setIsDispenseOpen(false)}
         onSubmit={handleDispense}
       />
 
@@ -3663,6 +3573,7 @@ export default function PharmacyPage() {
       />
     </>
   );
+
 }
 
 function MiniMetric({
