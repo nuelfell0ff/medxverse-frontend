@@ -39,7 +39,7 @@ import {
 const RAW_API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   process.env.NEXT_PUBLIC_API_BASE_URL ||
-  'http://localhost:5000/api/v1';
+  'https://medxverse-backend.onrender.com/api/v1';
 
 // REST routes are mounted under /api/v1. Accept either a full API base
 // or just the backend origin from the Next.js environment.
