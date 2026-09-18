@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
 import Link from 'next/link';
 import {
   Activity,
   AlertCircle,
+  AlertTriangle,
   Beaker,
   CheckCircle2,
   ChevronLeft,
@@ -324,6 +325,24 @@ function formatDate(date?: string): string {
   });
 }
 
+function formatDateTime(date?: string): string {
+  if (!date) return '—';
+
+  const parsedDate = new Date(date);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return '—';
+  }
+
+  return parsedDate.toLocaleString('en-NG', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function formatDepartment(value?: string): string {
   if (!value) return 'Unknown';
 
@@ -346,6 +365,47 @@ function formatStatus(value?: string): string {
     .replace(/_/g, ' ')
     .toLowerCase()
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getOrderTimestamp(order: LabOrder): number {
+  const timestamp = new Date(order.createdAt).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function getOrderCalendarDay(order: LabOrder): number {
+  const date = new Date(order.createdAt);
+
+  if (Number.isNaN(date.getTime())) return 0;
+
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate()
+  ).getTime();
+}
+
+function isStatOrder(order: LabOrder): boolean {
+  return order.isStat || order.priority === 'STAT';
+}
+
+function sortLabOrders(orderList: LabOrder[]): LabOrder[] {
+  return [...orderList].sort((a, b) => {
+    const dayDifference =
+      getOrderCalendarDay(b) - getOrderCalendarDay(a);
+
+    if (dayDifference !== 0) {
+      return dayDifference;
+    }
+
+    const statDifference =
+      Number(isStatOrder(b)) - Number(isStatOrder(a));
+
+    if (statDifference !== 0) {
+      return statDifference;
+    }
+
+    return getOrderTimestamp(b) - getOrderTimestamp(a);
+  });
 }
 
 function getStatusClasses(status?: string): string {
@@ -550,50 +610,6 @@ export default function LabPage() {
 
     return () => clearTimeout(timer);
   }, [fetchOrders]);
-
-  const sortedOrders = useMemo(() => {
-    return [...orders].sort((a, b) => {
-      const aTime = Date.parse(a.createdAt || '');
-      const bTime = Date.parse(b.createdAt || '');
-
-      const aValid = Number.isFinite(aTime);
-      const bValid = Number.isFinite(bTime);
-
-      if (!aValid && !bValid) return 0;
-      if (!aValid) return 1;
-      if (!bValid) return -1;
-
-      const aDate = new Date(aTime);
-      const bDate = new Date(bTime);
-
-      const aDay = new Date(
-        aDate.getFullYear(),
-        aDate.getMonth(),
-        aDate.getDate()
-      ).getTime();
-
-      const bDay = new Date(
-        bDate.getFullYear(),
-        bDate.getMonth(),
-        bDate.getDate()
-      ).getTime();
-
-      if (aDay !== bDay) {
-        return bDay - aDay;
-      }
-
-      const aStat =
-        a.isStat || a.priority === 'STAT' ? 1 : 0;
-      const bStat =
-        b.isStat || b.priority === 'STAT' ? 1 : 0;
-
-      if (aStat !== bStat) {
-        return bStat - aStat;
-      }
-
-      return bTime - aTime;
-    });
-  }, [orders]);
 
   /* =========================================================
      FETCH PATIENTS
@@ -1036,6 +1052,11 @@ export default function LabPage() {
     };
   }, [orders]);
 
+  const sortedOrders = useMemo(
+    () => sortLabOrders(orders),
+    [orders]
+  );
+
   /* =========================================================
      RENDER
   ========================================================= */
@@ -1473,7 +1494,7 @@ export default function LabPage() {
                     </span>
 
                     <span className="text-[11px] text-slate-400">
-                      {formatDate(
+                      {formatDateTime(
                         order.createdAt
                       )}
                     </span>

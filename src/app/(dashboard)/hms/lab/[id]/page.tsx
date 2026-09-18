@@ -241,7 +241,7 @@ const getStatusStyle = (status: string) => {
       return 'border-emerald-200 bg-emerald-50 text-emerald-700';
 
     case 'VERIFIED':
-      return 'border-[#1b7b68]/30 bg-[#1b7b68]/10 text-blue-700';
+      return 'border-[#1b7b68]/30 bg-[#1b7b68]/10 text-[#1b7b68]';
 
     case 'RESULTS_RECORDED':
       return 'border-purple-200 bg-purple-50 text-purple-700';
@@ -877,13 +877,13 @@ export default function LabOrderDetailsPage() {
   ========================================================= */
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-10">
+    <div className="min-h-screen bg-[#f6f8f9] pb-12">
       {/* =====================================================
           TOP HEADER
       ====================================================== */}
 
-      <div className="border-b border-slate-200/80 bg-white">
-        <div className="mx-auto w-full px-4 py-6 sm:px-6 lg:px-8">
+      <div className="border-b border-slate-200 bg-white shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+        <div className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8">
           <div className="mb-5 flex items-center justify-between gap-4">
             <button
               onClick={() => router.push('/hms/lab')}
@@ -912,13 +912,13 @@ export default function LabOrderDetailsPage() {
 
           <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex items-start gap-4">
-              <div className="flex h-15 w-15 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1b7b68] to-[#155f50] text-white shadow-lg shadow-slate-900/10 sm:h-16 sm:w-16">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#1b7b68] text-white shadow-lg shadow-[#1b7b68]/20 sm:h-[72px] sm:w-[72px]">
                 <FlaskConical className="h-7 w-7 sm:h-8 sm:w-8" />
               </div>
 
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2.5">
-                  <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
+                  <h1 className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">
                     {order.testName}
                   </h1>
 
@@ -990,7 +990,7 @@ export default function LabOrderDetailsPage() {
           PAGE CONTENT
       ====================================================== */}
 
-      <div className="mx-auto w-full px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8">
         {/* ===================================================
             ERROR ALERT
         ==================================================== */}
@@ -1092,8 +1092,8 @@ export default function LabOrderDetailsPage() {
           </div>
         )}
 
-        <section className="mb-6 grid gap-4 lg:grid-cols-3">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="mb-8 grid gap-5 lg:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Specimen tracking</p>
@@ -1103,7 +1103,7 @@ export default function LabOrderDetailsPage() {
                 <ScanLine className="h-5 w-5" />
               </div>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="mt-5 grid grid-cols-2 gap-4">
               <div className="rounded-xl bg-slate-50 p-3">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Barcode</p>
                 <p className="mt-1 truncate font-mono text-xs font-bold text-slate-700">{order.specimen?.barcode || order.accessionNumber}</p>
@@ -1115,7 +1115,7 @@ export default function LabOrderDetailsPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Result authorization</p>
@@ -1128,7 +1128,7 @@ export default function LabOrderDetailsPage() {
             <p className="mt-4 text-sm leading-6 text-slate-500">Results remain in the LIS review path until verification and final authorization are completed.</p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Billing</p>
@@ -1146,7 +1146,7 @@ export default function LabOrderDetailsPage() {
             WORKFLOW ACTION CENTER
         ==================================================== */}
 
-        <section className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <section className="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-5 p-4 sm:p-5 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex items-start gap-3">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#1b7b68]/10 text-[#1b7b68]">
@@ -1295,14 +1295,14 @@ export default function LabOrderDetailsPage() {
 
         {showResultForm && (
           <section className="mb-6 overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm">
-            <div className="flex flex-col justify-between gap-4 border-b border-blue-100 bg-[#1b7b68]/10/40 px-5 py-5 sm:flex-row sm:items-center sm:px-6">
+            <div className="flex flex-col justify-between gap-4 border-b border-blue-100 bg-[#1b7b68]/5 px-5 py-5 sm:flex-row sm:items-center sm:px-6">
               <div className="flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#1b7b68] text-white">
                   <ClipboardCheck className="h-5 w-5" />
                 </div>
 
                 <div>
-                  <h2 className="font-bold text-slate-900">
+                  <h2 className="text-[15px] font-extrabold text-slate-900">
                     Record Laboratory Results
                   </h2>
 
@@ -1437,7 +1437,7 @@ export default function LabOrderDetailsPage() {
                     createEmptyResult(),
                   ])
                 }
-                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-dashed border-[#2e7fc1]/40 bg-[#1b7b68]/10/30 px-4 py-2.5 text-sm font-semibold text-[#1b7b68] transition hover:bg-[#1b7b68]/10"
+                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-dashed border-[#1b7b68]/30 bg-[#1b7b68]/5 px-4 py-2.5 text-sm font-semibold text-[#1b7b68] transition hover:bg-[#1b7b68]/10"
               >
                 <Plus className="h-4 w-4" />
                 Add Parameter
@@ -1504,7 +1504,7 @@ export default function LabOrderDetailsPage() {
                   }
                   placeholder="Describe the reason for specimen rejection..."
                   rows={4}
-                  className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-red-300 focus:ring-4 focus:ring-red-50"
+                  className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-red-300 focus:ring-4 focus:ring-red-50"
                 />
               </div>
 
@@ -1518,7 +1518,7 @@ export default function LabOrderDetailsPage() {
                   onChange={(event) =>
                     setRejectQuality(event.target.value)
                   }
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-red-300 focus:ring-4 focus:ring-red-50"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm text-slate-800 outline-none transition focus:border-red-300 focus:ring-4 focus:ring-red-50"
                 >
                                     <option value="SATISFACTORY">
                     Satisfactory
@@ -1603,14 +1603,14 @@ export default function LabOrderDetailsPage() {
         ==================================================== */}
 
         {showRepeatForm && (
-          <section className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <section className="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex items-start gap-3 border-b border-slate-100 bg-slate-50 px-5 py-5 sm:px-6">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#1b7b68]/10 text-[#1b7b68]">
                 <RotateCcw className="h-5 w-5" />
               </div>
 
               <div>
-                <h2 className="font-bold text-slate-900">
+                <h2 className="text-[15px] font-extrabold text-slate-900">
                   Repeat Test
                 </h2>
 
@@ -1666,13 +1666,13 @@ export default function LabOrderDetailsPage() {
             MAIN GRID
         ==================================================== */}
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_350px]">
+        <div className="grid gap-7 xl:grid-cols-[minmax(0,1fr)_360px]">
           <main className="min-w-0">
             {/* =================================================
                 TABS
             ================================================= */}
 
-            <div className="mb-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
+            <div className="mb-7 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
               <div className="flex min-w-max gap-1">
                 {tabs.map((tab) => {
                   const Icon = tab.icon;
@@ -1715,7 +1715,7 @@ export default function LabOrderDetailsPage() {
             ================================================= */}
 
             {activeTab === 'overview' && (
-              <div className="space-y-6">
+              <div className="space-y-7">
                 {/* Test Information */}
 
                 <SectionCard
@@ -1723,7 +1723,7 @@ export default function LabOrderDetailsPage() {
                   title="Test Information"
                   subtitle="Core details for this laboratory investigation"
                 >
-                  <div className="grid gap-x-6 gap-y-7 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid gap-x-8 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
                     <InfoItem
                       label="Test Name"
                       value={order.testName}
@@ -1774,7 +1774,7 @@ export default function LabOrderDetailsPage() {
                   title="Patient & Request"
                   subtitle="Patient identification and requesting clinician"
                 >
-                  <div className="grid gap-x-6 gap-y-7 sm:grid-cols-2">
+                  <div className="grid gap-x-8 gap-y-8 sm:grid-cols-2">
                     <InfoItem
                       label="Patient"
                       value={patientName}
@@ -1819,7 +1819,7 @@ export default function LabOrderDetailsPage() {
                   title="Specimen Routing"
                   subtitle="Current routing and laboratory location information"
                 >
-                  <div className="grid gap-x-6 gap-y-7 sm:grid-cols-2">
+                  <div className="grid gap-x-8 gap-y-8 sm:grid-cols-2">
                     <InfoItem
                       label="Department"
                       value={
@@ -1893,7 +1893,7 @@ export default function LabOrderDetailsPage() {
             ================================================= */}
 
             {activeTab === 'results' && (
-              <div className="space-y-6">
+              <div className="space-y-7">
                 <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                   <div className="flex flex-col justify-between gap-4 border-b border-slate-100 px-5 py-5 sm:flex-row sm:items-center sm:px-6">
                     <div className="flex items-center gap-3">
@@ -1902,7 +1902,7 @@ export default function LabOrderDetailsPage() {
                       </div>
 
                       <div>
-                        <h2 className="font-bold text-slate-900">
+                        <h2 className="text-[15px] font-extrabold text-slate-900">
                           Laboratory Results
                         </h2>
 
@@ -1923,7 +1923,7 @@ export default function LabOrderDetailsPage() {
                         FINAL RESULTS
                       </span>
                     ) : order.results?.length ? (
-                      <span className="inline-flex items-center gap-2 self-start rounded-full border border-blue-100 bg-[#1b7b68]/10 px-3 py-1.5 text-xs font-bold text-blue-700 sm:self-auto">
+                      <span className="inline-flex items-center gap-2 self-start rounded-full border border-blue-100 bg-[#1b7b68]/10 px-3 py-1.5 text-xs font-bold text-[#1b7b68] sm:self-auto">
                         <Clock3 className="h-3.5 w-3.5" />
                         PENDING RELEASE
                       </span>
@@ -2011,7 +2011,7 @@ export default function LabOrderDetailsPage() {
                     </div>
 
                     <div>
-                      <h2 className="font-bold text-slate-900">
+                      <h2 className="text-[15px] font-extrabold text-slate-900">
                         Authorization History
                       </h2>
 
@@ -2088,7 +2088,7 @@ export default function LabOrderDetailsPage() {
                   </div>
 
                   <div>
-                    <h2 className="font-bold text-slate-900">
+                    <h2 className="text-[15px] font-extrabold text-slate-900">
                       Complete Chain of Custody
                     </h2>
 
@@ -2121,7 +2121,7 @@ export default function LabOrderDetailsPage() {
 
                           <div className="min-w-0 flex-1 pb-2">
                             <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                              <p className="font-bold text-slate-900">
+                              <p className="text-[15px] font-extrabold text-slate-900">
                                 {formatStatus(item.action)}
                               </p>
 
@@ -2175,12 +2175,12 @@ export default function LabOrderDetailsPage() {
               SIDEBAR
           =================================================== */}
 
-          <aside className="space-y-6">
+          <aside className="space-y-7">
             {/* Patient Snapshot */}
 
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-100 px-5 py-4">
-                <h2 className="font-bold text-slate-900">
+                <h2 className="text-[15px] font-extrabold text-slate-900">
                   Patient Snapshot
                 </h2>
               </div>
@@ -2205,7 +2205,7 @@ export default function LabOrderDetailsPage() {
                   </div>
                 </div>
 
-                <div className="mt-5 grid grid-cols-2 gap-3 border-t border-slate-100 pt-5">
+                <div className="mt-6 grid grid-cols-2 gap-4 border-t border-slate-100 pt-6">
                   <SidebarStat
                     label="Sample"
                     value={order.sampleType}
@@ -2231,10 +2231,10 @@ export default function LabOrderDetailsPage() {
 
             {/* Workflow Progress */}
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="font-bold text-slate-900">
+                  <h2 className="text-[15px] font-extrabold text-slate-900">
                     Workflow Progress
                   </h2>
 
@@ -2272,7 +2272,7 @@ export default function LabOrderDetailsPage() {
                             step.complete
                               ? 'bg-emerald-500 text-white'
                               : step.active
-                              ? 'bg-[#1b7b68] text-white ring-4 ring-blue-50'
+                              ? 'bg-[#1b7b68] text-white ring-4 ring-[#1b7b68]/10'
                               : 'bg-slate-100 text-slate-400'
                           }`}
                         >
@@ -2322,7 +2322,7 @@ export default function LabOrderDetailsPage() {
               <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
                 <Clock3 className="h-4 w-4 text-[#1b7b68]" />
 
-                <h2 className="font-bold text-slate-900">
+                <h2 className="text-[15px] font-extrabold text-slate-900">
                   Sample Timeline
                 </h2>
               </div>
@@ -2529,12 +2529,12 @@ function SectionCard({
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-5 sm:px-6">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1b7b68]/10 text-[#1b7b68]">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#1b7b68]/10 text-[#1b7b68]">
           <Icon className="h-5 w-5" />
         </div>
 
         <div>
-          <h2 className="font-bold text-slate-900">
+          <h2 className="text-[15px] font-extrabold text-slate-900">
             {title}
           </h2>
 
@@ -2546,7 +2546,7 @@ function SectionCard({
         </div>
       </div>
 
-      <div className="p-5 sm:p-6">{children}</div>
+      <div className="p-5 sm:p-7">{children}</div>
     </section>
   );
 }
