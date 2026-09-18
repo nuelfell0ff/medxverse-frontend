@@ -113,6 +113,8 @@ interface LabOrder {
 
   criticalResultNotified?: boolean;
   duplicateTestDetected?: boolean;
+  billingStatus?: string;
+  specimen?: { status?: string; barcode?: string; specimenType?: string } | null;
 
   results?: unknown[];
 }
@@ -469,7 +471,7 @@ export default function LabPage() {
         const params = new URLSearchParams();
 
         params.set('page', String(requestedPage));
-        params.set('limit', '10');
+        params.set('limit', '20');
 
         if (search.trim()) {
           params.set('accessionNumber', search.trim());
@@ -548,6 +550,50 @@ export default function LabPage() {
 
     return () => clearTimeout(timer);
   }, [fetchOrders]);
+
+  const sortedOrders = useMemo(() => {
+    return [...orders].sort((a, b) => {
+      const aTime = Date.parse(a.createdAt || '');
+      const bTime = Date.parse(b.createdAt || '');
+
+      const aValid = Number.isFinite(aTime);
+      const bValid = Number.isFinite(bTime);
+
+      if (!aValid && !bValid) return 0;
+      if (!aValid) return 1;
+      if (!bValid) return -1;
+
+      const aDate = new Date(aTime);
+      const bDate = new Date(bTime);
+
+      const aDay = new Date(
+        aDate.getFullYear(),
+        aDate.getMonth(),
+        aDate.getDate()
+      ).getTime();
+
+      const bDay = new Date(
+        bDate.getFullYear(),
+        bDate.getMonth(),
+        bDate.getDate()
+      ).getTime();
+
+      if (aDay !== bDay) {
+        return bDay - aDay;
+      }
+
+      const aStat =
+        a.isStat || a.priority === 'STAT' ? 1 : 0;
+      const bStat =
+        b.isStat || b.priority === 'STAT' ? 1 : 0;
+
+      if (aStat !== bStat) {
+        return bStat - aStat;
+      }
+
+      return bTime - aTime;
+    });
+  }, [orders]);
 
   /* =========================================================
      FETCH PATIENTS
@@ -1359,7 +1405,7 @@ export default function LabPage() {
             {/* MOBILE CARDS */}
 
             <div className="divide-y divide-slate-100 lg:hidden">
-              {orders.map((order) => (
+              {sortedOrders.map((order) => (
                 <Link
                   key={order._id}
                   href={`/hms/lab/${order._id}`}
@@ -1477,7 +1523,7 @@ export default function LabPage() {
                 </thead>
 
                 <tbody className="divide-y divide-slate-100">
-                  {orders.map((order) => (
+                  {sortedOrders.map((order) => (
                     <tr
                       key={order._id}
                       className="transition-all hover:bg-slate-50/70"

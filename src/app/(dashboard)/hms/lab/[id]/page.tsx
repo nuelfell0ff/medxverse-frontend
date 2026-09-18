@@ -128,7 +128,7 @@ interface LabOrder {
   accessionNumber: string;
 
   patientId?: PopulatedPerson;
-  doctorId?: PopulatedPerson;
+  doctorId?: PopulatedPerson | string;
   phlebotomistId?: PopulatedPerson;
   labTechnicianId?: PopulatedPerson;
   verifierId?: PopulatedPerson;
@@ -158,6 +158,18 @@ interface LabOrder {
   rejectionInfo?: RejectionInfo;
 
   results: LabResult[];
+  specimen?: {
+    _id?: string;
+    barcode?: string;
+    specimenType?: string;
+    status?: string;
+    collectedAt?: string;
+    inTransitAt?: string;
+    receivedAt?: string;
+    processedAt?: string;
+    rejectionReason?: string;
+  } | null;
+  billingStatus?: string;
   chainOfCustody: ChainOfCustody[];
   authorizationHistory: Authorization[];
 
@@ -317,6 +329,7 @@ export default function LabOrderDetailsPage() {
 
   const [repeatReason, setRepeatReason] = useState('');
   const [repeatParameters, setRepeatParameters] = useState('');
+  const specimenStatus = order?.specimen?.status || (order?.sampleCollectedAt ? 'COLLECTED' : 'PENDING');
 
   /* =========================================================
      API HELPER
@@ -370,6 +383,101 @@ export default function LabOrderDetailsPage() {
      FETCH ORDER
   ========================================================= */
 
+  const normalizePerson = (value: any): PopulatedPerson | undefined => {
+    if (!value) return undefined;
+    if (typeof value === 'string') return { _id: value };
+    if (typeof value !== 'object') return undefined;
+    const source = value.user || value.account || value.profile || value.staff || value;
+    const id = value._id ?? value.id ?? source?._id ?? source?.id;
+    const firstName = value.firstName ?? source?.firstName ?? source?.givenName ?? '';
+    const lastName = value.lastName ?? source?.lastName ?? source?.familyName ?? '';
+    const name = value.name ?? source?.name;
+    const email = value.email ?? source?.email;
+    return {
+      ...source,
+      ...value,
+      _id: id ? String(id) : undefined,
+      firstName,
+      lastName,
+      name,
+      email,
+    };
+  };
+
+  const extractStaffRows = (value: any): any[] => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'object') return [];
+    const candidates = [
+      value.data,
+      value.staff,
+      value.users,
+      value.accounts,
+      value.items,
+      value.results,
+      value.records,
+      value.data?.staff,
+      value.data?.users,
+      value.data?.accounts,
+      value.data?.items,
+      value.data?.results,
+      value.data?.records,
+    ];
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) return candidate;
+    }
+    return [];
+  };
+
+  const resolveDoctor = async (value: any) => {
+    const direct = normalizePerson(value);
+    if (direct && (direct.name || direct.firstName || direct.lastName || direct.email)) return direct;
+
+    const doctorId = typeof value === 'string'
+      ? value.trim()
+      : String(value?._id ?? value?.id ?? value?.$oid ?? '').trim();
+
+    if (!doctorId) return direct;
+
+    const token = getToken();
+    const headers: HeadersInit = token
+      ? { Authorization: `Bearer ${token}` }
+      : {};
+
+    try {
+      const response = await fetch(`${API_URL}/api/v1/staff/${encodeURIComponent(doctorId)}`, {
+        headers,
+        cache: 'no-store',
+      });
+      if (response.ok) {
+        const data = await response.json().catch(() => null);
+        const staff = data?.data?.staff || data?.data?.user || data?.data || data?.staff || data?.user || data;
+        const person = normalizePerson(staff);
+        if (person && (person.name || person.firstName || person.lastName || person.email)) return person;
+      }
+    } catch {}
+
+    try {
+      const params = new URLSearchParams({ isActive: 'true', limit: '1000' });
+      const response = await fetch(`${API_URL}/api/v1/staff?${params.toString()}`, {
+        headers,
+        cache: 'no-store',
+      });
+      if (response.ok) {
+        const data = await response.json().catch(() => null);
+        const rows = extractStaffRows(data);
+        const match = rows.find((raw: any) => {
+          const person = normalizePerson(raw);
+          return person?._id === doctorId;
+        });
+        const person = normalizePerson(match);
+        if (person) return person;
+      }
+    } catch {}
+
+    return direct || { _id: doctorId };
+  };
+
   const fetchOrder = async (showRefresh = false) => {
     try {
       setError('');
@@ -382,9 +490,20 @@ export default function LabOrderDetailsPage() {
 
       const data = await apiRequest(`/${orderId}`);
 
-      const labOrder = data?.data || data?.order || data;
+      const labOrder = data?.order || data?.labOrder || data?.data?.order || data?.data?.labOrder || data?.data || data;
+      const doctorValue =
+        labOrder?.doctorId ??
+        labOrder?.requestingDoctorId ??
+        labOrder?.requestingDoctor ??
+        labOrder?.doctor ??
+        labOrder?.orderedBy ??
+        labOrder?.orderedById;
+      const resolvedDoctor = await resolveDoctor(doctorValue);
 
-      setOrder(labOrder);
+      setOrder({
+        ...labOrder,
+        doctorId: resolvedDoctor,
+      });
     } catch (err) {
       setError(
         err instanceof Error
@@ -972,6 +1091,56 @@ export default function LabOrderDetailsPage() {
             ))}
           </div>
         )}
+
+        <section className="mb-6 grid gap-4 lg:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Specimen tracking</p>
+                <p className="mt-1 text-base font-bold text-slate-900">{formatStatus(specimenStatus)}</p>
+              </div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
+                <ScanLine className="h-5 w-5" />
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-slate-50 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Barcode</p>
+                <p className="mt-1 truncate font-mono text-xs font-bold text-slate-700">{order.specimen?.barcode || order.accessionNumber}</p>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Type</p>
+                <p className="mt-1 truncate text-xs font-semibold text-slate-700">{order.specimen?.specimenType || order.sampleType}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Result authorization</p>
+                <p className="mt-1 text-base font-bold text-slate-900">{order.authorizedAt ? 'Released' : order.verifiedAt ? 'Verified' : order.results?.length ? 'Awaiting verification' : 'Awaiting results'}</p>
+              </div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-slate-500">Results remain in the LIS review path until verification and final authorization are completed.</p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Billing</p>
+                <p className="mt-1 text-base font-bold text-slate-900">{formatStatus(order.billingStatus || 'NOT_ATTEMPTED')}</p>
+              </div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
+                <FileText className="h-5 w-5" />
+              </div>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-slate-500">The laboratory order can carry its billing state alongside the clinical workflow.</p>
+          </div>
+        </section>
 
         {/* ===================================================
             WORKFLOW ACTION CENTER
