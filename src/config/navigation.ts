@@ -17,6 +17,7 @@ import {
   ScanLine,
   FlaskConical,
   Siren,
+  HeartPulse,
 } from 'lucide-react';
 
 import { AccountType } from '@/types/auth.types';
@@ -48,6 +49,13 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       href: '/hms/emergency',
       icon: Siren,
       moduleKey: 'emergency',
+    },
+
+    {
+      label: 'Intensive Care Unit',
+      href: '/hms/icu',
+      icon: HeartPulse,
+      moduleKey: 'icu',
     },
 
     {
