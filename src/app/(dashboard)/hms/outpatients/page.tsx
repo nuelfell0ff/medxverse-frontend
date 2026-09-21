@@ -183,27 +183,90 @@ export default function OutpatientsPage() {
   const safeEncounters = Array.isArray(encounters) ? encounters : [];
 
   // Safe search filtering preventing runtime null checks
-  const filteredEncounters = safeEncounters.filter((enc) => {
-    const query = searchTerm.trim().toLowerCase();
-    
-    if (!query && statusFilter === 'ALL') return true;
+  // Keep the queue primarily ordered by encounter date (newest first).
+  // Within the same calendar day, Emergency patients are shown first.
+  // This intentionally does NOT allow an older Emergency encounter to jump
+  // above a newer day's encounters.
+  const getEncounterTimestamp = (enc: IOutpatientEncounter) => {
+    const rawDate =
+      (enc as IOutpatientEncounter & { createdAt?: string | Date }).createdAt ??
+      (enc as IOutpatientEncounter & { encounterDate?: string | Date }).encounterDate ??
+      (enc as IOutpatientEncounter & { checkedInAt?: string | Date }).checkedInAt;
 
-    const firstName = enc.patientId?.firstName?.toLowerCase() ?? '';
-    const lastName = enc.patientId?.lastName?.toLowerCase() ?? '';
-    const mrn = enc.patientId?.mrn?.toLowerCase() ?? '';
-    const chiefComplaint = enc.chiefComplaint?.toLowerCase() ?? '';
+    if (!rawDate) return 0;
 
-    const matchesSearch =
-      !query ||
-      firstName.includes(query) ||
-      lastName.includes(query) ||
-      mrn.includes(query) ||
-      chiefComplaint.includes(query);
+    const timestamp = new Date(rawDate).getTime();
+    return Number.isNaN(timestamp) ? 0 : timestamp;
+  };
 
-    const matchesStatus = statusFilter === 'ALL' || enc.status === statusFilter;
+  const getEncounterDayKey = (enc: IOutpatientEncounter) => {
+    const timestamp = getEncounterTimestamp(enc);
+    if (!timestamp) return '';
 
-    return matchesSearch && matchesStatus;
-  });
+    const date = new Date(timestamp);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+      date.getDate()
+    ).padStart(2, '0')}`;
+  };
+
+  const triageRank = (priority?: TriagePriority | string) => {
+    if (String(priority).toUpperCase() === 'EMERGENCY') return 0;
+    if (priority === TriagePriority.URGENT || priority === 'URGENT') return 1;
+    return 2;
+  };
+
+  const filteredEncounters = safeEncounters
+    .filter((enc) => {
+      const query = searchTerm.trim().toLowerCase();
+
+      if (!query && statusFilter === 'ALL') return true;
+
+      const firstName = enc.patientId?.firstName?.toLowerCase() ?? '';
+      const lastName = enc.patientId?.lastName?.toLowerCase() ?? '';
+      const mrn = enc.patientId?.mrn?.toLowerCase() ?? '';
+      const chiefComplaint = enc.chiefComplaint?.toLowerCase() ?? '';
+
+      const matchesSearch =
+        !query ||
+        firstName.includes(query) ||
+        lastName.includes(query) ||
+        mrn.includes(query) ||
+        chiefComplaint.includes(query);
+
+      const matchesStatus = statusFilter === 'ALL' || enc.status === statusFilter;
+
+      return matchesSearch && matchesStatus;
+    })
+    .map((enc, index) => ({ enc, index }))
+    .sort((a, b) => {
+      const aTime = getEncounterTimestamp(a.enc);
+      const bTime = getEncounterTimestamp(b.enc);
+      const aDay = getEncounterDayKey(a.enc);
+      const bDay = getEncounterDayKey(b.enc);
+
+      // Primary ordering: newest calendar day first.
+      // This guarantees that an Emergency from an older day cannot jump
+      // above a normal/urgent encounter from a newer day.
+      if (aDay !== bDay) {
+        if (!aDay) return 1;
+        if (!bDay) return -1;
+        return bDay.localeCompare(aDay);
+      }
+
+      // Within the same day, Emergency always comes first.
+      const priorityDifference =
+        triageRank(a.enc.triagePriority) - triageRank(b.enc.triagePriority);
+
+      if (priorityDifference !== 0) return priorityDifference;
+
+      // After triage priority, show the newer encounter time first.
+      if (aTime !== bTime) return bTime - aTime;
+
+      // Stable fallback for records with identical/missing dates.
+      return a.index - b.index;
+    })
+    .map(({ enc }) => enc);
+
 
   return (
     <div className="min-h-full space-y-6 font-sans text-slate-800 animate-in fade-in duration-300">
@@ -775,7 +838,7 @@ function CheckInBillingModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-100 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
         <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
           <div>
@@ -1075,7 +1138,7 @@ function CheckInBillingModal({
                 Billing
               </label>
 
-              <div className="h-[42px] px-3 rounded-2xl border border-slate-200 bg-slate-50 flex items-center">
+              <div className="h-10.5 px-3 rounded-2xl border border-slate-200 bg-slate-50 flex items-center">
                 <span className="text-[10px] font-semibold text-slate-500">
                   {selectedCatalogue
                     ? `${catalogueName(selectedCatalogue)} • ${formatMoney(selectedCatalogue)}`

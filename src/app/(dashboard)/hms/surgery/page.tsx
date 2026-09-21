@@ -727,6 +727,36 @@ export default function SurgeryPage() {
         urgencyFilter === 'ALL' || surgery.urgency === urgencyFilter;
 
       return matchesSearch && matchesUrgency;
+    }).sort((a, b) => {
+      const aTime = Date.parse(a.scheduledStartTime || '') || 0;
+      const bTime = Date.parse(b.scheduledStartTime || '') || 0;
+
+      // Primary ordering: calendar date, newest day first.
+      const aDate = new Date(aTime);
+      const bDate = new Date(bTime);
+      const aDay = Date.UTC(aDate.getFullYear(), aDate.getMonth(), aDate.getDate());
+      const bDay = Date.UTC(bDate.getFullYear(), bDate.getMonth(), bDate.getDate());
+
+      if (aDay !== bDay) {
+        return bDay - aDay;
+      }
+
+      // Within the same day, emergency cases come first.
+      const urgencyRank: Record<UrgencyLevel, number> = {
+        [UrgencyLevel.EMERGENCY]: 0,
+        [UrgencyLevel.URGENT]: 1,
+        [UrgencyLevel.ELECTIVE]: 2,
+      };
+      const urgencyDifference =
+        (urgencyRank[a.urgency] ?? 99) - (urgencyRank[b.urgency] ?? 99);
+
+      if (urgencyDifference !== 0) {
+        return urgencyDifference;
+      }
+
+      // Finally, sort cases within the same urgency by scheduled time, newest
+      // time first, while keeping the date as the dominant ordering.
+      return bTime - aTime;
     });
   }, [cases, searchTerm, urgencyFilter]);
 
@@ -1296,7 +1326,7 @@ export default function SurgeryPage() {
 
                             <p className="text-[10px] text-slate-400">
                               {surgery.surgicalTeam?.length || 0}{' '}
-                              team members
+                              team member(s)
                             </p>
                           </div>
                         </div>

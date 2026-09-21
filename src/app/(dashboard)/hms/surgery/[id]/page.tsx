@@ -1869,21 +1869,21 @@ function WHOTab({
 
   const fields: Record<string, string[]> = {
     signIn: [
-      'patientIdentityConfirmed',
-      'siteMarked',
-      'consentVerified',
-      'pulseOximeterOn',
-      'allergyKnown',
-      'airwayRisk',
-      'bloodLossRiskOver500ml',
+      'patient Identity Confirmed',
+      'site Marked',
+      'consent Verified',
+      'pulse OximeterOn',
+      'allergy Known',
+      'airway Risk',
+      'blood Loss Risk Over 500ml',
     ],
     timeOut: [
-      'teamIntroduced',
-      'confirmPatientSiteProcedure',
-      'antibioticProphylaxisGiven',
-      'imagingDisplayed',
+      'team Introduced',
+      'confirm Patient Site Procedure',
+      'antibiotic Prophylaxis Given',
+      'imaging Displayed',
     ],
-    signOut: ['countsCorrect', 'specimenLabeled'],
+    signOut: ['counts Correct', 'specimen Labeled'],
   };
 
   return (
