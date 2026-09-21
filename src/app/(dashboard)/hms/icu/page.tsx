@@ -173,12 +173,14 @@ function statusClass(status: string) {
 }
 function patientVitals(vitals?: Record<string, unknown>) {
   return [
-    ['Heart rate', vitals?.heartRate ?? vitals?.pulse, 'bpm', HeartPulse],
-    ['Blood pressure', vitals?.bloodPressure ?? vitals?.bp, 'mmHg', Activity],
-    ['SpO₂', vitals?.spo2 ?? vitals?.oxygenSaturation, '%', Zap],
-    ['Temperature', vitals?.temperature ?? vitals?.temp, '°C', Thermometer],
-    ['Respiratory rate', vitals?.respiratoryRate ?? vitals?.respRate, '/min', Wind],
-    ['GCS', vitals?.gcs, 'score', Stethoscope],
+    ['Heart rate', vitals?.heartRateBpm ?? vitals?.heartRate ?? vitals?.pulse, 'bpm', HeartPulse],
+    ['Systolic BP', vitals?.systolicBpMmHg ?? vitals?.systolicBp ?? vitals?.bloodPressure, 'mmHg', Activity],
+    ['Diastolic BP', vitals?.diastolicBpMmHg ?? vitals?.diastolicBp, 'mmHg', Activity],
+    ['MAP', vitals?.meanArterialPressureMmHg ?? vitals?.map, 'mmHg', Activity],
+    ['SpO₂', vitals?.oxygenSaturationPct ?? vitals?.spo2 ?? vitals?.oxygenSaturation, '%', Zap],
+    ['Temperature', vitals?.temperatureCelsius ?? vitals?.temperature ?? vitals?.temp, '°C', Thermometer],
+    ['Respiratory rate', vitals?.respiratoryRateBpm ?? vitals?.respiratoryRate ?? vitals?.respRate, '/min', Wind],
+    ['GCS', vitals?.glasgowComaScale ?? vitals?.gcs, 'score', Stethoscope],
   ] as const;
 }
 
@@ -227,7 +229,7 @@ export default function ICUPage() {
   const [selectedStaff, setSelectedStaff] = useState<StaffRef | null>(null);
   const [searchingStaff, setSearchingStaff] = useState(false);
   const [showStaffResults, setShowStaffResults] = useState(false);
-  const [vitalsForm, setVitalsForm] = useState<Record<string, string>>({ heartRate: '', bloodPressure: '', spo2: '', temperature: '', respiratoryRate: '', gcs: '' });
+  const [vitalsForm, setVitalsForm] = useState<Record<string, string>>({ heartRateBpm: '', systolicBpMmHg: '', diastolicBpMmHg: '', meanArterialPressureMmHg: '', oxygenSaturationPct: '', temperatureCelsius: '', respiratoryRateBpm: '', glasgowComaScale: '' });
   const [ventilatorForm, setVentilatorForm] = useState<Record<string, string>>({ mode: '', fio2: '', peep: '', tidalVolume: '', respiratoryRate: '', pressureSupport: '' });
   const [statusForm, setStatusForm] = useState({ status: 'STABILIZED', dispositionNotes: '' });
   const [familyForm, setFamilyForm] = useState({ contactName: '', relationship: '', contactMethod: 'PHONE', topics: '', summary: '', questionsOrConcerns: '', followUpRequired: false, followUpPlan: '' });
@@ -412,32 +414,41 @@ export default function ICUPage() {
   const submitVitals = async (event: FormEvent) => {
     event.preventDefault(); if (!selected) return;
     const vitals = Object.fromEntries(Object.entries(vitalsForm).filter(([, v]) => v.trim() !== '').map(([k, v]) => [k, Number(v)]));
-    await runAction(() => api(`/admissions/${selected._id}/vitals`, { method: 'PATCH', body: JSON.stringify({ vitals }) }).then(() => undefined), 'ICU vitals updated.');
+    await runAction(() => api(`${ICU_BASE}/admissions/${selected._id}/vitals`, { method: 'PATCH', body: JSON.stringify({ vitals }) }).then(() => undefined), 'ICU vitals updated.');
   };
   const submitVentilator = async (event: FormEvent) => {
     event.preventDefault(); if (!selected) return;
     const ventilatorSettings = Object.fromEntries(Object.entries(ventilatorForm).filter(([, v]) => v.trim() !== '').map(([k, v]) => [k, ['mode'].includes(k) ? v : Number(v)]));
-    await runAction(() => api(`/admissions/${selected._id}/ventilator`, { method: 'PATCH', body: JSON.stringify({ ventilatorSettings }) }).then(() => undefined), 'Ventilator settings updated.');
+    await runAction(() => api(`${ICU_BASE}/admissions/${selected._id}/ventilator`, { method: 'PATCH', body: JSON.stringify({ ventilatorSettings }) }).then(() => undefined), 'Ventilator settings updated.');
   };
   const submitStatus = async (event: FormEvent) => {
     event.preventDefault(); if (!selected) return;
-    await runAction(() => api(`/admissions/${selected._id}/status`, { method: 'PATCH', body: JSON.stringify(statusForm) }).then(() => undefined), `ICU status changed to ${label(statusForm.status)}.`);
+    await runAction(() => api(`${ICU_BASE}/admissions/${selected._id}/status`, { method: 'PATCH', body: JSON.stringify(statusForm) }).then(() => undefined), `ICU status changed to ${label(statusForm.status)}.`);
   };
   const submitFamily = async (event: FormEvent) => {
     event.preventDefault(); if (!selected) return;
-    await runAction(() => api('/family-communications', { method: 'POST', body: JSON.stringify({ admissionId: selected._id, ...familyForm, topics: familyForm.topics.split(',').map(v => v.trim()).filter(Boolean) }) }).then(() => undefined), 'Family communication recorded.');
+    await runAction(() => api(`${ICU_BASE}/family-communications`, { method: 'POST', body: JSON.stringify({ admissionId: selected._id, ...familyForm, topics: familyForm.topics.split(',').map(v => v.trim()).filter(Boolean) }) }).then(() => undefined), 'Family communication recorded.');
   };
   const recalculate = async () => {
     if (!selected) return;
-    await runAction(() => api(`/scores/recalculate-underlying/${selected._id}`, { method: 'POST' }).then(() => undefined), 'SOFA and APACHE II recalculated from underlying data.');
+    await runAction(() => api(`${ICU_BASE}/scores/recalculate-underlying/${selected._id}`, { method: 'POST' }).then(() => undefined), 'SOFA and APACHE II recalculated from underlying data.');
   };
   const confirmFlow = async (entryId: string) => {
-    await runAction(() => api(`/flowsheet/${entryId}/confirm`, { method: 'PATCH', body: JSON.stringify({}) }).then(() => undefined), 'Flowsheet entry confirmed.');
+    await runAction(() => api(`${ICU_BASE}/flowsheet/${entryId}/confirm`, { method: 'PATCH', body: JSON.stringify({}) }).then(() => undefined), 'Flowsheet entry confirmed.');
   };
 
   const openVitals = () => {
     const v = selected?.vitals || {};
-    setVitalsForm({ heartRate: String(v.heartRate ?? v.pulse ?? ''), bloodPressure: String(v.bloodPressure ?? v.bp ?? ''), spo2: String(v.spo2 ?? v.oxygenSaturation ?? ''), temperature: String(v.temperature ?? v.temp ?? ''), respiratoryRate: String(v.respiratoryRate ?? v.respRate ?? ''), gcs: String(v.gcs ?? '') });
+    setVitalsForm({
+      heartRateBpm: String(v.heartRateBpm ?? v.heartRate ?? v.pulse ?? ''),
+      systolicBpMmHg: String(v.systolicBpMmHg ?? ''),
+      diastolicBpMmHg: String(v.diastolicBpMmHg ?? ''),
+      meanArterialPressureMmHg: String(v.meanArterialPressureMmHg ?? ''),
+      oxygenSaturationPct: String(v.oxygenSaturationPct ?? v.spo2 ?? v.oxygenSaturation ?? ''),
+      temperatureCelsius: String(v.temperatureCelsius ?? v.temperature ?? v.temp ?? ''),
+      respiratoryRateBpm: String(v.respiratoryRateBpm ?? v.respiratoryRate ?? v.respRate ?? ''),
+      glasgowComaScale: String(v.glasgowComaScale ?? v.gcs ?? ''),
+    });
     setModal('vitals');
   };
   const openVentilator = () => {
@@ -495,7 +506,7 @@ export default function ICUPage() {
         </section>}
       </div>}
 
-      <Modal open={modal === 'vitals'} title="Update ICU vitals" description="Manual vital-sign entry also creates auditable flowsheet entries." onClose={() => setModal(null)}><form onSubmit={submitVitals} className="space-y-4"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{[['heartRate','Heart rate'],['bloodPressure','Blood pressure'],['spo2','SpO₂'],['temperature','Temperature'],['respiratoryRate','Respiratory rate'],['gcs','GCS']].map(([key, name]) => <label key={key} className="text-[10px] font-extrabold text-slate-600">{name}<input type="number" value={vitalsForm[key]} onChange={e => setVitalsForm({ ...vitalsForm, [key]: e.target.value })} className={inputClass}/></label>)}</div><div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setModal(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600">Cancel</button><button disabled={working} className="rounded-xl bg-[#1b7b68] px-5 py-2 text-xs font-extrabold text-white">{working ? 'Saving…' : 'Save vitals'}</button></div></form></Modal>
+      <Modal open={modal === 'vitals'} title="Update ICU vitals" description="Manual vital-sign entry also creates auditable flowsheet entries." onClose={() => setModal(null)}><form onSubmit={submitVitals} className="space-y-4"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{[['heartRateBpm','Heart rate'],['systolicBpMmHg','Systolic BP'],['diastolicBpMmHg','Diastolic BP'],['meanArterialPressureMmHg','MAP'],['oxygenSaturationPct','SpO₂'],['temperatureCelsius','Temperature'],['respiratoryRateBpm','Respiratory rate'],['glasgowComaScale','GCS']].map(([key, name]) => <label key={key} className="text-[10px] font-extrabold text-slate-600">{name}<input type="number" value={vitalsForm[key]} onChange={e => setVitalsForm({ ...vitalsForm, [key]: e.target.value })} className={inputClass}/></label>)}</div><div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setModal(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600">Cancel</button><button disabled={working} className="rounded-xl bg-[#1b7b68] px-5 py-2 text-xs font-extrabold text-white">{working ? 'Saving…' : 'Save vitals'}</button></div></form></Modal>
 
       <Modal open={modal === 'ventilator'} title="Ventilator settings" description="Update the current ventilator configuration for this ICU admission." onClose={() => setModal(null)}><form onSubmit={submitVentilator} className="space-y-4"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{[['mode','Mode'],['fio2','FiO₂'],['peep','PEEP'],['tidalVolume','Tidal volume'],['respiratoryRate','Respiratory rate'],['pressureSupport','Pressure support']].map(([key, name]) => <label key={key} className="text-[10px] font-extrabold text-slate-600">{name}<input type={key === 'mode' ? 'text' : 'number'} value={ventilatorForm[key]} onChange={e => setVentilatorForm({ ...ventilatorForm, [key]: e.target.value })} className={inputClass}/></label>)}</div><div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setModal(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600">Cancel</button><button disabled={working} className="rounded-xl bg-[#1b7b68] px-5 py-2 text-xs font-extrabold text-white">{working ? 'Saving…' : 'Save settings'}</button></div></form></Modal>
 
