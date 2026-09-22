@@ -18,6 +18,7 @@ import {
   FlaskConical,
   Siren,
   HeartPulse,
+  BadgeDollarSign,
 } from 'lucide-react';
 
 import { AccountType } from '@/types/auth.types';
@@ -134,6 +135,13 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       label: 'HMO Hub',
       href: '/hmo',
       icon: BarChart3,
+    },
+
+    {
+      label: 'Benefits',
+      href: '/hmo/benefits',
+      icon: BadgeDollarSign,
+      moduleKey: 'benefits',
     },
 
     {
