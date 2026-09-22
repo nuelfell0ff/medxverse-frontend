@@ -19,6 +19,7 @@ import {
   Siren,
   HeartPulse,
   BadgeDollarSign,
+  ClipboardList,
 } from 'lucide-react';
 
 import { AccountType } from '@/types/auth.types';
@@ -138,6 +139,20 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
     },
 
     {
+      label: 'Enrollee Registry',
+      href: '/hmo/enrollees',
+      icon: Users,
+      moduleKey: 'enrollees',
+    },
+
+    {
+      label: 'Health Plans',
+      href: '/hmo/health-plans',
+      icon: ClipboardList,
+      moduleKey: 'health_plans',
+    },
+
+    {
       label: 'Benefits',
       href: '/hmo/benefits',
       icon: BadgeDollarSign,
@@ -145,10 +160,17 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
     },
 
     {
-      label: 'Claims Adjudication',
-      href: '/hmo/claims',
-      icon: FileCheck,
-      moduleKey: 'claims',
+      label: 'Healthcare Providers',
+      href: '/hmo/providers',
+      icon: Building2,
+      moduleKey: 'providers',
+    },
+
+    {
+      label: 'Eligibility & Verification',
+      href: '/hmo/eligibility',
+      icon: ShieldCheck,
+      moduleKey: 'eligibility',
     },
 
     {
@@ -159,10 +181,10 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
     },
 
     {
-      label: 'Enrollee Registry',
-      href: '/hmo/enrollees',
-      icon: Users,
-      moduleKey: 'enrollees',
+      label: 'Claims Adjudication',
+      href: '/hmo/claims',
+      icon: FileCheck,
+      moduleKey: 'claims',
     },
 
     {
