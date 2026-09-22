@@ -5,6 +5,7 @@ import {
   AlertCircle,
   BadgeCheck,
   CalendarDays,
+  CreditCard,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -13,9 +14,11 @@ import {
   Eye,
   Filter,
   HeartPulse,
+  History,
   Loader2,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
   ShieldCheck,
   UserRound,
@@ -118,6 +121,26 @@ interface ListResult {
   page: number;
   limit: number;
   totalPages: number;
+}
+
+interface CardResult {
+  cardNumber: string;
+  status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+  enrolleeId: string;
+  policyNumber: string;
+  issuedAt: string;
+  expiresAt?: string;
+}
+
+interface LifecycleEvent {
+  _id: string;
+  type: string;
+  fromStatus?: string;
+  toStatus?: string;
+  reason?: string;
+  actorId?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
 }
 
 interface Eligibility {
@@ -389,7 +412,13 @@ export default function EnrolleesPage() {
 
   const [eligibility, setEligibility] = useState<Eligibility | null>(null);
   const [dependents, setDependents] = useState<Enrollee[]>([]);
+  const [card, setCard] = useState<CardResult | null>(null);
+  const [lifecycle, setLifecycle] = useState<LifecycleEvent[]>([]);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [renewOpen, setRenewOpen] = useState(false);
+  const [renewEndDate, setRenewEndDate] = useState('');
+  const [renewReason, setRenewReason] = useState('');
+  const [renewing, setRenewing] = useState(false);
 
   const loadBenefits = useCallback(async () => {
     try {
@@ -497,21 +526,29 @@ export default function EnrolleesPage() {
     setSelected(item);
     setEligibility(null);
     setDependents([]);
+    setCard(null);
+    setLifecycle([]);
     setViewOpen(true);
     setDetailsLoading(true);
 
     try {
-      const [detailResponse, eligibilityResponse, dependentsResponse] = await Promise.all([
+      const [detailResponse, eligibilityResponse, dependentsResponse, cardResponse, lifecycleResponse] = await Promise.all([
         apiJson<{ success: boolean; data: Enrollee }>(`${ENROLLEES_API}/${item._id}`),
         apiJson<{ success: boolean; data: Eligibility }>(`${ENROLLEES_API}/${item._id}/eligibility`),
         item.relationship === 'PRIMARY'
           ? apiJson<{ success: boolean; data: Enrollee[] }>(`${ENROLLEES_API}/${item._id}/dependents`)
           : Promise.resolve(null),
+        item.status === 'ACTIVE'
+          ? apiJson<{ success: boolean; data: CardResult }>(`${ENROLLEES_API}/${item._id}/card`).catch(() => null)
+          : Promise.resolve(null),
+        apiJson<{ success: boolean; data: LifecycleEvent[] }>(`${ENROLLEES_API}/${item._id}/history`).catch(() => null),
       ]);
 
       setSelected(detailResponse?.data || item);
       setEligibility(eligibilityResponse?.data || null);
       setDependents(dependentsResponse?.data || []);
+      setCard(cardResponse?.data || null);
+      setLifecycle(Array.isArray(lifecycleResponse?.data) ? lifecycleResponse.data : []);
     } catch (err) {
       console.warn('Unable to load enrollee details:', err);
     } finally {
@@ -580,6 +617,44 @@ export default function EnrolleesPage() {
       setFormError(err?.message || 'Unable to save enrollee.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openRenew = (item: Enrollee) => {
+    const currentEnd = item.endDate ? new Date(item.endDate) : new Date();
+    const baseline = currentEnd > new Date() ? currentEnd : new Date();
+    baseline.setDate(baseline.getDate() + 365);
+    setSelected(item);
+    setRenewEndDate(baseline.toISOString().slice(0, 10));
+    setRenewReason('Annual coverage renewal');
+    setRenewOpen(true);
+  };
+
+  const renewEnrollee = async () => {
+    if (!selected || !renewEndDate) return;
+    const endDate = new Date(renewEndDate);
+    if (Number.isNaN(endDate.getTime())) return;
+    const currentEnd = selected.endDate ? new Date(selected.endDate) : new Date();
+    const baseline = currentEnd > new Date() ? currentEnd : new Date();
+    if (endDate <= baseline) {
+      setError('Renewal end date must extend the current coverage.');
+      return;
+    }
+
+    try {
+      setRenewing(true);
+      await apiJson(`${ENROLLEES_API}/${selected._id}/renew`, {
+        method: 'POST',
+        headers: getAuthHeaders(true),
+        body: JSON.stringify({ endDate: renewEndDate, reason: renewReason.trim() || undefined }),
+      });
+      setRenewOpen(false);
+      await load(true);
+      await openView({ ...selected, status: 'ACTIVE', endDate: renewEndDate });
+    } catch (err: any) {
+      setError(err?.message || 'Unable to renew enrollee.');
+    } finally {
+      setRenewing(false);
     }
   };
 
@@ -860,14 +935,52 @@ export default function EnrolleesPage() {
               </section>
             )}
 
+            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                <div className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-[#1b7b68]" /><h3 className="text-sm font-extrabold text-slate-800">Digital HMO Card</h3></div>
+                {card ? (
+                  <div className="mt-4 rounded-2xl bg-[#e8f5f3] p-4">
+                    <div className="flex items-start justify-between gap-3"><div><p className="text-[9px] font-extrabold uppercase tracking-wider text-[#1b7b68]">Card Number</p><p className="mt-1 text-base font-black tracking-wider text-slate-800">{card.cardNumber}</p></div><span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-extrabold text-emerald-700">{card.status}</span></div>
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-[10px]"><div><span className="text-slate-400">Issued</span><p className="font-bold text-slate-700">{moneyDate(card.issuedAt)}</p></div><div><span className="text-slate-400">Expires</span><p className="font-bold text-slate-700">{card.expiresAt ? moneyDate(card.expiresAt) : 'Open-ended'}</p></div></div>
+                  </div>
+                ) : <p className="mt-4 text-xs text-slate-400">A digital card is available only while the enrollee has active coverage.</p>}
+              </section>
+
+              <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                <div className="flex items-center gap-2"><History className="h-4 w-4 text-[#1b7b68]" /><h3 className="text-sm font-extrabold text-slate-800">Membership History</h3></div>
+                <div className="mt-4 max-h-56 space-y-3 overflow-y-auto pr-1">
+                  {lifecycle.length ? lifecycle.map((event) => (
+                    <div key={event._id} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3">
+                      <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-extrabold uppercase tracking-wider text-[#1b7b68]">{event.type.replaceAll('_', ' ')}</span><span className="text-[9px] font-medium text-slate-400">{moneyDate(event.createdAt)}</span></div>
+                      {(event.fromStatus || event.toStatus) && <p className="mt-1 text-[10px] font-semibold text-slate-600">{event.fromStatus || '—'} → {event.toStatus || '—'}</p>}
+                      {event.reason && <p className="mt-1 text-[10px] text-slate-500">{event.reason}</p>}
+                    </div>
+                  )) : <p className="py-5 text-center text-xs text-slate-400">No lifecycle events recorded.</p>}
+                </div>
+              </section>
+            </div>
+
             <div className="mt-5 flex flex-wrap justify-end gap-2">
               <button type="button" onClick={() => openEdit(selected)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"><Edit3 className="h-3.5 w-3.5" /> Edit</button>
               {selected.status !== 'ACTIVE' && <button type="button" onClick={() => changeStatus(selected, 'ACTIVE')} className="rounded-2xl bg-emerald-600 px-4 py-2.5 text-xs font-extrabold text-white">Activate</button>}
+              {selected.status !== 'TERMINATED' && <button type="button" onClick={() => openRenew(selected)} className="inline-flex items-center gap-2 rounded-2xl bg-[#1b7b68] px-4 py-2.5 text-xs font-extrabold text-white"><RotateCcw className="h-3.5 w-3.5" /> Renew</button>}
               {selected.status === 'ACTIVE' && <button type="button" onClick={() => changeStatus(selected, 'SUSPENDED')} className="rounded-2xl bg-orange-500 px-4 py-2.5 text-xs font-extrabold text-white">Suspend</button>}
               {selected.status !== 'TERMINATED' && <button type="button" onClick={() => changeStatus(selected, 'TERMINATED')} className="rounded-2xl bg-rose-600 px-4 py-2.5 text-xs font-extrabold text-white">Terminate</button>}
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal open={renewOpen} title="Renew Enrollee Coverage" subtitle={selected ? `${fullName(selected)} · ${selected.policyNumber}` : undefined} onClose={() => !renewing && setRenewOpen(false)}>
+        <div className="space-y-5 p-6">
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4 text-xs text-slate-600">Renewal will extend the enrollee's coverage and return the membership to <strong>ACTIVE</strong>. The new end date must be later than the current coverage end date.</div>
+          <Field label="New Coverage End Date *"><input type="date" value={renewEndDate} onChange={(e) => setRenewEndDate(e.target.value)} className={inputClass} /></Field>
+          <Field label="Renewal Reason"><textarea value={renewReason} onChange={(e) => setRenewReason(e.target.value)} rows={3} className={inputClass} placeholder="Optional reason or renewal note" /></Field>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-slate-100 bg-white px-6 py-4">
+          <button type="button" disabled={renewing} onClick={() => setRenewOpen(false)} className="rounded-2xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600">Cancel</button>
+          <button type="button" disabled={renewing || !renewEndDate} onClick={renewEnrollee} className="inline-flex items-center gap-2 rounded-2xl bg-[#1b7b68] px-5 py-2.5 text-xs font-extrabold text-white disabled:opacity-60">{renewing && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Renew Coverage</button>
+        </div>
       </Modal>
     </div>
   );
