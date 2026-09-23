@@ -189,10 +189,10 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
     },
 
     {
-      label: 'Tariffs & Plans',
-      href: '/hmo/tariffs',
+      label: 'Billings & Payments',
+      href: '/hmo/billings',
       icon: CreditCard,
-      moduleKey: 'tariffs',
+      moduleKey: 'billings',
     },
 
     {
