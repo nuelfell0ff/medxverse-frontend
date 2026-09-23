@@ -51,6 +51,7 @@ interface ProviderRef {
 interface PreAuth {
   _id: string;
   requestNumber: string;
+  authorizationCode?: string;
   memberId: MemberRef | string;
   providerId: ProviderRef | string;
   diagnosisCode: string;
@@ -65,6 +66,7 @@ interface PreAuth {
   reviewedBy?: { firstName?: string; lastName?: string; email?: string } | string;
   reviewedAt?: string;
   expiresAt?: string;
+  history?: { status: Status; reason?: string; reviewedAt: string; totalApprovedAmount: number }[];
   createdAt: string;
   updatedAt: string;
 }
@@ -225,7 +227,7 @@ export default function PreAuthorizationsPage() {
               {loading ? <RowsSkeleton /> : requests.length === 0 ? <tr><td colSpan={8} className="py-16 text-center text-slate-400"><ShieldCheck className="w-8 h-8 mx-auto text-slate-300" /><p className="text-sm font-semibold text-slate-600 mt-2">No pre-authorizations found</p><p className="text-xs mt-1">Try changing your filters or create a new request.</p></td></tr> : requests.map(request => {
                 const s = statusMeta(request.status); const p = priorityMeta(request.priority);
                 return <tr key={request._id} className="hover:bg-[#e8f5f3]/20 transition-colors">
-                  <td className="py-4 px-6"><button onClick={() => setSelected(request)} className="font-bold text-slate-800 hover:text-[#1b7b68]">{request.requestNumber}</button><div className="text-[10px] text-slate-400 mt-1">{dateTime(request.createdAt)}</div></td>
+                  <td className="py-4 px-6"><button onClick={() => setSelected(request)} className="font-bold text-slate-800 hover:text-[#1b7b68]">{request.requestNumber}</button>{request.authorizationCode && <div className="text-[10px] font-bold text-emerald-600 mt-1">{request.authorizationCode}</div>}<div className="text-[10px] text-slate-400 mt-1">{dateTime(request.createdAt)}</div></td>
                   <td className="py-4 px-6"><div className="font-semibold text-slate-800">{memberName(request.memberId)}</div><div className="text-[10px] text-slate-400">{typeof request.memberId !== 'string' ? request.memberId.policyNumber || 'No policy number' : 'Member ID unavailable'}</div></td>
                   <td className="py-4 px-6"><div className="font-semibold">{providerName(request.providerId)}</div><div className="text-[10px] text-slate-400">{typeof request.providerId !== 'string' ? request.providerId.category || request.providerId.code || '' : ''}</div></td>
                   <td className="py-4 px-6 max-w-xs"><div className="font-bold text-slate-700">{request.diagnosisCode}</div><div className="text-[10px] text-slate-400 line-clamp-1">{request.diagnosisDescription}</div></td>
@@ -253,9 +255,12 @@ function DetailModal({ request, onClose, onReview }: { request: PreAuth; onClose
   return <div className="fixed inset-0 z-100 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4"><div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
     <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between"><div><h3 className="text-base font-black">{request.requestNumber}</h3><p className="text-xs text-slate-400 mt-1">Created {dateTime(request.createdAt)}</p></div><button onClick={onClose} className="w-9 h-9 rounded-xl hover:bg-slate-100 flex items-center justify-center"><X className="w-4 h-4" /></button></div>
     <div className="p-6 overflow-y-auto space-y-5"><div className="flex flex-wrap gap-2"><span className={`px-3 py-1.5 rounded-full text-[10px] font-bold border inline-flex items-center gap-1 ${s.cls}`}>{s.icon}{s.label}</span><span className={`px-3 py-1.5 rounded-full text-[10px] font-bold ${priorityMeta(request.priority).cls}`}>{priorityMeta(request.priority).label}</span></div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Info label="Member" value={memberName(request.memberId)} sub={typeof request.memberId !== 'string' ? request.memberId.policyNumber : undefined} /><Info label="Provider" value={providerName(request.providerId)} sub={typeof request.providerId !== 'string' ? request.providerId.category || request.providerId.code : undefined} /><Info label="Diagnosis" value={request.diagnosisCode} sub={request.diagnosisDescription} /></div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Info label="Member" value={memberName(request.memberId)} sub={typeof request.memberId !== 'string' ? request.memberId.policyNumber : undefined} /><Info label="Provider" value={providerName(request.providerId)} sub={typeof request.providerId !== 'string' ? request.providerId.category || request.providerId.code : undefined} /><Info label="Diagnosis" value={request.diagnosisCode} sub={request.diagnosisDescription} />{request.authorizationCode && <Info label="Authorization Code" value={request.authorizationCode} sub={request.expiresAt ? `Valid until ${dateTime(request.expiresAt)}` : undefined} />}</div>
       <div className="rounded-2xl border border-slate-100 overflow-hidden"><div className="px-4 py-3 bg-slate-50 text-xs font-bold">Requested Services</div><table className="w-full text-xs"><thead><tr className="text-[10px] text-slate-400 uppercase border-b"><th className="p-3 text-left">Code</th><th className="p-3 text-left">Description</th><th className="p-3 text-right">Requested</th><th className="p-3 text-right">Approved</th></tr></thead><tbody>{request.procedures.map(p => <tr key={p.code} className="border-b last:border-0"><td className="p-3 font-bold">{p.code}</td><td className="p-3">{p.description}</td><td className="p-3 text-right">{money(p.requestedAmount)}</td><td className="p-3 text-right text-emerald-600 font-bold">{money(p.approvedAmount)}</td></tr>)}</tbody><tfoot><tr className="font-black"><td colSpan={2} className="p-3">Totals</td><td className="p-3 text-right">{money(request.totalRequestedAmount)}</td><td className="p-3 text-right text-emerald-600">{money(request.totalApprovedAmount)}</td></tr></tfoot></table></div>
-      {request.clinicalNotes && <Info label="Clinical Notes" value={request.clinicalNotes} />}{request.decisionReason && <Info label="Decision Reason" value={request.decisionReason} />}{request.expiresAt && <Info label="Authorization Expiry" value={dateTime(request.expiresAt)} />}
+      {request.clinicalNotes && <Info label="Clinical Notes" value={request.clinicalNotes} />}
+      {request.decisionReason && <Info label="Decision Reason" value={request.decisionReason} />}
+      {request.expiresAt && <Info label="Authorization Expiry" value={dateTime(request.expiresAt)} />}
+      {request.history && request.history.length > 0 && <div className="rounded-2xl border border-slate-100 overflow-hidden"><div className="px-4 py-3 bg-slate-50 text-xs font-bold">Authorization History</div><div className="divide-y divide-slate-100">{request.history.map((entry, index) => <div key={`${entry.status}-${entry.reviewedAt}-${index}`} className="px-4 py-3 flex items-start justify-between gap-4"><div><div className="text-xs font-bold">{statusMeta(entry.status).label}</div>{entry.reason && <div className="text-[10px] text-slate-500 mt-1">{entry.reason}</div>}</div><div className="text-right text-[10px] text-slate-400"><div>{dateTime(entry.reviewedAt)}</div><div className="font-semibold text-slate-600 mt-1">{money(entry.totalApprovedAmount)}</div></div></div>)}</div></div>}
     </div>
     <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold">Close</button>{canReview && <button onClick={onReview} className="px-4 py-2.5 rounded-xl bg-[#1b7b68] text-white text-xs font-bold">Review Request</button>}</div>
   </div></div>;
