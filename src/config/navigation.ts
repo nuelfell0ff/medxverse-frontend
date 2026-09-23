@@ -4,6 +4,7 @@ import {
   CalendarClock,
   FileCheck,
   ShieldCheck,
+  BadgeCheck,
   Receipt,
   Bed,
   Pill,
@@ -176,7 +177,7 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
     {
       label: 'Pre-Authorizations',
       href: '/hmo/pre-auth',
-      icon: ShieldCheck,
+      icon: BadgeCheck,
       moduleKey: 'pre_auth',
     },
 
