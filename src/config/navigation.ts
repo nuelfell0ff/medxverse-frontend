@@ -196,6 +196,13 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
     },
 
     {
+      label: 'Utilization & Fraud',
+      href: '/hmo/utilization',
+      icon: BarChart3,
+      moduleKey: 'utilization',
+    },
+
+    {
       label: 'Settings',
       href: '/hmo/settings',
       icon: Settings,
