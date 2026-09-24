@@ -753,7 +753,7 @@ export default function HMOUtilizationPage() {
 
   return (
     <div className="min-h-screen bg-[#f6f9f8] text-slate-800">
-      <div className="mx-auto max-w-[1500px] px-4 py-5 md:px-6 lg:px-0">
+      <div className="mx-auto max-w-[1500px] px-2 py-5 md:px-6 lg:px-0">
         <header className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#1b7b68]">

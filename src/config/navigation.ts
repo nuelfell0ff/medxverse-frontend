@@ -1,5 +1,6 @@
 import {
   Users,
+  UserRoundPlus,
   Calendar,
   CalendarClock,
   FileCheck,
@@ -144,6 +145,13 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       href: '/hmo/enrollees',
       icon: Users,
       moduleKey: 'enrollees',
+    },
+
+    {
+      label: 'Members',
+      href: '/hmo/members',
+      icon: UserRoundPlus,
+      moduleKey: 'members',
     },
 
     {

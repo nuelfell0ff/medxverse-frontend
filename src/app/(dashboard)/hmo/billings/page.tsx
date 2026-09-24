@@ -516,7 +516,7 @@ export default function HMOBillingPage() {
   ];
 
   return <div className="min-h-screen bg-[#f6f9f8] text-slate-800">
-    <div className="mx-auto max-w-[1500px] p-4 md:p-6 lg:p-1">
+    <div className="mx-auto max-w-[1500px] px-2 py-5 md:px-6 lg:px-0">
       <header className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#1b7b68]">HMO FINANCE</p><h1 className="mt-1 text-2xl font-black tracking-tight text-slate-900 md:text-3xl">Billing, Premium & Payment Management</h1><p className="mt-2 max-w-3xl text-sm text-slate-500">Manage premium invoicing, provider settlements, receipts, capitation, reconciliation and tariff-based financial calculations from one workspace.</p></div>
         <div className="flex flex-wrap gap-2"><button onClick={() => void loadAll(true)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-extrabold text-slate-600 hover:border-[#1b7b68]/30">{refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Refresh</button><button onClick={openCreateInvoice} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#1b7b68] px-4 text-xs font-extrabold text-white shadow-sm hover:bg-[#166653]"><Plus className="h-4 w-4" /> New invoice</button></div>
