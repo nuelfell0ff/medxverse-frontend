@@ -176,52 +176,52 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       moduleKey: 'providers',
     },
 
-    {
-      label: 'Eligibility & Verification',
-      href: '/hmo/eligibility',
-      icon: ShieldCheck,
-      moduleKey: 'eligibility',
-    },
+    // {
+    //   label: 'Eligibility & Verification',
+    //   href: '/hmo/eligibility',
+    //   icon: ShieldCheck,
+    //   moduleKey: 'eligibility',
+    // },
 
-    {
-      label: 'Pre-Authorizations',
-      href: '/hmo/pre-auth',
-      icon: BadgeCheck,
-      moduleKey: 'pre_auth',
-    },
+    // {
+    //   label: 'Pre-Authorizations',
+    //   href: '/hmo/pre-auth',
+    //   icon: BadgeCheck,
+    //   moduleKey: 'pre_auth',
+    // },
 
-    {
-      label: 'Claims Adjudication',
-      href: '/hmo/claims',
-      icon: FileCheck,
-      moduleKey: 'claims',
-    },
+    // {
+    //   label: 'Claims Adjudication',
+    //   href: '/hmo/claims',
+    //   icon: FileCheck,
+    //   moduleKey: 'claims',
+    // },
 
-    {
-      label: 'Billings & Payments',
-      href: '/hmo/billings',
-      icon: CreditCard,
-      moduleKey: 'billings',
-    },
+    // {
+    //   label: 'Billings & Payments',
+    //   href: '/hmo/billings',
+    //   icon: CreditCard,
+    //   moduleKey: 'billings',
+    // },
 
-    {
-      label: 'Utilization & Fraud',
-      href: '/hmo/utilization',
-      icon: BarChart3,
-      moduleKey: 'utilization',
-    },
+    // {
+    //   label: 'Utilization & Fraud',
+    //   href: '/hmo/utilization',
+    //   icon: BarChart3,
+    //   moduleKey: 'utilization',
+    // },
 
-    {
-      label: 'Analytics & Reports',
-      href: '/hmo/analytics',
-      icon: ChartNoAxesCombined,
-      moduleKey: 'analytics',
-    },
+    // {
+    //   label: 'Analytics & Reports',
+    //   href: '/hmo/analytics',
+    //   icon: ChartNoAxesCombined,
+    //   moduleKey: 'analytics',
+    // },
 
-    {
-      label: 'Settings',
-      href: '/hmo/settings',
-      icon: Settings,
-    },
+    // {
+    //   label: 'Settings',
+    //   href: '/hmo/settings',
+    //   icon: Settings,
+    // },
   ],
 };
