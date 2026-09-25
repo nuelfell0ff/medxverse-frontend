@@ -361,13 +361,13 @@ function Modal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 p-3 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 p-3">
       <div
-        className={`max-h-[92vh] w-full overflow-hidden rounded-[28px] bg-white shadow-2xl ${
+        className={`flex max-h-[92vh] w-full flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl ${
           wide ? 'max-w-5xl' : 'max-w-3xl'
         }`}
       >
-        <div className="flex items-start justify-between border-b border-slate-100 px-6 py-5">
+        <div className="flex shrink-0 items-start justify-between border-b border-slate-100 px-6 py-5">
           <div>
             <h2 className="text-lg font-black tracking-tight text-slate-800">{title}</h2>
             {subtitle && <p className="mt-1 text-[11px] font-medium text-slate-400">{subtitle}</p>}
@@ -419,12 +419,24 @@ export default function EnrolleesPage() {
   const [renewEndDate, setRenewEndDate] = useState('');
   const [renewReason, setRenewReason] = useState('');
   const [renewing, setRenewing] = useState(false);
+  const [statusReasonOpen, setStatusReasonOpen] = useState(false);
+  const [statusReason, setStatusReason] = useState('');
+  const [pendingStatus, setPendingStatus] = useState<Status | null>(null);
+  const [statusUpdating, setStatusUpdating] = useState(false);
 
   const loadBenefits = useCallback(async () => {
     try {
       const response = await apiJson<any>(`${BENEFITS_API}?page=1&limit=100`);
       const data = response?.data ?? response;
-      setBenefits(Array.isArray(data?.packages) ? data.packages : Array.isArray(data) ? data : []);
+      setBenefits(
+        Array.isArray(data?.benefits)
+          ? data.benefits
+          : Array.isArray(data?.packages)
+            ? data.packages
+            : Array.isArray(data)
+              ? data
+              : []
+      );
     } catch (err) {
       console.warn('Unable to load benefit packages:', err);
       setBenefits([]);
@@ -472,6 +484,12 @@ export default function EnrolleesPage() {
   }, [loadBenefits]);
 
   useEffect(() => {
+    if (formOpen && !editing && !form.benefitPlanId && benefits.length > 0) {
+      setForm((current) => ({ ...current, benefitPlanId: benefits[0]._id }));
+    }
+  }, [benefits, editing, form.benefitPlanId, formOpen]);
+
+  useEffect(() => {
     setPage(1);
   }, [search, statusFilter, relationshipFilter]);
 
@@ -488,9 +506,16 @@ export default function EnrolleesPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ ...EMPTY_FORM, startDate: toInputDate(new Date().toISOString()) });
+    setForm({
+      ...EMPTY_FORM,
+      startDate: toInputDate(new Date().toISOString()),
+      benefitPlanId: benefits[0]?._id || '',
+    });
     setFormError('');
     setFormOpen(true);
+    if (benefits.length === 0) {
+      void loadBenefits();
+    }
   };
 
   const openEdit = (item: Enrollee) => {
@@ -520,6 +545,9 @@ export default function EnrolleesPage() {
     });
     setFormError('');
     setFormOpen(true);
+    if (benefits.length === 0) {
+      void loadBenefits();
+    }
   };
 
   const openView = async (item: Enrollee) => {
@@ -658,20 +686,62 @@ export default function EnrolleesPage() {
     }
   };
 
-  const changeStatus = async (item: Enrollee, status: Status) => {
+  const openStatusReason = (item: Enrollee, status: Status) => {
+    if (status !== 'SUSPENDED' && status !== 'TERMINATED') {
+      void changeStatus(item, status);
+      return;
+    }
+
+    setSelected(item);
+    setPendingStatus(status);
+    setStatusReason('');
+    setStatusReasonOpen(true);
+  };
+
+  const changeStatus = async (item: Enrollee, status: Status, reason?: string) => {
+    const normalizedReason = reason?.trim();
+
+    if ((status === 'SUSPENDED' || status === 'TERMINATED') && !normalizedReason) {
+      setError(`${status === 'SUSPENDED' ? 'A suspended' : 'A terminated'} reason is required.`);
+      return;
+    }
+
     try {
+      setStatusUpdating(true);
       await apiJson(`${ENROLLEES_API}/${item._id}/status`, {
         method: 'PATCH',
         headers: getAuthHeaders(true),
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({
+          status,
+          ...(normalizedReason ? { reason: normalizedReason } : {}),
+        }),
       });
+
+      setStatusReasonOpen(false);
+      setPendingStatus(null);
+      setStatusReason('');
       await load(true);
+
       if (selected?._id === item._id) {
         setSelected({ ...item, status });
       }
     } catch (err: any) {
       setError(err?.message || 'Unable to update enrollee status.');
+    } finally {
+      setStatusUpdating(false);
     }
+  };
+
+  const submitStatusChange = async () => {
+    if (!selected || !pendingStatus) return;
+
+    const reason = statusReason.trim();
+    if (!reason) {
+      setError(`${pendingStatus === 'SUSPENDED' ? 'A suspended' : 'A terminated'} reason is required.`);
+      return;
+    }
+
+    await changeStatus(selected, pendingStatus, reason);
   };
 
   return (
@@ -837,7 +907,7 @@ export default function EnrolleesPage() {
       </div>
 
       <Modal open={formOpen} title={editing ? 'Edit Enrollee' : 'Add New Enrollee'} subtitle="Maintain the member's demographic, coverage and benefit information." onClose={() => !saving && setFormOpen(false)} wide>
-        <div className="max-h-[76vh] space-y-5 overflow-y-auto p-6">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-6">
           {formError && <div className="flex items-start gap-2.5 rounded-2xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-700"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{formError}</span></div>}
 
           <section className="rounded-3xl border border-slate-100 bg-slate-50/50 p-5">
@@ -879,7 +949,7 @@ export default function EnrolleesPage() {
             </div>
           </section>
         </div>
-        <div className="flex justify-end gap-2 border-t border-slate-100 bg-white px-6 py-4">
+        <div className="flex shrink-0 justify-end gap-2 border-t border-slate-100 bg-white px-6 py-4">
           <button type="button" disabled={saving} onClick={() => setFormOpen(false)} className="rounded-2xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600">Cancel</button>
           <button type="button" disabled={saving} onClick={saveEnrollee} className="inline-flex items-center gap-2 rounded-2xl bg-[#1b7b68] px-5 py-2.5 text-xs font-extrabold text-white disabled:opacity-60">
             {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -890,7 +960,7 @@ export default function EnrolleesPage() {
 
       <Modal open={viewOpen} title={selected ? fullName(selected) : 'Enrollee Details'} subtitle={selected ? `${selected.policyNumber} · ${relationshipLabel(selected.relationship)}` : undefined} onClose={() => setViewOpen(false)} wide>
         {selected && (
-          <div className="max-h-[78vh] overflow-y-auto p-6">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">
             {detailsLoading && <div className="mb-4 flex items-center gap-2 rounded-2xl bg-slate-50 p-3 text-xs text-slate-500"><Loader2 className="h-4 w-4 animate-spin text-[#1b7b68]" /> Loading latest registry details...</div>}
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -962,22 +1032,74 @@ export default function EnrolleesPage() {
 
             <div className="mt-5 flex flex-wrap justify-end gap-2">
               <button type="button" onClick={() => openEdit(selected)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"><Edit3 className="h-3.5 w-3.5" /> Edit</button>
-              {selected.status !== 'ACTIVE' && <button type="button" onClick={() => changeStatus(selected, 'ACTIVE')} className="rounded-2xl bg-emerald-600 px-4 py-2.5 text-xs font-extrabold text-white">Activate</button>}
+              {selected.status !== 'ACTIVE' && <button type="button" onClick={() => openStatusReason(selected, 'ACTIVE')} className="rounded-2xl bg-emerald-600 px-4 py-2.5 text-xs font-extrabold text-white">Activate</button>}
               {selected.status !== 'TERMINATED' && <button type="button" onClick={() => openRenew(selected)} className="inline-flex items-center gap-2 rounded-2xl bg-[#1b7b68] px-4 py-2.5 text-xs font-extrabold text-white"><RotateCcw className="h-3.5 w-3.5" /> Renew</button>}
-              {selected.status === 'ACTIVE' && <button type="button" onClick={() => changeStatus(selected, 'SUSPENDED')} className="rounded-2xl bg-orange-500 px-4 py-2.5 text-xs font-extrabold text-white">Suspend</button>}
-              {selected.status !== 'TERMINATED' && <button type="button" onClick={() => changeStatus(selected, 'TERMINATED')} className="rounded-2xl bg-rose-600 px-4 py-2.5 text-xs font-extrabold text-white">Terminate</button>}
+              {selected.status === 'ACTIVE' && <button type="button" onClick={() => openStatusReason(selected, 'SUSPENDED')} className="rounded-2xl bg-orange-500 px-4 py-2.5 text-xs font-extrabold text-white">Suspend</button>}
+              {selected.status !== 'TERMINATED' && <button type="button" onClick={() => openStatusReason(selected, 'TERMINATED')} className="rounded-2xl bg-rose-600 px-4 py-2.5 text-xs font-extrabold text-white">Terminate</button>}
             </div>
           </div>
         )}
       </Modal>
 
+      <Modal
+        open={statusReasonOpen}
+        title={pendingStatus === 'SUSPENDED' ? 'Suspend Enrollee' : 'Terminate Enrollee'}
+        subtitle={selected ? `${fullName(selected)} · ${selected.policyNumber}` : undefined}
+        onClose={() => {
+          if (statusUpdating) return;
+          setStatusReasonOpen(false);
+          setPendingStatus(null);
+          setStatusReason('');
+        }}
+      >
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-6">
+          <div className={`rounded-2xl border p-4 text-xs ${pendingStatus === 'SUSPENDED' ? 'border-orange-100 bg-orange-50 text-orange-800' : 'border-rose-100 bg-rose-50 text-rose-800'}`}>
+            <p className="font-bold">A reason is required for this status change.</p>
+            <p className="mt-1 opacity-80">The reason will be stored in the enrollee's membership history for audit purposes.</p>
+          </div>
+          <Field label={`${pendingStatus === 'SUSPENDED' ? 'Suspension' : 'Termination'} Reason *`}>
+            <textarea
+              value={statusReason}
+              onChange={(e) => setStatusReason(e.target.value)}
+              rows={5}
+              className={inputClass}
+              placeholder={pendingStatus === 'SUSPENDED' ? 'Enter the reason for suspending this enrollee...' : 'Enter the reason for terminating this enrollee...'}
+              autoFocus
+            />
+          </Field>
+        </div>
+        <div className="flex shrink-0 justify-end gap-2 border-t border-slate-100 bg-white px-6 py-4">
+          <button
+            type="button"
+            disabled={statusUpdating}
+            onClick={() => {
+              setStatusReasonOpen(false);
+              setPendingStatus(null);
+              setStatusReason('');
+            }}
+            className="rounded-2xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={statusUpdating || !statusReason.trim()}
+            onClick={submitStatusChange}
+            className={`inline-flex items-center gap-2 rounded-2xl px-5 py-2.5 text-xs font-extrabold text-white disabled:opacity-60 ${pendingStatus === 'SUSPENDED' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-rose-600 hover:bg-rose-700'}`}
+          >
+            {statusUpdating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {pendingStatus === 'SUSPENDED' ? 'Suspend Enrollee' : 'Terminate Enrollee'}
+          </button>
+        </div>
+      </Modal>
+
       <Modal open={renewOpen} title="Renew Enrollee Coverage" subtitle={selected ? `${fullName(selected)} · ${selected.policyNumber}` : undefined} onClose={() => !renewing && setRenewOpen(false)}>
-        <div className="space-y-5 p-6">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-6">
           <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4 text-xs text-slate-600">Renewal will extend the enrollee's coverage and return the membership to <strong>ACTIVE</strong>. The new end date must be later than the current coverage end date.</div>
           <Field label="New Coverage End Date *"><input type="date" value={renewEndDate} onChange={(e) => setRenewEndDate(e.target.value)} className={inputClass} /></Field>
           <Field label="Renewal Reason"><textarea value={renewReason} onChange={(e) => setRenewReason(e.target.value)} rows={3} className={inputClass} placeholder="Optional reason or renewal note" /></Field>
         </div>
-        <div className="flex justify-end gap-2 border-t border-slate-100 bg-white px-6 py-4">
+        <div className="flex shrink-0 justify-end gap-2 border-t border-slate-100 bg-white px-6 py-4">
           <button type="button" disabled={renewing} onClick={() => setRenewOpen(false)} className="rounded-2xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600">Cancel</button>
           <button type="button" disabled={renewing || !renewEndDate} onClick={renewEnrollee} className="inline-flex items-center gap-2 rounded-2xl bg-[#1b7b68] px-5 py-2.5 text-xs font-extrabold text-white disabled:opacity-60">{renewing && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Renew Coverage</button>
         </div>
