@@ -11,6 +11,7 @@ import {
   Pill,
   Building2,
   BarChart3,
+  ChartNoAxesCombined,
   CreditCard,
   Settings,
   UserCog,
@@ -208,6 +209,13 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       href: '/hmo/utilization',
       icon: BarChart3,
       moduleKey: 'utilization',
+    },
+
+    {
+      label: 'Analytics & Reports',
+      href: '/hmo/analytics',
+      icon: ChartNoAxesCombined,
+      moduleKey: 'analytics',
     },
 
     {
