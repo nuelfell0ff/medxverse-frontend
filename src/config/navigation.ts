@@ -142,20 +142,6 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
     },
 
     {
-      label: 'Enrollee Registry',
-      href: '/hmo/enrollees',
-      icon: Users,
-      moduleKey: 'enrollees',
-    },
-
-    {
-      label: 'Members',
-      href: '/hmo/members',
-      icon: UserRoundPlus,
-      moduleKey: 'members',
-    },
-
-    {
       label: 'Health Plans',
       href: '/hmo/health-plans',
       icon: ClipboardList,
@@ -167,6 +153,20 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       href: '/hmo/benefits',
       icon: BadgeDollarSign,
       moduleKey: 'benefits',
+    },
+
+    {
+      label: 'Enrollee Registry',
+      href: '/hmo/enrollees',
+      icon: Users,
+      moduleKey: 'enrollees',
+    },
+
+    {
+      label: 'Members',
+      href: '/hmo/members',
+      icon: UserRoundPlus,
+      moduleKey: 'members',
     },
 
     {

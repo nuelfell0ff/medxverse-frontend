@@ -42,7 +42,7 @@ const API_BASE_URL = RAW_API_BASE_URL.endsWith('/api/v1')
   ? RAW_API_BASE_URL
   : `${RAW_API_BASE_URL}/api/v1`;
 const ENROLLEES_API = `${API_BASE_URL}/enrollees`;
-const BENEFITS_API = `${API_BASE_URL}/benefits`;
+const HEALTH_PLANS_API = `${API_BASE_URL}/health-plans`;
 
 
 type Status = 'ACTIVE' | 'SUSPENDED' | 'TERMINATED' | 'PENDING';
@@ -50,7 +50,7 @@ type Gender = 'MALE' | 'FEMALE' | 'OTHER';
 type MaritalStatus = 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED';
 type Relationship = 'PRIMARY' | 'SPOUSE' | 'CHILD' | 'DEPENDENT';
 
-interface BenefitRef {
+interface HealthPlanRef {
   _id: string;
   code?: string;
   name?: string;
@@ -92,7 +92,7 @@ interface Enrollee {
     state?: string;
     country?: string;
   };
-  benefitPlanId: BenefitRef | string;
+  healthPlanId: HealthPlanRef | string;
   primaryProviderId?: ProviderRef | string;
   relationship: Relationship;
   primaryMemberId?: PrimaryRef | string;
@@ -148,7 +148,7 @@ interface Eligibility {
   status: Status;
   policyNumber: string;
   enrolleeId: string;
-  benefitPlanId: string;
+  healthPlanId: string;
   coverageStartDate: string;
   coverageEndDate?: string;
   reason?: string;
@@ -168,7 +168,7 @@ interface FormState {
   city: string;
   state: string;
   country: string;
-  benefitPlanId: string;
+  healthPlanId: string;
   primaryProviderId: string;
   relationship: Relationship;
   primaryMemberId: string;
@@ -203,7 +203,7 @@ const EMPTY_FORM: FormState = {
   city: '',
   state: '',
   country: 'Nigeria',
-  benefitPlanId: '',
+  healthPlanId: '',
   primaryProviderId: '',
   relationship: 'PRIMARY',
   primaryMemberId: '',
@@ -258,12 +258,12 @@ function fullName(enrollee: Enrollee) {
   return `${enrollee.firstName} ${enrollee.lastName}`.trim();
 }
 
-function benefitName(value: Enrollee['benefitPlanId']) {
+function healthPlanName(value: Enrollee['healthPlanId']) {
   if (typeof value === 'string') return value;
-  return value?.name || value?.code || 'No benefit plan';
+  return value?.name || value?.code || 'No health plan';
 }
 
-function benefitCode(value: Enrollee['benefitPlanId']) {
+function healthPlanCode(value: Enrollee['healthPlanId']) {
   if (typeof value === 'string') return '';
   return value?.code || '';
 }
@@ -389,7 +389,7 @@ function Modal({
 export default function EnrolleesPage() {
   const [enrollees, setEnrollees] = useState<Enrollee[]>([]);
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
-  const [benefits, setBenefits] = useState<BenefitRef[]>([]);
+  const [healthPlans, setHealthPlans] = useState<HealthPlanRef[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -424,22 +424,24 @@ export default function EnrolleesPage() {
   const [pendingStatus, setPendingStatus] = useState<Status | null>(null);
   const [statusUpdating, setStatusUpdating] = useState(false);
 
-  const loadBenefits = useCallback(async () => {
+  const loadHealthPlans = useCallback(async () => {
     try {
-      const response = await apiJson<any>(`${BENEFITS_API}?page=1&limit=100`);
+      const response = await apiJson<any>(`${HEALTH_PLANS_API}?page=1&limit=100&status=ACTIVE`);
       const data = response?.data ?? response;
-      setBenefits(
-        Array.isArray(data?.benefits)
-          ? data.benefits
-          : Array.isArray(data?.packages)
-            ? data.packages
+      setHealthPlans(
+        Array.isArray(data?.plans)
+          ? data.plans
+          : Array.isArray(data?.healthPlans)
+            ? data.healthPlans
+            : Array.isArray(data?.benefits)
+            ? data.benefits
             : Array.isArray(data)
               ? data
               : []
       );
     } catch (err) {
-      console.warn('Unable to load benefit packages:', err);
-      setBenefits([]);
+      console.warn('Unable to load health plans:', err);
+      setHealthPlans([]);
     }
   }, []);
 
@@ -480,14 +482,14 @@ export default function EnrolleesPage() {
   }, [load]);
 
   useEffect(() => {
-    loadBenefits();
-  }, [loadBenefits]);
+    loadHealthPlans();
+  }, [loadHealthPlans]);
 
   useEffect(() => {
-    if (formOpen && !editing && !form.benefitPlanId && benefits.length > 0) {
-      setForm((current) => ({ ...current, benefitPlanId: benefits[0]._id }));
+    if (formOpen && !editing && !form.healthPlanId && healthPlans.length > 0) {
+      setForm((current) => ({ ...current, healthPlanId: healthPlans[0]._id }));
     }
-  }, [benefits, editing, form.benefitPlanId, formOpen]);
+  }, [healthPlans, editing, form.healthPlanId, formOpen]);
 
   useEffect(() => {
     setPage(1);
@@ -509,12 +511,12 @@ export default function EnrolleesPage() {
     setForm({
       ...EMPTY_FORM,
       startDate: toInputDate(new Date().toISOString()),
-      benefitPlanId: benefits[0]?._id || '',
+      healthPlanId: healthPlans[0]?._id || '',
     });
     setFormError('');
     setFormOpen(true);
-    if (benefits.length === 0) {
-      void loadBenefits();
+    if (healthPlans.length === 0) {
+      void loadHealthPlans();
     }
   };
 
@@ -534,7 +536,7 @@ export default function EnrolleesPage() {
       city: item.address?.city || '',
       state: item.address?.state || '',
       country: item.address?.country || 'Nigeria',
-      benefitPlanId: typeof item.benefitPlanId === 'string' ? item.benefitPlanId : item.benefitPlanId?._id || '',
+      healthPlanId: typeof item.healthPlanId === 'string' ? item.healthPlanId : item.healthPlanId?._id || '',
       primaryProviderId: typeof item.primaryProviderId === 'string' ? item.primaryProviderId : item.primaryProviderId?._id || '',
       relationship: item.relationship || 'PRIMARY',
       primaryMemberId: typeof item.primaryMemberId === 'string' ? item.primaryMemberId : item.primaryMemberId?._id || '',
@@ -545,8 +547,8 @@ export default function EnrolleesPage() {
     });
     setFormError('');
     setFormOpen(true);
-    if (benefits.length === 0) {
-      void loadBenefits();
+    if (healthPlans.length === 0) {
+      void loadHealthPlans();
     }
   };
 
@@ -593,7 +595,7 @@ export default function EnrolleesPage() {
     if (!form.email.trim()) return setFormError('Email is required.');
     if (!form.phone.trim()) return setFormError('Phone number is required.');
     if (!form.dateOfBirth) return setFormError('Date of birth is required.');
-    if (!form.benefitPlanId) return setFormError('Benefit plan is required.');
+    if (!form.healthPlanId) return setFormError('Health plan is required.');
     if (form.relationship !== 'PRIMARY' && !form.primaryMemberId.trim()) {
       return setFormError('A primary member is required for a dependent enrollee.');
     }
@@ -613,7 +615,7 @@ export default function EnrolleesPage() {
         state: form.state.trim() || undefined,
         country: form.country.trim() || undefined,
       },
-      benefitPlanId: form.benefitPlanId,
+      healthPlanId: form.healthPlanId,
       primaryProviderId: form.primaryProviderId.trim() || undefined,
       relationship: form.relationship,
       primaryMemberId: form.relationship === 'PRIMARY' ? undefined : form.primaryMemberId.trim(),
@@ -763,7 +765,7 @@ export default function EnrolleesPage() {
             <span className="rounded-full bg-[#e8f5f3] px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider text-[#1b7b68]">HMO</span>
           </div>
           <p className="mt-1 text-xs font-medium text-slate-400">
-            Manage members, dependants, coverage, benefit plans and eligibility.
+            Manage members, dependants, coverage, health plans and eligibility.
           </p>
         </div>
         <div className="flex items-center gap-2.5">
@@ -836,7 +838,7 @@ export default function EnrolleesPage() {
               <tr className="border-b border-slate-100 bg-slate-50/60 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
                 <th className="px-6 py-4">Enrollee</th>
                 <th className="px-6 py-4">Policy</th>
-                <th className="px-6 py-4">Benefit Plan</th>
+                <th className="px-6 py-4">Health Plan</th>
                 <th className="px-6 py-4">Relationship</th>
                 <th className="px-6 py-4">Coverage</th>
                 <th className="px-6 py-4">Status</th>
@@ -864,8 +866,8 @@ export default function EnrolleesPage() {
                         <div className="mt-0.5 text-[10px] text-slate-400">{item.phone}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="max-w-[180px] truncate font-semibold text-slate-700">{benefitName(item.benefitPlanId)}</div>
-                        <div className="mt-0.5 text-[10px] text-slate-400">{benefitCode(item.benefitPlanId)}</div>
+                        <div className="max-w-[180px] truncate font-semibold text-slate-700">{healthPlanName(item.healthPlanId)}</div>
+                        <div className="mt-0.5 text-[10px] text-slate-400">{healthPlanCode(item.healthPlanId)}</div>
                       </td>
                       <td className="px-6 py-4">
                         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">{relationshipLabel(item.relationship)}</span>
@@ -906,7 +908,7 @@ export default function EnrolleesPage() {
         </div>
       </div>
 
-      <Modal open={formOpen} title={editing ? 'Edit Enrollee' : 'Add New Enrollee'} subtitle="Maintain the member's demographic, coverage and benefit information." onClose={() => !saving && setFormOpen(false)} wide>
+      <Modal open={formOpen} title={editing ? 'Edit Enrollee' : 'Add New Enrollee'} subtitle="Maintain the member's demographic, coverage and health-plan coverage information." onClose={() => !saving && setFormOpen(false)} wide>
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-6">
           {formError && <div className="flex items-start gap-2.5 rounded-2xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-700"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{formError}</span></div>}
 
@@ -928,7 +930,22 @@ export default function EnrolleesPage() {
           <section className="rounded-3xl border border-emerald-100 bg-emerald-50/30 p-5">
             <h3 className="text-sm font-extrabold text-slate-800">Coverage & Membership</h3>
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-              <Field label="Benefit Plan *"><select value={form.benefitPlanId} onChange={(e) => setForm((f) => ({ ...f, benefitPlanId: e.target.value }))} className={selectClass}><option value="">Select benefit plan</option>{benefits.map((plan) => <option key={plan._id} value={plan._id}>{plan.code ? `${plan.code} — ` : ''}{plan.name || plan._id}</option>)}</select>{benefits.length === 0 && <span className="mt-1 block text-[10px] text-amber-600">No benefit plans were returned. Create a plan in Benefits first.</span>}</Field>
+              <Field label="Health Plan *">
+                {form.relationship === 'PRIMARY' ? (
+                  <>
+                    <select value={form.healthPlanId} onChange={(e) => setForm((f) => ({ ...f, healthPlanId: e.target.value }))} className={selectClass}>
+                      <option value="">Select health plan</option>
+                      {healthPlans.map((plan) => <option key={plan._id} value={plan._id}>{plan.code ? `${plan.code} — ` : ''}{plan.name || plan._id}</option>)}
+                    </select>
+                    {healthPlans.length === 0 && <span className="mt-1 block text-[10px] text-amber-600">No active health plans were returned.</span>}
+                  </>
+                ) : (
+                  <div className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-2.5 text-xs font-bold text-slate-600">
+                    {healthPlanName(form.healthPlanId)}
+                    <span className="ml-2 text-[10px] font-medium text-slate-400">Inherited from primary member</span>
+                  </div>
+                )}
+              </Field>
               <Field label="Relationship"><select value={form.relationship} onChange={(e) => setForm((f) => ({ ...f, relationship: e.target.value as Relationship, primaryMemberId: e.target.value === 'PRIMARY' ? '' : f.primaryMemberId }))} className={selectClass}><option value="PRIMARY">Primary Member</option><option value="SPOUSE">Spouse</option><option value="CHILD">Child</option><option value="DEPENDENT">Dependent</option></select></Field>
               <Field label="Status"><select value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as Status }))} className={selectClass}><option value="ACTIVE">Active</option><option value="PENDING">Pending</option><option value="SUSPENDED">Suspended</option><option value="TERMINATED">Terminated</option></select></Field>
               {form.relationship !== 'PRIMARY' && <Field label="Primary Member ID *"><input value={form.primaryMemberId} onChange={(e) => setForm((f) => ({ ...f, primaryMemberId: e.target.value }))} className={inputClass} placeholder="MongoDB member ID" /></Field>}
@@ -989,7 +1006,7 @@ export default function EnrolleesPage() {
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
               <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
                 <div className="flex items-center gap-2"><HeartPulse className="h-4 w-4 text-[#1b7b68]" /><h3 className="text-sm font-extrabold text-slate-800">Coverage</h3></div>
-                <div className="mt-4 space-y-3 text-xs"><div className="flex justify-between gap-4"><span className="text-slate-400">Benefit plan</span><strong className="text-right text-slate-700">{benefitName(selected.benefitPlanId)}</strong></div><div className="flex justify-between gap-4"><span className="text-slate-400">Provider</span><strong className="text-right text-slate-700">{providerName(selected.primaryProviderId)}</strong></div><div className="flex justify-between gap-4"><span className="text-slate-400">Start</span><strong className="text-slate-700">{moneyDate(selected.startDate)}</strong></div><div className="flex justify-between gap-4"><span className="text-slate-400">End</span><strong className="text-slate-700">{selected.endDate ? moneyDate(selected.endDate) : 'Open-ended'}</strong></div></div>
+                <div className="mt-4 space-y-3 text-xs"><div className="flex justify-between gap-4"><span className="text-slate-400">Health plan</span><strong className="text-right text-slate-700">{healthPlanName(selected.healthPlanId)}</strong></div><div className="flex justify-between gap-4"><span className="text-slate-400">Provider</span><strong className="text-right text-slate-700">{providerName(selected.primaryProviderId)}</strong></div><div className="flex justify-between gap-4"><span className="text-slate-400">Start</span><strong className="text-slate-700">{moneyDate(selected.startDate)}</strong></div><div className="flex justify-between gap-4"><span className="text-slate-400">End</span><strong className="text-slate-700">{selected.endDate ? moneyDate(selected.endDate) : 'Open-ended'}</strong></div></div>
               </section>
 
               <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">

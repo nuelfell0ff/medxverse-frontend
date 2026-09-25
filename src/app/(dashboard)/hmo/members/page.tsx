@@ -1,79 +1,206 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+
 import {
   Activity,
   AlertCircle,
-  Bell,
+  BadgeCheck,
+  CalendarDays,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   Clock3,
   CreditCard,
-  FileText,
-  HeartPulse,
+  Edit3,
+  Eye,
+  History,
   Loader2,
-  MapPin,
+  Plus,
   RefreshCw,
   Search,
-  Send,
   ShieldCheck,
   UserRound,
   Users,
-  WalletCards,
   X,
+  XCircle,
 } from 'lucide-react';
 
 /* =========================================================
-   LOCAL TYPES
-   Everything stays in this file.
+   MEMBER REGISTRY PAGE
+
+   CENTRAL API NORMALIZATION
+
+   All API calls MUST pass relative API paths to api():
+
+     api('/members')
+     api('/health-plans')
+     api(`/members/${id}/eligibility`)
+
+   The api() helper is the ONLY place that constructs the
+   final backend URL.
+
+   This prevents malformed URLs such as:
+
+     /api/v1/https://medxverse-backend.onrender.com/api/v1/health-plans
+
+   Final requests resolve to:
+
+     https://medxverse-backend.onrender.com/api/v1/...
+
+   Backend contract used by this page:
+
+     GET     /members
+     POST    /members
+     GET     /members/:id
+     PATCH   /members/:id
+     PATCH   /members/:id/status
+     GET     /members/:id/dependents
+     GET     /members/:id/eligibility
+     POST    /members/:id/renew
+     GET     /members/:id/card
+     GET     /members/:id/history
+
+   The backend resolves the HMO from the authenticated account,
+   so this page intentionally does NOT send hmoId in requests.
    ========================================================= */
 
-type MemberPortalProfileInput = {
-  preferredLanguage: string;
-  preferredContactChannel: string;
-  marketingConsent: boolean;
-  healthDataConsent: boolean;
-  emergencyContact: {
-    name: string;
-    phone: string;
-    relationship: string;
-  };
+type MemberStatus =
+  | 'ACTIVE'
+  | 'SUSPENDED'
+  | 'TERMINATED'
+  | 'PENDING';
+
+type Relationship =
+  | 'PRIMARY'
+  | 'SPOUSE'
+  | 'CHILD'
+  | 'DEPENDENT';
+
+type Gender = 'MALE' | 'FEMALE' | 'OTHER';
+
+type MaritalStatus =
+  | 'SINGLE'
+  | 'MARRIED'
+  | 'DIVORCED'
+  | 'WIDOWED';
+
+type Address = {
+  street?: string;
+  city?: string;
+  state?: string;
+  country?: string;
 };
 
-type ProviderPortalProfileInput = {
-  notificationEmail: string;
-  notificationPhone: string;
-  preferredContactChannel: string;
-  claimsNotificationEnabled: boolean;
-  paymentNotificationEnabled: boolean;
+type Member = {
+  _id: string;
+  hmoId?: string;
+  policyNumber: string;
+  firstName: string;
+  lastName: string;
+  otherNames?: string;
+  email: string;
+  phone: string;
+  gender: Gender;
+  dateOfBirth: string;
+  maritalStatus?: MaritalStatus;
+  address?: Address;
+  healthPlanId: any;
+  primaryProviderId?: any;
+  relationship: Relationship;
+  primaryMemberId?: any;
+  status: MemberStatus;
+  startDate: string;
+  endDate?: string;
+  photoUrl?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
-type Role = 'member' | 'provider';
+type SelectOption = {
+  _id: string;
+  id?: string;
+  name?: string;
+  code?: string;
+  firstName?: string;
+  lastName?: string;
+  policyNumber?: string;
+  status?: string;
+  description?: string;
+  category?: string;
+  benefitIds?: any[];
+  defaultRule?: any;
+};
+
+type MemberForm = {
+  policyNumber: string;
+  firstName: string;
+  lastName: string;
+  otherNames: string;
+  email: string;
+  phone: string;
+  gender: Gender;
+  dateOfBirth: string;
+  maritalStatus: MaritalStatus | '';
+  street: string;
+  city: string;
+  state: string;
+  country: string;
+  healthPlanId: string;
+  primaryProviderId: string;
+  relationship: Relationship;
+  primaryMemberId: string;
+  status: MemberStatus;
+  startDate: string;
+  endDate: string;
+  photoUrl: string;
+};
 
 /* =========================================================
-   API CONFIG
+   CENTRAL API CONFIGURATION
    ========================================================= */
 
-const API = (
+const RAW_API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
   process.env.NEXT_PUBLIC_API_BASE_URL ||
-  'https://medxverse-backend.onrender.com/api/v1'
-).replace(/\/+$/, '');
+  'https://medxverse-backend.onrender.com/api/v1';
 
-const input =
-  'w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[#1b7b68] focus:ring-4 focus:ring-[#1b7b68]/10';
+const normalizeApiBase = (value: string): string => {
+  const base = String(value || '')
+    .trim()
+    .replace(/\/+$/, '');
 
-const primary =
-  'inline-flex items-center justify-center gap-2 rounded-2xl bg-[#1b7b68] px-4 py-2.5 text-xs font-extrabold text-white disabled:opacity-50';
+  if (!base) {
+    return 'https://medxverse-backend.onrender.com/api/v1';
+  }
 
-const secondary =
-  'inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-extrabold text-slate-700 disabled:opacity-50';
+  return base.endsWith('/api/v1')
+    ? base
+    : `${base}/api/v1`;
+};
+
+const API = normalizeApiBase(RAW_API_BASE);
+
+/*
+ * IMPORTANT:
+ *
+ * These are PATHS, not full URLs.
+ *
+ * Do NOT change these to:
+ *
+ *   `${API}/members`
+ *
+ * because api() already prepends API.
+ */
+const MEMBERS_API = '/members';
+const HEALTH_PLANS_API = '/health-plans';
+const PROVIDERS_API = '/providers';
 
 /* =========================================================
-   AUTH TOKEN
+   CENTRAL REQUEST HELPER
    ========================================================= */
 
-const tok = () => {
+function getToken(): string | null {
   if (typeof window === 'undefined') return null;
 
   for (const key of [
@@ -90,36 +217,101 @@ const tok = () => {
     try {
       const parsed = JSON.parse(value);
 
-      if (typeof parsed === 'string') return parsed;
-      if (parsed?.accessToken) return parsed.accessToken;
-      if (parsed?.token) return parsed.token;
+      if (typeof parsed === 'string') {
+        return parsed;
+      }
+
+      if (parsed?.accessToken) {
+        return parsed.accessToken;
+      }
+
+      if (parsed?.token) {
+        return parsed.token;
+      }
     } catch {
       return value;
     }
   }
 
   return null;
-};
+}
 
-/* =========================================================
-   API HELPER
-   ========================================================= */
+/**
+ * Converts any accepted API path into a relative path.
+ *
+ * Accepted:
+ *
+ *   /members
+ *   members
+ *   /api/v1/members
+ *   api/v1/members
+ *   https://medxverse-backend.onrender.com/api/v1/members
+ *
+ * Full URLs are supported defensively, but callers in this page
+ * should use relative paths only.
+ */
+function normalizeApiPath(path: string): string {
+  let value = String(path || '').trim();
 
-async function api(
+  if (!value) return '/';
+
+  /*
+   * Defensive handling for accidental absolute URLs.
+   * This prevents:
+   *
+   * /api/v1/https://...
+   */
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const parsed = new URL(value);
+
+      value = parsed.pathname + parsed.search;
+
+      if (parsed.hash) {
+        value += parsed.hash;
+      }
+    } catch {
+      throw new Error('Invalid API URL.');
+    }
+  }
+
+  value = value.replace(/^\/+/, '');
+
+  if (value === 'api/v1') {
+    return '/';
+  }
+
+  if (value.startsWith('api/v1/')) {
+    value = value.slice('api/v1/'.length);
+  }
+
+  return `/${value}`;
+}
+
+async function api<T = any>(
   path: string,
   options: RequestInit = {},
-) {
+): Promise<T> {
   const headers = new Headers(options.headers);
 
-  headers.set('Content-Type', 'application/json');
+  if (
+    options.body &&
+    !(options.body instanceof FormData) &&
+    !headers.has('Content-Type')
+  ) {
+    headers.set('Content-Type', 'application/json');
+  }
 
-  const token = tok();
+  const token = getToken();
 
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API}${path}`, {
+  const normalizedPath = normalizeApiPath(path);
+  const url = `${API}${normalizedPath}`;
+
+  const response = await fetch(url, {
     ...options,
     headers,
     credentials: 'include',
@@ -129,143 +321,194 @@ async function api(
   const json = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(
+    const message =
       json?.message ||
-        json?.error ||
-        `Request failed (${response.status})`,
-    );
+      json?.error ||
+      json?.errors?.[0]?.message ||
+      `Request failed (${response.status})`;
+
+    throw new Error(message);
   }
 
-  return json?.data ?? json;
+  return (json?.data ?? json) as T;
 }
 
 /* =========================================================
    HELPERS
    ========================================================= */
 
-const arr = (value: any): any[] => {
+const asArray = (value: any): any[] => {
   if (Array.isArray(value)) return value;
 
-  if (Array.isArray(value?.items)) return value.items;
-  if (Array.isArray(value?.results)) return value.results;
-  if (Array.isArray(value?.providers)) return value.providers;
-  if (Array.isArray(value?.benefits)) return value.benefits;
+  if (Array.isArray(value?.items)) {
+    return value.items;
+  }
+
+  if (Array.isArray(value?.results)) {
+    return value.results;
+  }
+
+  if (Array.isArray(value?.members)) {
+    return value.members;
+  }
+
+  if (Array.isArray(value?.providers)) {
+    return value.providers;
+  }
+
+  if (Array.isArray(value?.packages)) {
+    return value.packages;
+  }
+
+  if (Array.isArray(value?.benefits)) {
+    return value.benefits;
+  }
+
+  if (Array.isArray(value?.plans)) {
+    return value.plans;
+  }
+
+  if (Array.isArray(value?.dependents)) {
+    return value.dependents;
+  }
+
+  if (Array.isArray(value?.history)) {
+    return value.history;
+  }
 
   return [];
 };
 
-const money = (
-  value: any,
-  currency = 'NGN',
-) =>
-  new Intl.NumberFormat('en-NG', {
-    style: 'currency',
-    currency,
-  }).format(Number(value || 0));
+const idOf = (value: any): string => {
+  if (!value) return '';
 
-const dt = (value: any) =>
-  value
-    ? new Date(value).toLocaleString('en-NG', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      })
-    : '—';
+  if (typeof value === 'string') {
+    return value;
+  }
 
-const sid = (value: any) => {
-  if (!value) return '—';
-
-  const stringValue = String(value);
-
-  return stringValue.length > 14
-    ? `${stringValue.slice(0, 7)}…${stringValue.slice(-5)}`
-    : stringValue;
+  return String(value._id || value.id || '');
 };
 
-const human = (value: any) =>
+const displayRef = (value: any): string => {
+  const valueId = idOf(value);
+
+  if (!valueId) return '—';
+
+  return valueId.length > 16
+    ? `${valueId.slice(0, 7)}…${valueId.slice(-6)}`
+    : valueId;
+};
+
+const optionName = (
+  value: any,
+  options: SelectOption[],
+): string => {
+  const valueId = idOf(value);
+
+  const found = options.find(
+    (option) => idOf(option) === valueId,
+  );
+
+  if (!found) {
+    return displayRef(value);
+  }
+
+  return found.code
+    ? `${found.code} — ${found.name || valueId}`
+    : found.name || found.code || valueId;
+};
+
+const human = (value: any): string =>
   String(value ?? '—')
     .replaceAll('_', ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const dateOnly = (value: any): string => {
+  if (!value) return '—';
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+
+  return date.toLocaleDateString('en-NG', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
+const dateTime = (value: any): string => {
+  if (!value) return '—';
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+
+  return date.toLocaleString('en-NG', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+};
+
+const fullName = (
+  member?: Partial<Member> | null,
+): string =>
+  [
+    member?.firstName,
+    member?.otherNames,
+    member?.lastName,
+  ]
+    .filter(Boolean)
+    .join(' ') || 'Member';
+
+/* =========================================================
+   UI CONSTANTS
+   ========================================================= */
+
+const input =
+  'w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-[#1b7b68] focus:ring-4 focus:ring-[#1b7b68]/10';
+
+const primary =
+  'inline-flex items-center justify-center gap-2 rounded-2xl bg-[#1b7b68] px-4 py-2.5 text-xs font-extrabold text-white transition hover:bg-[#156b5b] disabled:cursor-not-allowed disabled:opacity-50';
+
+const secondary =
+  'inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-extrabold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50';
+
+const danger =
+  'inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-white px-3 py-2 text-xs font-extrabold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50';
 
 /* =========================================================
    UI COMPONENTS
    ========================================================= */
 
-function Badge({ v }: { v: any }) {
-  const status = String(
-    v || 'UNKNOWN',
-  ).toUpperCase();
+function StatusBadge({
+  value,
+}: {
+  value?: string;
+}) {
+  const status = String(value || 'UNKNOWN').toUpperCase();
 
-  const className = [
-    'ACTIVE',
-    'ELIGIBLE',
-    'APPROVED',
-    'PAID',
-    'COMPLETED',
-    'ENROLLED',
-  ].includes(status)
-    ? 'bg-emerald-50 text-emerald-700'
-    : [
-          'PENDING',
-          'SUBMITTED',
-          'UNDER_REVIEW',
-          'PROCESSING',
-        ].includes(status)
-      ? 'bg-amber-50 text-amber-700'
-      : [
-            'REJECTED',
-            'DENIED',
-            'TERMINATED',
-            'SUSPENDED',
-            'EXPIRED',
-          ].includes(status)
-        ? 'bg-rose-50 text-rose-700'
-        : 'bg-slate-100 text-slate-600';
+  const className =
+    status === 'ACTIVE'
+      ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+      : status === 'PENDING'
+        ? 'border-amber-100 bg-amber-50 text-amber-700'
+        : status === 'SUSPENDED'
+          ? 'border-orange-100 bg-orange-50 text-orange-700'
+          : status === 'TERMINATED'
+            ? 'border-rose-100 bg-rose-50 text-rose-700'
+            : 'border-slate-200 bg-slate-100 text-slate-600';
 
   return (
     <span
-      className={`rounded-full px-2.5 py-1 text-[9px] font-extrabold uppercase ${className}`}
+      className={`inline-flex rounded-full border px-2.5 py-1 text-[9px] font-extrabold uppercase ${className}`}
     >
       {human(status)}
     </span>
-  );
-}
-
-function Kpi({
-  label,
-  value,
-  detail,
-  icon: Icon,
-  tone = 'teal',
-}: any) {
-  const className =
-    {
-      teal: 'bg-[#e8f5f3] text-[#1b7b68]',
-      green: 'bg-emerald-50 text-emerald-700',
-      amber: 'bg-amber-50 text-amber-700',
-      blue: 'bg-sky-50 text-sky-700',
-    }[tone as string] ||
-    'bg-[#e8f5f3] text-[#1b7b68]';
-
-  return (
-    <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
-      <span
-        className={`inline-flex rounded-xl p-2.5 ${className}`}
-      >
-        <Icon className="h-4 w-4" />
-      </span>
-
-      <div className="mt-4 text-2xl font-black">
-        {value}
-      </div>
-
-      <div className="mt-1 text-[10px] font-extrabold uppercase text-slate-500">
-        {label}
-      </div>
-
-      <div className="mt-1 text-[10px] text-slate-400">
-        {detail}
-      </div>
-    </div>
   );
 }
 
@@ -275,7 +518,13 @@ function Card({
   icon: Icon,
   action,
   children,
-}: any) {
+}: {
+  title: string;
+  sub?: string;
+  icon: React.ElementType;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <section className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
       <div className="flex flex-col gap-3 border-b border-slate-100 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -285,9 +534,7 @@ function Card({
           </span>
 
           <div>
-            <h2 className="text-sm font-black">
-              {title}
-            </h2>
+            <h2 className="text-sm font-black">{title}</h2>
 
             {sub && (
               <p className="mt-1 text-[10px] text-slate-400">
@@ -305,11 +552,22 @@ function Card({
   );
 }
 
-function Field({ label, children }: any) {
+function Field({
+  label,
+  required,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-        {label}
+        {label}{' '}
+        {required && (
+          <span className="text-rose-500">*</span>
+        )}
       </span>
 
       {children}
@@ -317,16 +575,42 @@ function Field({ label, children }: any) {
   );
 }
 
-function Table({ heads, rows }: any) {
+function Info({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">
+        {label}
+      </div>
+
+      <div className="mt-1 text-xs font-black text-slate-800">
+        {value || '—'}
+      </div>
+    </div>
+  );
+}
+
+function Table({
+  heads,
+  rows,
+}: {
+  heads: string[];
+  rows: React.ReactNode[][];
+}) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-175 text-left">
+      <table className="w-full min-w-230 text-left">
         <thead className="bg-slate-50">
           <tr>
-            {heads.map((head: string) => (
+            {heads.map((head) => (
               <th
                 key={head}
-                className="px-4 py-3 text-[9px] font-extrabold uppercase text-slate-400"
+                className="px-4 py-3 text-[9px] font-extrabold uppercase tracking-wider text-slate-400"
               >
                 {head}
               </th>
@@ -335,114 +619,1174 @@ function Table({ heads, rows }: any) {
         </thead>
 
         <tbody className="divide-y divide-slate-100">
-          {rows.map(
-            (row: any[], rowIndex: number) => (
-              <tr
-                key={rowIndex}
-                className="hover:bg-slate-50/70"
-              >
-                {row.map(
-                  (cell: any, cellIndex: number) => (
-                    <td
-                      key={cellIndex}
-                      className="px-4 py-3 text-xs text-slate-600"
-                    >
-                      {cell}
-                    </td>
-                  ),
-                )}
-              </tr>
-            ),
-          )}
+          {rows.map((row, rowIndex) => (
+            <tr
+              key={rowIndex}
+              className="hover:bg-slate-50/70"
+            >
+              {row.map((cell, cellIndex) => (
+                <td
+                  key={cellIndex}
+                  className="px-4 py-3 text-xs text-slate-600"
+                >
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
   );
 }
 
-function Toggle({
-  label,
-  value,
-  onChange,
+function EmptyState({
+  message = 'No records found.',
 }: {
-  label: string;
-  value: boolean;
-  onChange: (value: boolean) => void;
+  message?: string;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-slate-100 p-4">
-      <span className="text-xs font-bold">
-        {label}
-      </span>
-
-      <button
-        type="button"
-        onClick={() => onChange(!value)}
-        className={`relative h-6 w-11 rounded-full ${
-          value
-            ? 'bg-[#1b7b68]'
-            : 'bg-slate-200'
-        }`}
-      >
-        <span
-          className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition ${
-            value ? 'left-6' : 'left-1'
-          }`}
-        />
-      </button>
+    <div className="p-12 text-center text-xs text-slate-400">
+      {message}
     </div>
   );
 }
 
-function Info({ label, value }: any) {
+function Modal({
+  title,
+  sub,
+  children,
+  onClose,
+  wide = false,
+}: {
+  title: string;
+  sub?: string;
+  children: React.ReactNode;
+  onClose: () => void;
+  wide?: boolean;
+}) {
   return (
-    <div>
-      <div className="text-[9px] font-extrabold uppercase text-slate-400">
-        {label}
-      </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
+      <div
+        className={`max-h-[92vh] w-full overflow-hidden rounded-3xl bg-white shadow-2xl ${
+          wide ? 'max-w-5xl' : 'max-w-3xl'
+        }`}
+      >
+        <div className="flex items-start justify-between border-b border-slate-100 p-5">
+          <div>
+            <h2 className="text-base font-black">
+              {title}
+            </h2>
 
-      <div className="mt-1 text-xs font-black">
-        {value || '—'}
+            {sub && (
+              <p className="mt-1 text-xs text-slate-400">
+                {sub}
+              </p>
+            )}
+          </div>
+
+          <button
+            className="rounded-xl p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700"
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="max-h-[calc(92vh-82px)] overflow-y-auto">
+          {children}
+        </div>
       </div>
     </div>
   );
 }
 
 /* =========================================================
-   MAIN PAGE
+   FORM
    ========================================================= */
 
-export default function MemberProviderPortalPage() {
-  const query =
-    typeof window !== 'undefined'
-      ? new URLSearchParams(
-          window.location.search,
+const emptyForm: MemberForm = {
+  policyNumber: '',
+  firstName: '',
+  lastName: '',
+  otherNames: '',
+  email: '',
+  phone: '',
+  gender: 'MALE',
+  dateOfBirth: '',
+  maritalStatus: '',
+  street: '',
+  city: '',
+  state: '',
+  country: 'Nigeria',
+  healthPlanId: '',
+  primaryProviderId: '',
+  relationship: 'PRIMARY',
+  primaryMemberId: '',
+  status: 'ACTIVE',
+  startDate: new Date().toISOString().slice(0, 10),
+  endDate: '',
+  photoUrl: '',
+};
+
+function formFromMember(member: Member): MemberForm {
+  return {
+    policyNumber: member.policyNumber || '',
+    firstName: member.firstName || '',
+    lastName: member.lastName || '',
+    otherNames: member.otherNames || '',
+    email: member.email || '',
+    phone: member.phone || '',
+    gender: member.gender || 'MALE',
+
+    dateOfBirth: member.dateOfBirth
+      ? new Date(member.dateOfBirth)
+          .toISOString()
+          .slice(0, 10)
+      : '',
+
+    maritalStatus: member.maritalStatus || '',
+
+    street: member.address?.street || '',
+    city: member.address?.city || '',
+    state: member.address?.state || '',
+    country: member.address?.country || 'Nigeria',
+
+    healthPlanId: idOf(member.healthPlanId),
+    primaryProviderId: idOf(member.primaryProviderId),
+
+    relationship: member.relationship || 'PRIMARY',
+    primaryMemberId: idOf(member.primaryMemberId),
+
+    status: member.status || 'ACTIVE',
+
+    startDate: member.startDate
+      ? new Date(member.startDate)
+          .toISOString()
+          .slice(0, 10)
+      : '',
+
+    endDate: member.endDate
+      ? new Date(member.endDate)
+          .toISOString()
+          .slice(0, 10)
+      : '',
+
+    photoUrl: member.photoUrl || '',
+  };
+}
+
+function MemberFormModal({
+  open,
+  editing,
+  form,
+  setForm,
+  saving,
+  error,
+  onClose,
+  onSave,
+  healthPlans,
+  providers,
+  parentMember,
+}: {
+  open: boolean;
+  editing: Member | null;
+  form: MemberForm;
+  setForm: React.Dispatch<
+    React.SetStateAction<MemberForm>
+  >;
+  saving: boolean;
+  error: string;
+  onClose: () => void;
+  onSave: () => void;
+  healthPlans: SelectOption[];
+  providers: SelectOption[];
+  parentMember: Member | null;
+}) {
+  if (!open) return null;
+
+  const update = <
+    K extends keyof MemberForm
+  >(
+    key: K,
+    value: MemberForm[K],
+  ) => {
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  };
+
+  return (
+    <Modal
+      title={editing ? 'Edit member' : 'Add dependant'}
+      sub={
+        editing
+          ? `Updating ${editing.policyNumber}`
+          : parentMember
+            ? `Add a dependant under ${fullName(parentMember)}.`
+            : 'Add a dependant from a primary member profile.'
+      }
+      onClose={onClose}
+      wide
+    >
+      <div className="space-y-5 p-5">
+        {error && (
+          <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-700">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {/* PERSONAL INFORMATION */}
+
+        <div className="rounded-3xl border border-slate-100 p-4">
+          <div className="mb-4 text-xs font-black">
+            Personal information
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <Field label="Policy number" required>
+              <input
+                className={input}
+                disabled={!!editing}
+                value={form.policyNumber}
+                onChange={(e) =>
+                  update('policyNumber', e.target.value)
+                }
+                placeholder="HMO-001"
+              />
+            </Field>
+
+            <Field label="First name" required>
+              <input
+                className={input}
+                value={form.firstName}
+                onChange={(e) =>
+                  update('firstName', e.target.value)
+                }
+              />
+            </Field>
+
+            <Field label="Last name" required>
+              <input
+                className={input}
+                value={form.lastName}
+                onChange={(e) =>
+                  update('lastName', e.target.value)
+                }
+              />
+            </Field>
+
+            <Field label="Other names">
+              <input
+                className={input}
+                value={form.otherNames}
+                onChange={(e) =>
+                  update('otherNames', e.target.value)
+                }
+              />
+            </Field>
+
+            <Field label="Email" required>
+              <input
+                className={input}
+                type="email"
+                value={form.email}
+                onChange={(e) =>
+                  update('email', e.target.value)
+                }
+              />
+            </Field>
+
+            <Field label="Phone" required>
+              <input
+                className={input}
+                value={form.phone}
+                onChange={(e) =>
+                  update('phone', e.target.value)
+                }
+              />
+            </Field>
+
+            <Field label="Gender" required>
+              <select
+                className={input}
+                value={form.gender}
+                onChange={(e) =>
+                  update(
+                    'gender',
+                    e.target.value as Gender,
+                  )
+                }
+              >
+                <option value="MALE">Male</option>
+                <option value="FEMALE">Female</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </Field>
+
+            <Field label="Date of birth" required>
+              <input
+                className={input}
+                type="date"
+                value={form.dateOfBirth}
+                onChange={(e) =>
+                  update('dateOfBirth', e.target.value)
+                }
+              />
+            </Field>
+
+            <Field label="Marital status">
+              <select
+                className={input}
+                value={form.maritalStatus}
+                onChange={(e) =>
+                  update(
+                    'maritalStatus',
+                    e.target.value as
+                      | MaritalStatus
+                      | '',
+                  )
+                }
+              >
+                <option value="">
+                  Not specified
+                </option>
+                <option value="SINGLE">Single</option>
+                <option value="MARRIED">Married</option>
+                <option value="DIVORCED">Divorced</option>
+                <option value="WIDOWED">Widowed</option>
+              </select>
+            </Field>
+          </div>
+        </div>
+
+        {/* COVERAGE */}
+
+        <div className="rounded-3xl border border-slate-100 p-4">
+          <div className="mb-4 text-xs font-black">
+            Coverage & relationship
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <Field label="Health plan" required>
+              {parentMember ? (
+                <div className={`${input} flex items-center justify-between gap-2 bg-slate-100 text-slate-600`}>
+                  <span>{optionName(parentMember.healthPlanId, healthPlans)}</span>
+                  <span className="text-[9px] font-extrabold uppercase tracking-wide text-slate-400">Inherited</span>
+                </div>
+              ) : (
+                <>
+                  <select
+                    className={input}
+                    value={form.healthPlanId}
+                    onChange={(e) =>
+                      update(
+                        'healthPlanId',
+                        e.target.value,
+                      )
+                    }
+                  >
+                    <option value="">
+                      Select health plan
+                    </option>
+
+                    {healthPlans.map((plan) => (
+                      <option
+                        key={idOf(plan)}
+                        value={idOf(plan)}
+                      >
+                        {plan.code
+                          ? `${plan.code} — `
+                          : ''}
+                        {plan.name || idOf(plan)}
+                      </option>
+                    ))}
+                  </select>
+
+                  {!healthPlans.length && (
+                    <p className="mt-1.5 text-[10px] text-amber-600">
+                      No active health plans were returned by the backend.
+                    </p>
+                  )}
+                </>
+              )}
+            </Field>
+
+            <Field label="Primary provider">
+              <select
+                className={input}
+                value={form.primaryProviderId}
+                onChange={(e) =>
+                  update(
+                    'primaryProviderId',
+                    e.target.value,
+                  )
+                }
+              >
+                <option value="">
+                  No provider selected
+                </option>
+
+                {providers.map((provider) => (
+                  <option
+                    key={idOf(provider)}
+                    value={idOf(provider)}
+                  >
+                    {provider.name ||
+                      provider.code ||
+                      idOf(provider)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="Relationship">
+              <div className={`${input} flex items-center justify-between bg-slate-50`}>
+                <span className="font-black text-slate-700">
+                  {human(form.relationship)}
+                </span>
+                <span className="text-[10px] font-semibold text-slate-400">
+                  Set from the selected primary member
+                </span>
+              </div>
+            </Field>
+
+            <div className="md:col-span-2">
+              <Field label="Primary member" required>
+                <div className={`${input} bg-slate-50`}>
+                  {parentMember ? (
+                    <>
+                      <div className="font-black text-slate-800">
+                        {fullName(parentMember)}
+                      </div>
+                      <div className="mt-1 text-[10px] text-slate-400">
+                        Policy {parentMember.policyNumber} · Primary member
+                      </div>
+                    </>
+                  ) : (
+                    <span className="text-slate-400">No primary member selected</span>
+                  )}
+                </div>
+                <p className="mt-1.5 text-[10px] text-slate-400">
+                  This dependant is being created from the primary member's profile. The MongoDB ID is fetched automatically.
+                </p>
+              </Field>
+            </div>
+
+            <Field label="Status">
+              <select
+                className={input}
+                value={form.status}
+                onChange={(e) =>
+                  update(
+                    'status',
+                    e.target.value as MemberStatus,
+                  )
+                }
+              >
+                <option value="ACTIVE">Active</option>
+                <option value="PENDING">
+                  Pending
+                </option>
+                <option value="SUSPENDED">
+                  Suspended
+                </option>
+                <option value="TERMINATED">
+                  Terminated
+                </option>
+              </select>
+            </Field>
+
+            <Field label="Start date">
+              <input
+                className={input}
+                type="date"
+                value={form.startDate}
+                onChange={(e) =>
+                  update('startDate', e.target.value)
+                }
+              />
+            </Field>
+
+            <Field label="End date">
+              <input
+                className={input}
+                type="date"
+                value={form.endDate}
+                onChange={(e) =>
+                  update('endDate', e.target.value)
+                }
+              />
+            </Field>
+          </div>
+        </div>
+
+        {/* ADDRESS */}
+
+        <div className="rounded-3xl border border-slate-100 p-4">
+          <div className="mb-4 text-xs font-black">
+            Address & photo
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-4">
+            <Field label="Street">
+              <input
+                className={input}
+                value={form.street}
+                onChange={(e) =>
+                  update('street', e.target.value)
+                }
+              />
+            </Field>
+
+            <Field label="City">
+              <input
+                className={input}
+                value={form.city}
+                onChange={(e) =>
+                  update('city', e.target.value)
+                }
+              />
+            </Field>
+
+            <Field label="State">
+              <input
+                className={input}
+                value={form.state}
+                onChange={(e) =>
+                  update('state', e.target.value)
+                }
+              />
+            </Field>
+
+            <Field label="Country">
+              <input
+                className={input}
+                value={form.country}
+                onChange={(e) =>
+                  update('country', e.target.value)
+                }
+              />
+            </Field>
+
+            <div className="md:col-span-4">
+              <Field label="Photo URL">
+                <input
+                  className={input}
+                  value={form.photoUrl}
+                  onChange={(e) =>
+                    update(
+                      'photoUrl',
+                      e.target.value,
+                    )
+                  }
+                  placeholder="https://..."
+                />
+              </Field>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+          <button
+            className={secondary}
+            onClick={onClose}
+            disabled={saving}
+          >
+            Cancel
+          </button>
+
+          <button
+            className={primary}
+            onClick={onSave}
+            disabled={saving}
+          >
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <CheckCircle2 className="h-4 w-4" />
+            )}
+
+            {editing
+              ? 'Save changes'
+              : 'Create dependant'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* =========================================================
+   MEMBER DETAILS
+   ========================================================= */
+
+function MemberDetailsModal({
+  member,
+  loading,
+  eligibility,
+  dependents,
+  history,
+  card,
+  onClose,
+  onEdit,
+  onStatus,
+  onRenew,
+  onAddDependent,
+  healthPlans,
+  primaryMembers,
+}: {
+  member: Member | null;
+  loading: boolean;
+  eligibility: any;
+  dependents: Member[];
+  history: any[];
+  card: any;
+  onClose: () => void;
+  onEdit: () => void;
+  onStatus: (status: MemberStatus) => void;
+  onRenew: () => void;
+  onAddDependent: () => void;
+  healthPlans: SelectOption[];
+  primaryMembers: Member[];
+}) {
+  if (!member) return null;
+
+  const cardNumber =
+    card?.cardNumber ||
+    card?.number ||
+    card?.cardId ||
+    card?._id;
+
+  const eligible =
+    eligibility?.eligible ??
+    eligibility?.isEligible;
+
+  const parentMember =
+    member.relationship !== 'PRIMARY'
+      ? primaryMembers.find(
+          (candidate) => idOf(candidate) === idOf(member.primaryMemberId),
         )
       : null;
 
-  const [role, setRole] = useState<Role>(
-    query?.get('role') === 'provider'
-      ? 'provider'
-      : 'member',
+  const healthPlan =
+    member.healthPlanId && typeof member.healthPlanId === 'object'
+      ? member.healthPlanId
+      : healthPlans.find(
+          (plan) => idOf(plan) === idOf(member.healthPlanId),
+        );
+
+  const planBenefits = Array.isArray(healthPlan?.benefitIds)
+    ? healthPlan.benefitIds
+    : [];
+
+  return (
+    <Modal
+      title={fullName(member)}
+      sub={`${member.policyNumber} · ${displayRef(
+        member._id,
+      )}`}
+      onClose={onClose}
+      wide
+    >
+      <div className="space-y-5 p-5">
+        <div className="flex flex-col gap-4 rounded-3xl bg-[#e8f5f3]/70 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            {member.photoUrl ? (
+              <img
+                src={member.photoUrl}
+                alt={fullName(member)}
+                className="h-16 w-16 rounded-2xl object-cover"
+              />
+            ) : (
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-[#1b7b68]">
+                <UserRound className="h-7 w-7" />
+              </div>
+            )}
+
+            <div>
+              <div className="text-lg font-black">
+                {member.policyNumber}
+              </div>
+
+              <div className="mt-1 text-xs text-slate-500">
+                {member.email} · {member.phone}
+              </div>
+
+              <div className="mt-2 flex flex-wrap gap-2">
+                <StatusBadge value={member.status} />
+
+                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-extrabold uppercase text-slate-500">
+                  {human(member.relationship)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              className={secondary}
+              onClick={onEdit}
+            >
+              <Edit3 className="h-3.5 w-3.5" />
+              Edit
+            </button>
+
+            {member.status !== 'ACTIVE' && (
+              <button
+                className={primary}
+                onClick={() =>
+                  onStatus('ACTIVE')
+                }
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Activate
+              </button>
+            )}
+
+            {member.status === 'ACTIVE' && (
+              <button
+                className={danger}
+                onClick={() =>
+                  onStatus('SUSPENDED')
+                }
+              >
+                <XCircle className="h-3.5 w-3.5" />
+                Suspend
+              </button>
+            )}
+
+            <button
+              className={secondary}
+              onClick={onRenew}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Renew
+            </button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-16 text-xs text-slate-400">
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Loading member details…
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Info
+                label="Date of birth"
+                value={dateOnly(member.dateOfBirth)}
+              />
+
+              <Info
+                label="Gender"
+                value={human(member.gender)}
+              />
+
+              <Info
+                label="Marital status"
+                value={human(member.maritalStatus)}
+              />
+
+              <Info
+                label="Health plan"
+                value={optionName(
+                  member.healthPlanId,
+                  healthPlans,
+                )}
+              />
+
+              <Info
+                label="Primary provider"
+                value={displayRef(
+                  member.primaryProviderId,
+                )}
+              />
+
+              <Info
+                label="Coverage start"
+                value={dateOnly(member.startDate)}
+              />
+
+              <Info
+                label="Coverage end"
+                value={dateOnly(member.endDate)}
+              />
+
+              <Info
+                label="Primary member"
+                value={
+                  member.relationship === 'PRIMARY'
+                    ? 'Primary member'
+                    : parentMember
+                      ? `${fullName(parentMember)} · ${parentMember.policyNumber}`
+                      : `Primary member · ${displayRef(member.primaryMemberId)}`
+                }
+              />
+            </div>
+
+            {/* HEALTH PLAN BENEFITS */}
+
+            <Card
+              title="Health plan benefits"
+              sub={
+                healthPlan
+                  ? `${healthPlan.name || healthPlan.code || 'Selected health plan'} · benefits included in this member's coverage`
+                  : 'Benefits included in the member health plan'
+              }
+              icon={ShieldCheck}
+            >
+              {planBenefits.length ? (
+                <div className="divide-y divide-slate-100">
+                  {planBenefits.map((benefit: any, index: number) => {
+                    const rule = benefit?.defaultRule || {};
+                    const covered = rule.covered !== false;
+                    const limit =
+                      rule.annualLimitAmount != null
+                        ? `Annual limit: ${rule.annualLimitAmount}`
+                        : rule.annualUtilizationLimit != null
+                          ? `Annual uses: ${rule.annualUtilizationLimit}`
+                          : null;
+
+                    return (
+                      <div
+                        key={idOf(benefit) || `${benefit?.code || 'benefit'}-${index}`}
+                        className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="text-xs font-black text-slate-800">
+                              {benefit?.name || benefit?.code || 'Benefit'}
+                            </div>
+
+                            {benefit?.code && (
+                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-[9px] font-bold text-slate-500">
+                                {benefit.code}
+                              </span>
+                            )}
+
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[9px] font-extrabold ${
+                                covered
+                                  ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                                  : 'border-rose-100 bg-rose-50 text-rose-700'
+                              }`}
+                            >
+                              {covered ? 'Covered' : 'Not covered'}
+                            </span>
+                          </div>
+
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-400">
+                            {benefit?.category && <span>{human(benefit.category)}</span>}
+                            {benefit?.status && <span>{human(benefit.status)}</span>}
+                            {limit && <span>{limit}</span>}
+                          </div>
+
+                          {benefit?.description && (
+                            <p className="mt-2 text-[10px] leading-5 text-slate-500">
+                              {benefit.description}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="shrink-0 text-left sm:text-right">
+                          <div className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">
+                            Plan rule
+                          </div>
+                          <div className="mt-1 text-[10px] font-bold text-slate-600">
+                            {rule.requiresPreAuth ? 'Pre-authorization required' : 'Standard access'}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <EmptyState
+                  message={
+                    healthPlan
+                      ? 'No benefits are attached to this health plan.'
+                      : 'Health plan benefits are not available in this member response.'
+                  }
+                />
+              )}
+            </Card>
+
+            {/* ELIGIBILITY */}
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card
+                title="Eligibility"
+                sub="Current eligibility check"
+                icon={BadgeCheck}
+              >
+                <div className="p-5">
+                  <div
+                    className={`rounded-2xl border p-4 ${
+                      eligible === true
+                        ? 'border-emerald-100 bg-emerald-50'
+                        : eligible === false
+                          ? 'border-rose-100 bg-rose-50'
+                          : 'border-slate-100 bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-black">
+                        {eligible === true
+                          ? 'Eligible'
+                          : eligible === false
+                            ? 'Not eligible'
+                            : 'Eligibility unavailable'}
+                      </div>
+
+                      {eligibility?.status && (
+                        <StatusBadge
+                          value={eligibility.status}
+                        />
+                      )}
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-4">
+                      <Info
+                        label="Policy"
+                        value={
+                          eligibility?.policyNumber ||
+                          member.policyNumber
+                        }
+                      />
+
+                      <Info
+                        label="Coverage start"
+                        value={dateOnly(
+                          eligibility?.coverageStartDate ||
+                            member.startDate,
+                        )}
+                      />
+
+                      <Info
+                        label="Coverage end"
+                        value={dateOnly(
+                          eligibility?.coverageEndDate ||
+                            member.endDate,
+                        )}
+                      />
+
+                      <Info
+                        label="Health plan"
+                        value={optionName(
+                          eligibility?.healthPlanId ||
+                            member.healthPlanId,
+                          healthPlans,
+                        )}
+                      />
+
+                      <Info
+                        label="Enrollee"
+                        value={displayRef(
+                          eligibility?.enrolleeId,
+                        )}
+                      />
+                    </div>
+
+                    {eligibility?.reason && (
+                      <div className="mt-4 rounded-xl bg-white/70 p-3 text-[10px] text-slate-500">
+                        {eligibility.reason}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+
+              {/* DIGITAL CARD */}
+
+              <Card
+                title="Digital HMO card"
+                sub="Issued through the member registry"
+                icon={CreditCard}
+              >
+                <div className="p-5">
+                  {card ? (
+                    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                      <div className="text-[9px] font-extrabold uppercase text-slate-400">
+                        Card reference
+                      </div>
+
+                      <div className="mt-1 font-mono text-sm font-black">
+                        {displayRef(cardNumber)}
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        <Info
+                          label="Policy"
+                          value={
+                            card.policyNumber ||
+                            member.policyNumber
+                          }
+                        />
+
+                        <Info
+                          label="Issued"
+                          value={dateTime(
+                            card.issuedAt ||
+                              card.createdAt,
+                          )}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <EmptyState message="No digital card data was returned." />
+                  )}
+                </div>
+              </Card>
+            </div>
+
+            {/* DEPENDANTS */}
+
+            <Card
+              title="Dependants"
+              sub="Members linked to this primary member"
+              icon={Users}
+              action={
+                member.relationship === 'PRIMARY' ? (
+                  <button
+                    className={primary}
+                    onClick={onAddDependent}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add dependant
+                  </button>
+                ) : undefined
+              }
+            >
+              {dependents.length ? (
+                <Table
+                  heads={[
+                    'Member',
+                    'Policy',
+                    'Relationship',
+                    'Status',
+                    'Coverage',
+                  ]}
+                  rows={dependents.map(
+                    (dependent) => [
+                      <div key="name">
+                        <div className="font-black">
+                          {fullName(dependent)}
+                        </div>
+
+                        <div className="text-[9px] text-slate-400">
+                          {displayRef(
+                            dependent._id,
+                          )}
+                        </div>
+                      </div>,
+
+                      dependent.policyNumber,
+
+                      human(
+                        dependent.relationship,
+                      ),
+
+                      <StatusBadge
+                        key="status"
+                        value={dependent.status}
+                      />,
+
+                      `${dateOnly(
+                        dependent.startDate,
+                      )} — ${dateOnly(
+                        dependent.endDate,
+                      )}`,
+                    ],
+                  )}
+                />
+              ) : (
+                <EmptyState
+                  message={
+                    member.relationship ===
+                    'PRIMARY'
+                      ? 'No dependants found.'
+                      : 'Dependants are available for primary members.'
+                  }
+                />
+              )}
+            </Card>
+
+            {/* HISTORY */}
+
+            <Card
+              title="Lifecycle history"
+              sub="Audit events returned by the member registry"
+              icon={History}
+            >
+              {history.length ? (
+                <Table
+                  heads={[
+                    'Event',
+                    'Status',
+                    'Reason',
+                    'Date',
+                  ]}
+                  rows={history.map(
+                    (event: any) => [
+                      human(
+                        event.eventType ||
+                          event.type ||
+                          event.action ||
+                          event.event ||
+                          'Lifecycle event',
+                      ),
+
+                      <StatusBadge
+                        key="status"
+                        value={
+                          event.status ||
+                          event.toStatus
+                        }
+                      />,
+
+                      event.reason ||
+                        event.notes ||
+                        event.description ||
+                        '—',
+
+                      dateTime(
+                        event.createdAt ||
+                          event.occurredAt ||
+                          event.date,
+                      ),
+                    ],
+                  )}
+                />
+              ) : (
+                <EmptyState message="No lifecycle history returned." />
+              )}
+            </Card>
+          </>
+        )}
+      </div>
+    </Modal>
   );
+}
 
-  const [hmoId, setHmoId] = useState(
-    query?.get('hmoId') || '',
-  );
+/* =========================================================
+   PAGE
+   ========================================================= */
 
-  const [memberId, setMemberId] = useState(
-    query?.get('memberId') || '',
-  );
-
-  const [providerId, setProviderId] =
-    useState(
-      query?.get('providerId') || '',
-    );
-
-  const [tab, setTab] =
-    useState('overview');
+export default function MembersPage() {
+  const [members, setMembers] =
+    useState<Member[]>([]);
 
   const [loading, setLoading] =
+    useState(true);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [detailLoading, setDetailLoading] =
     useState(false);
 
   const [busy, setBusy] =
@@ -454,626 +1798,743 @@ export default function MemberProviderPortalPage() {
   const [success, setSuccess] =
     useState('');
 
-  const [dash, setDash] =
-    useState<any>();
-
-  const [profile, setProfile] =
-    useState<any>();
-
-  const [benefits, setBenefits] =
-    useState<any>();
-
-  const [providers, setProviders] =
-    useState<any[]>([]);
-
-  const [records, setRecords] =
-    useState<any[]>([]);
-
-  const [notifs, setNotifs] =
-    useState<any[]>([]);
-
-  const [members, setMembers] =
-    useState<any[]>([]);
-
-  const [claims, setClaims] =
-    useState<any[]>([]);
-
-  const [auths, setAuths] =
-    useState<any[]>([]);
-
-  const [settlements, setSettlements] =
-    useState<any[]>([]);
-
   const [search, setSearch] =
     useState('');
 
-  const [elig, setElig] =
-    useState<any>();
+  const [status, setStatus] =
+    useState<'ALL' | MemberStatus>('ALL');
 
-  const [memberForm, setMemberForm] =
-    useState({
-      preferredLanguage: 'en',
-      preferredContactChannel: 'EMAIL',
-      marketingConsent: false,
-      healthDataConsent: false,
-      emergencyName: '',
-      emergencyPhone: '',
-      emergencyRelationship: '',
+  const [relationship, setRelationship] =
+    useState<'ALL' | Relationship>('ALL');
+
+  const [page, setPage] =
+    useState(1);
+
+  const [total, setTotal] =
+    useState(0);
+
+  const [pages, setPages] =
+    useState(1);
+
+  const pageSize = 12;
+
+  const [formOpen, setFormOpen] =
+    useState(false);
+
+  const [editing, setEditing] =
+    useState<Member | null>(null);
+
+  const [form, setForm] =
+    useState<MemberForm>({
+      ...emptyForm,
     });
 
-  const [providerForm, setProviderForm] =
-    useState({
-      notificationEmail: '',
-      notificationPhone: '',
-      preferredContactChannel: 'EMAIL',
-      claimsNotificationEnabled: true,
-      paymentNotificationEnabled: true,
-    });
+  const [formError, setFormError] =
+    useState('');
 
-  const [claim, setClaim] =
-    useState({
-      memberId: '',
-      claimNumber: '',
-      preAuthorizationId: '',
-      diagnosis: '',
-      icdCode: '',
-      treatmentDate: '',
-      notes: '',
-      serviceCode: '',
-      serviceName: '',
-      quantity: '1',
-      unitAmount: '',
-      claimedAmount: '',
-    });
+  const [selected, setSelected] =
+    useState<Member | null>(null);
 
-  const [preauth, setPreauth] =
-    useState({
-      memberId: '',
-      benefitId: '',
-      benefitCode: '',
-      serviceCode: '',
-      serviceName: '',
-      diagnosisCodes: '',
-      requestedAmount: '',
-      requestedDate: '',
-      clinicalNotes: '',
-      referralProviderId: '',
-    });
+  const [detailOpen, setDetailOpen] =
+    useState(false);
 
-  const memberBase =
-    `/hmo-portals/member/${hmoId}/${memberId}`;
+  const [eligibility, setEligibility] =
+    useState<any>(null);
 
-  const providerBase =
-    `/hmo-portals/provider/${hmoId}/${providerId}`;
+  const [dependents, setDependents] =
+    useState<Member[]>([]);
+
+  const [history, setHistory] =
+    useState<any[]>([]);
+
+  const [card, setCard] =
+    useState<any>(null);
+
+  const [healthPlans, setHealthPlans] =
+    useState<SelectOption[]>([]);
+
+  const [providers, setProviders] =
+    useState<SelectOption[]>([]);
+
+  const [primaryMembers, setPrimaryMembers] =
+    useState<Member[]>([]);
+
+  const [renewOpen, setRenewOpen] =
+    useState(false);
+
+  const [renewEndDate, setRenewEndDate] =
+    useState('');
+
+  const [renewReason, setRenewReason] =
+    useState('');
+
+  const [suspendOpen, setSuspendOpen] =
+    useState(false);
+
+  const [suspendReason, setSuspendReason] =
+    useState('');
+
+  const clearMessages = () => {
+    setError('');
+    setSuccess('');
+  };
 
   /* =======================================================
-     MEMBER LOAD
+     LOAD REFERENCE DATA
+
+     IMPORTANT:
+     All API calls use relative paths.
      ======================================================= */
 
-  const loadMember = useCallback(
-    async () => {
-      if (!hmoId || !memberId) return;
-
-      setLoading(true);
-      setError('');
-
+  const loadReferenceData =
+    useCallback(async () => {
       try {
         const [
-          dashboard,
-          memberProfile,
-          memberBenefits,
-          memberProviders,
-          notifications,
+          healthPlansResult,
+          providersResult,
+          primaryMembersResult,
         ] = await Promise.all([
-          api(`${memberBase}/dashboard`),
-          api(`${memberBase}/profile`),
-          api(`${memberBase}/benefits`),
-          api(
-            `${memberBase}/providers?page=1&limit=100`,
+          api<any>(
+            `${HEALTH_PLANS_API}?page=1&limit=100&status=ACTIVE`,
           ),
-          api(`${memberBase}/notifications`),
+
+          api<any>(
+            `${PROVIDERS_API}?page=1&limit=100`,
+          ).catch(() => []),
+
+          api<any>(
+            `${MEMBERS_API}?relationship=PRIMARY&status=ACTIVE&page=1&limit=100`,
+          ).catch(() => []),
         ]);
 
-        setDash(dashboard);
-        setProfile(memberProfile);
-        setBenefits(memberBenefits);
+        const healthPlanData =
+          healthPlansResult?.data ??
+          healthPlansResult;
+
+        const providerData =
+          providersResult?.data ??
+          providersResult;
+
+        const primaryData =
+          primaryMembersResult?.data ??
+          primaryMembersResult;
+
+        setHealthPlans(
+          asArray(healthPlanData).filter(Boolean),
+        );
+
         setProviders(
-          arr(memberProviders),
-        );
-        setNotifs(
-          arr(notifications),
+          asArray(providerData).filter(Boolean),
         );
 
-        const portalProfile =
-          memberProfile?.portalProfile;
+        const primaryList =
+          Array.isArray(primaryData?.members)
+            ? primaryData.members
+            : asArray(primaryData);
 
-        if (portalProfile) {
-          setMemberForm({
-            preferredLanguage:
-              portalProfile.preferredLanguage ||
-              'en',
-
-            preferredContactChannel:
-              portalProfile.preferredContactChannel ||
-              'EMAIL',
-
-            marketingConsent:
-              !!portalProfile.marketingConsent,
-
-            healthDataConsent:
-              !!portalProfile.healthDataConsent,
-
-            emergencyName:
-              portalProfile.emergencyContact
-                ?.name || '',
-
-            emergencyPhone:
-              portalProfile.emergencyContact
-                ?.phone || '',
-
-            emergencyRelationship:
-              portalProfile.emergencyContact
-                ?.relationship || '',
-          });
-        }
+        setPrimaryMembers(
+          primaryList.filter(
+            (member: Member) =>
+              member.relationship ===
+              'PRIMARY',
+          ),
+        );
       } catch (err: any) {
         setError(
-          err.message ||
-            'Unable to load member portal',
+          err?.message ||
+            'Unable to load health plans and providers.',
         );
-      } finally {
-        setLoading(false);
       }
-    },
-    [hmoId, memberId, memberBase],
-  );
+    }, []);
 
   /* =======================================================
-     PROVIDER LOAD
+     LOAD MEMBERS
      ======================================================= */
 
-  const loadProvider = useCallback(
-    async () => {
-      if (!hmoId || !providerId) return;
-
+  const loadMembers =
+    useCallback(async () => {
       setLoading(true);
       setError('');
 
       try {
-        const [
-          dashboard,
-          providerProfile,
-        ] = await Promise.all([
-          api(`${providerBase}/dashboard`),
-          api(`${providerBase}/profile`),
-        ]);
-
-        setDash(dashboard);
-        setProfile(providerProfile);
-
-        const portalProfile =
-          providerProfile?.portalProfile;
-
-        if (portalProfile) {
-          setProviderForm({
-            notificationEmail:
-              portalProfile.notificationEmail ||
-              '',
-
-            notificationPhone:
-              portalProfile.notificationPhone ||
-              '',
-
-            preferredContactChannel:
-              portalProfile.preferredContactChannel ||
-              'EMAIL',
-
-            claimsNotificationEnabled:
-              portalProfile.claimsNotificationEnabled !==
-              false,
-
-            paymentNotificationEnabled:
-              portalProfile.paymentNotificationEnabled !==
-              false,
+        const params =
+          new URLSearchParams({
+            page: String(page),
+            limit: String(pageSize),
           });
+
+        if (search.trim()) {
+          params.set(
+            'search',
+            search.trim(),
+          );
         }
+
+        if (status !== 'ALL') {
+          params.set('status', status);
+        }
+
+        if (relationship !== 'ALL') {
+          params.set(
+            'relationship',
+            relationship,
+          );
+        }
+
+        const result = await api<{
+          members: Member[];
+          total: number;
+          page: number;
+          limit: number;
+          totalPages: number;
+        }>(
+          `${MEMBERS_API}?${params.toString()}`,
+        );
+
+        setMembers(
+          Array.isArray(result?.members)
+            ? result.members
+            : asArray(result),
+        );
+
+        setTotal(
+          Number(result?.total || 0),
+        );
+
+        setPages(
+          Math.max(
+            1,
+            Number(result?.totalPages || 1),
+          ),
+        );
       } catch (err: any) {
         setError(
-          err.message ||
-            'Unable to load provider portal',
+          err?.message ||
+            'Unable to load members.',
         );
       } finally {
         setLoading(false);
       }
-    },
-    [hmoId, providerId, providerBase],
-  );
-
-  /* =======================================================
-     INITIAL LOAD
-     ======================================================= */
+    }, [
+      page,
+      relationship,
+      search,
+      status,
+    ]);
 
   useEffect(() => {
-    setTab('overview');
+    void loadReferenceData();
+  }, [loadReferenceData]);
 
-    if (role === 'member') {
-      void loadMember();
-    } else {
-      void loadProvider();
-    }
-  }, [
-    role,
-    loadMember,
-    loadProvider,
-  ]);
-
-  /* =======================================================
-     MEMBER RECORDS
-     ======================================================= */
-
-  const loadMemberRecords =
-    useCallback(
-      async (type: string) => {
-        try {
-          const result = await api(
-            `${memberBase}/records/${type}`,
-          );
-
-          setRecords(arr(result));
-        } catch (err: any) {
-          setError(
-            err.message ||
-              'Unable to load records',
-          );
-        }
-      },
-      [memberBase],
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => void loadMembers(),
+      search.trim() ? 350 : 0,
     );
 
+    return () =>
+      window.clearTimeout(timer);
+  }, [loadMembers, search]);
+
   useEffect(() => {
-    if (
-      role === 'member' &&
-      [
-        'claims',
-        'authorizations',
-        'invoices',
-        'utilization',
-      ].includes(tab)
-    ) {
-      void loadMemberRecords(
-        tab === 'authorizations'
-          ? 'preAuths'
-          : tab,
-      );
-    }
-  }, [
-    role,
-    tab,
-    loadMemberRecords,
-  ]);
+    setPage(1);
+  }, [status, relationship]);
 
   /* =======================================================
-     PROVIDER DATA
+     EDIT
      ======================================================= */
 
-  const loadProviderData =
-    useCallback(
-      async (type: string) => {
-        try {
-          if (type === 'members') {
-            const result = await api(
-              `${providerBase}/members?page=1&limit=100${
-                search
-                  ? `&search=${encodeURIComponent(
-                      search,
-                    )}`
-                  : ''
-              }`,
-            );
+  const openEdit = (
+    member: Member,
+  ) => {
+    clearMessages();
 
-            setMembers(arr(result));
-          }
+    setEditing(member);
 
-          if (type === 'claims') {
-            const result = await api(
-              `${providerBase}/claims?page=1&limit=100`,
-            );
-
-            setClaims(arr(result));
-          }
-
-          if (type === 'authorizations') {
-            const result = await api(
-              `${providerBase}/authorizations?page=1&limit=100`,
-            );
-
-            setAuths(arr(result));
-          }
-
-          if (type === 'settlements') {
-            const result = await api(
-              `${providerBase}/settlements?page=1&limit=100`,
-            );
-
-            setSettlements(arr(result));
-          }
-        } catch (err: any) {
-          setError(
-            err.message ||
-              'Unable to load provider data',
-          );
-        }
-      },
-      [providerBase, search],
+    setForm(
+      formFromMember(member),
     );
 
-  useEffect(() => {
+    setFormError('');
+    setFormOpen(true);
+  };
+
+  /* =======================================================
+     ADD DEPENDANT
+     ======================================================= */
+
+  const openAddDependent = () => {
+    if (!selected || selected.relationship !== 'PRIMARY') return;
+
+    clearMessages();
+
+    setDetailOpen(false);
+
+    setEditing(null);
+
+    setForm({
+      ...emptyForm,
+
+      startDate: new Date()
+        .toISOString()
+        .slice(0, 10),
+
+      relationship: 'CHILD',
+
+      primaryMemberId:
+        selected._id,
+
+      healthPlanId:
+        idOf(
+          selected.healthPlanId,
+        ),
+
+      primaryProviderId:
+        idOf(
+          selected.primaryProviderId,
+        ),
+    });
+
+    setFormError('');
+    setFormOpen(true);
+  };
+
+  /* =======================================================
+     DETAILS
+     ======================================================= */
+
+  const openDetails =
+    async (member: Member) => {
+      clearMessages();
+
+      setSelected(member);
+      setDetailOpen(true);
+
+      setDetailLoading(true);
+
+      setEligibility(null);
+      setDependents([]);
+      setHistory([]);
+      setCard(null);
+
+      try {
+        const [
+          detailResult,
+          eligibilityResult,
+          dependentsResult,
+          historyResult,
+          cardResult,
+        ] = await Promise.all([
+          api<Member>(
+            `${MEMBERS_API}/${member._id}`,
+          ),
+
+          api<any>(
+            `${MEMBERS_API}/${member._id}/eligibility`,
+          ).catch(() => null),
+
+          member.relationship ===
+          'PRIMARY'
+            ? api<Member[]>(
+                `${MEMBERS_API}/${member._id}/dependents`,
+              ).catch(() => [])
+            : Promise.resolve(
+                [] as Member[],
+              ),
+
+          api<any[]>(
+            `${MEMBERS_API}/${member._id}/history`,
+          ).catch(() => []),
+
+          api<any>(
+            `${MEMBERS_API}/${member._id}/card`,
+          ).catch(() => null),
+        ]);
+
+        const detail =
+          (detailResult as any)
+            ?.member ||
+          detailResult;
+
+        const current =
+          detail || member;
+
+        setSelected(current);
+
+        setEligibility(
+          eligibilityResult,
+        );
+
+        setDependents(
+          asArray(
+            dependentsResult,
+          ),
+        );
+
+        setHistory(
+          asArray(historyResult),
+        );
+
+        setCard(cardResult);
+      } catch (err: any) {
+        setError(
+          err?.message ||
+            'Unable to load member details.',
+        );
+      } finally {
+        setDetailLoading(false);
+      }
+    };
+
+  /* =======================================================
+     VALIDATION
+     ======================================================= */
+
+  const validateForm = (): string | null => {
     if (
-      role === 'provider' &&
-      tab !== 'overview' &&
-      tab !== 'profile'
+      !editing &&
+      !form.policyNumber.trim()
     ) {
-      void loadProviderData(tab);
+      return 'Policy number is required.';
     }
-  }, [
-    role,
-    tab,
-    loadProviderData,
-  ]);
+
+    if (!form.firstName.trim()) {
+      return 'First name is required.';
+    }
+
+    if (!form.lastName.trim()) {
+      return 'Last name is required.';
+    }
+
+    if (!form.email.trim()) {
+      return 'Email is required.';
+    }
+
+    if (!form.phone.trim()) {
+      return 'Phone number is required.';
+    }
+
+    if (!form.dateOfBirth) {
+      return 'Date of birth is required.';
+    }
+
+    if (!form.healthPlanId.trim()) {
+      return 'Health plan is required. Select a health plan from the list.';
+    }
+
+    if (!editing && form.relationship === 'PRIMARY') {
+      return 'Primary members are created from the Enrollee page. Use Add dependant from a primary member profile.';
+    }
+
+    if (
+      form.relationship !==
+        'PRIMARY' &&
+      !form.primaryMemberId.trim()
+    ) {
+      return 'Select the primary member for this dependant.';
+    }
+
+    return null;
+  };
 
   /* =======================================================
      SAVE MEMBER
      ======================================================= */
 
   const saveMember = async () => {
-    setBusy(true);
-    setError('');
-    setSuccess('');
+    const validationError =
+      validateForm();
+
+    if (validationError) {
+      setFormError(
+        validationError,
+      );
+      return;
+    }
+
+    setSaving(true);
+    setFormError('');
+    clearMessages();
+
+    const payload: Record<
+      string,
+      unknown
+    > = {
+      firstName:
+        form.firstName.trim(),
+
+      lastName:
+        form.lastName.trim(),
+
+      otherNames:
+        form.otherNames.trim() ||
+        undefined,
+
+      email:
+        form.email.trim(),
+
+      phone:
+        form.phone.trim(),
+
+      gender:
+        form.gender,
+
+      dateOfBirth:
+        form.dateOfBirth,
+
+      maritalStatus:
+        form.maritalStatus ||
+        undefined,
+
+      address: {
+        street:
+          form.street.trim() ||
+          undefined,
+
+        city:
+          form.city.trim() ||
+          undefined,
+
+        state:
+          form.state.trim() ||
+          undefined,
+
+        country:
+          form.country.trim() ||
+          undefined,
+      },
+
+      healthPlanId:
+        form.healthPlanId.trim(),
+
+      primaryProviderId:
+        form.primaryProviderId.trim() ||
+        undefined,
+
+      relationship:
+        form.relationship,
+
+      primaryMemberId:
+        form.relationship ===
+        'PRIMARY'
+          ? undefined
+          : form.primaryMemberId.trim(),
+
+      status:
+        form.status,
+
+      startDate:
+        form.startDate ||
+        undefined,
+
+      endDate:
+        form.endDate ||
+        undefined,
+
+      photoUrl:
+        form.photoUrl.trim() ||
+        undefined,
+    };
+
+    if (!editing) {
+      payload.policyNumber =
+        form.policyNumber
+          .trim()
+          .toUpperCase();
+    }
 
     try {
-      const payload: MemberPortalProfileInput =
-        {
-          preferredLanguage:
-            memberForm.preferredLanguage,
+      const result =
+        await api<Member>(
+          editing
+            ? `${MEMBERS_API}/${editing._id}`
+            : MEMBERS_API,
+          {
+            method:
+              editing
+                ? 'PATCH'
+                : 'POST',
 
-          preferredContactChannel:
-            memberForm.preferredContactChannel,
-
-          marketingConsent:
-            memberForm.marketingConsent,
-
-          healthDataConsent:
-            memberForm.healthDataConsent,
-
-          emergencyContact: {
-            name: memberForm.emergencyName,
-            phone: memberForm.emergencyPhone,
-            relationship:
-              memberForm.emergencyRelationship,
+            body:
+              JSON.stringify(
+                payload,
+              ),
           },
-        };
+        );
 
-      await api(`${memberBase}/profile`, {
-        method: 'PUT',
-        body: JSON.stringify(payload),
+      const saved =
+        (result as any)?.member ||
+        result;
+
+      setFormOpen(false);
+      setEditing(null);
+      setForm({
+        ...emptyForm,
       });
 
       setSuccess(
-        'Member profile saved.',
+        editing
+          ? 'Member updated successfully.'
+          : 'Member created successfully.',
       );
 
-      await loadMember();
+      await loadMembers();
+
+      if (saved?._id) {
+        await openDetails(
+          saved,
+        );
+      }
     } catch (err: any) {
-      setError(
-        err.message || 'Save failed',
+      setFormError(
+        err?.message ||
+          'Unable to save member.',
       );
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   };
 
   /* =======================================================
-     SAVE PROVIDER
+     STATUS
      ======================================================= */
 
-  const saveProvider = async () => {
+  const updateStatus = async (
+    member: Member,
+    nextStatus: MemberStatus,
+    reason?: string,
+  ) => {
     setBusy(true);
-    setError('');
-    setSuccess('');
+    clearMessages();
 
     try {
-      const payload: ProviderPortalProfileInput =
+      const payload: Record<string, unknown> = { status: nextStatus };
+
+      if (nextStatus === 'SUSPENDED') {
+        const trimmedReason = reason?.trim() || '';
+        if (!trimmedReason) {
+          setError('A suspended reason is required.');
+          setBusy(false);
+          return;
+        }
+        payload.reason = trimmedReason;
+        payload.suspensionReason = trimmedReason;
+      }
+
+      const result = await api<Member>(
+        `${MEMBERS_API}/${member._id}/status`,
         {
-          notificationEmail:
-            providerForm.notificationEmail,
-
-          notificationPhone:
-            providerForm.notificationPhone,
-
-          preferredContactChannel:
-            providerForm.preferredContactChannel,
-
-          claimsNotificationEnabled:
-            providerForm.claimsNotificationEnabled,
-
-          paymentNotificationEnabled:
-            providerForm.paymentNotificationEnabled,
-        };
-
-      await api(`${providerBase}/profile`, {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-      });
-
-      setSuccess(
-        'Provider profile saved.',
-      );
-
-      await loadProvider();
-    } catch (err: any) {
-      setError(
-        err.message || 'Save failed',
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  /* =======================================================
-     ELIGIBILITY
-     ======================================================= */
-
-  const eligibility = async () => {
-    if (!search.trim()) return;
-
-    setBusy(true);
-    setError('');
-
-    try {
-      const result = await api(
-        `${providerBase}/members/${search.trim()}/eligibility`,
-      );
-
-      setElig(result);
-    } catch (err: any) {
-      setError(
-        err.message ||
-          'Eligibility check failed',
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  /* =======================================================
-     CREATE CLAIM
-     ======================================================= */
-
-  const createClaim = async () => {
-    setBusy(true);
-    setError('');
-    setSuccess('');
-
-    try {
-      await api(`${providerBase}/claims`, {
-        method: 'POST',
-        body: JSON.stringify({
-          memberId: claim.memberId,
-
-          claimNumber:
-            claim.claimNumber || undefined,
-
-          preAuthorizationId:
-            claim.preAuthorizationId ||
-            undefined,
-
-          diagnosis: claim.diagnosis,
-
-          icdCode: claim.icdCode,
-
-          treatmentDate:
-            claim.treatmentDate,
-
-          notes: claim.notes,
-
-          items: [
-            {
-              serviceCode:
-                claim.serviceCode,
-
-              serviceName:
-                claim.serviceName,
-
-              quantity: Number(
-                claim.quantity || 1,
-              ),
-
-              unitAmount: Number(
-                claim.unitAmount || 0,
-              ),
-
-              claimedAmount:
-                claim.claimedAmount
-                  ? Number(
-                      claim.claimedAmount,
-                    )
-                  : undefined,
-            },
-          ],
-        }),
-      });
-
-      setSuccess(
-        'Claim submitted.',
-      );
-
-      await loadProviderData(
-        'claims',
-      );
-    } catch (err: any) {
-      setError(
-        err.message ||
-          'Claim submission failed',
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  /* =======================================================
-     CREATE AUTHORIZATION
-     ======================================================= */
-
-  const createAuth = async () => {
-    setBusy(true);
-    setError('');
-    setSuccess('');
-
-    try {
-      await api(
-        `${providerBase}/authorizations`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            ...preauth,
-
-            diagnosisCodes:
-              preauth.diagnosisCodes
-                .split(',')
-                .map(
-                  (value) =>
-                    value.trim(),
-                )
-                .filter(Boolean),
-
-            requestedAmount:
-              Number(
-                preauth.requestedAmount ||
-                  0,
-              ),
-
-            benefitId:
-              preauth.benefitId ||
-              undefined,
-
-            referralProviderId:
-              preauth.referralProviderId ||
-              undefined,
-          }),
+          method: 'PATCH',
+          body: JSON.stringify(payload),
         },
       );
 
+      const updated = (result as any)?.member || result;
+
+      setSelected(updated || { ...member, status: nextStatus });
+      setSuspendOpen(false);
+      setSuspendReason('');
+      setSuccess(`Member status changed to ${human(nextStatus)}.`);
+
+      await loadMembers();
+
+      if (updated?._id) {
+        await openDetails(updated);
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Unable to update member status.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /* =======================================================
+     RENEWAL
+     ======================================================= */
+
+  const openRenew = () => {
+    if (!selected) return;
+
+    const currentEnd =
+      selected.endDate
+        ? new Date(
+            selected.endDate,
+          )
+        : new Date();
+
+    const next =
+      new Date(currentEnd);
+
+    if (next <= new Date()) {
+      next.setDate(
+        new Date().getDate() +
+          365,
+      );
+    } else {
+      next.setFullYear(
+        next.getFullYear() +
+          1,
+      );
+    }
+
+    setRenewEndDate(
+      next.toISOString().slice(0, 10),
+    );
+
+    setRenewReason('');
+    setRenewOpen(true);
+  };
+
+  const renewMember = async () => {
+    if (
+      !selected ||
+      !renewEndDate
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    clearMessages();
+
+    try {
+      const result =
+        await api<Member>(
+          `${MEMBERS_API}/${selected._id}/renew`,
+          {
+            method: 'POST',
+
+            body: JSON.stringify({
+              endDate:
+                renewEndDate,
+
+              reason:
+                renewReason.trim() ||
+                undefined,
+            }),
+          },
+        );
+
+      const updated =
+        (result as any)?.member ||
+        result;
+
+      setRenewOpen(false);
+
       setSuccess(
-        'Pre-authorization submitted.',
+        'Member renewed successfully.',
       );
 
-      await loadProviderData(
-        'authorizations',
-      );
+      await loadMembers();
+
+      if (updated?._id) {
+        await openDetails(
+          updated,
+        );
+      }
     } catch (err: any) {
       setError(
-        err.message ||
-          'Authorization submission failed',
+        err?.message ||
+          'Unable to renew member.',
       );
     } finally {
       setBusy(false);
@@ -1081,97 +2542,48 @@ export default function MemberProviderPortalPage() {
   };
 
   /* =======================================================
-     TABS
+     COUNTS
      ======================================================= */
 
-  const tabs =
-    role === 'member'
-      ? [
-          [
-            'overview',
-            'Overview',
-            Activity,
-          ],
-          [
-            'profile',
-            'Profile',
-            UserRound,
-          ],
-          [
-            'benefits',
-            'Benefits',
-            HeartPulse,
-          ],
-          [
-            'providers',
-            'Providers',
-            MapPin,
-          ],
-          [
-            'claims',
-            'Claims',
-            FileText,
-          ],
-          [
-            'authorizations',
-            'Authorizations',
-            ShieldCheck,
-          ],
-          [
-            'invoices',
-            'Invoices',
-            CreditCard,
-          ],
-          [
-            'utilization',
-            'Utilization',
-            Activity,
-          ],
-          [
-            'notifications',
-            'Notifications',
-            Bell,
-          ],
-        ]
-      : [
-          [
-            'overview',
-            'Overview',
-            Activity,
-          ],
-          [
-            'profile',
-            'Profile',
-            UserRound,
-          ],
-          [
-            'members',
-            'Members',
-            Users,
-          ],
-          [
-            'claims',
-            'Claims',
-            FileText,
-          ],
-          [
-            'authorizations',
-            'Authorizations',
-            ShieldCheck,
-          ],
-          [
-            'settlements',
-            'Settlements',
-            WalletCards,
-          ],
-        ];
+  const activeCount =
+    useMemo(
+      () =>
+        members.filter(
+          (member) =>
+            member.status ===
+            'ACTIVE',
+        ).length,
+      [members],
+    );
+
+  const pendingCount =
+    useMemo(
+      () =>
+        members.filter(
+          (member) =>
+            member.status ===
+            'PENDING',
+        ).length,
+      [members],
+    );
+
+  const dependentCount =
+    useMemo(
+      () =>
+        members.filter(
+          (member) =>
+            member.relationship !==
+            'PRIMARY',
+        ).length,
+      [members],
+    );
 
   /* =======================================================
      RENDER
      ======================================================= */
 
   return (
-    <div className="min-h-full space-y-6 bg-slate-50/50 p-1 text-slate-800">
+    <div className="min-h-full space-y-5 bg-slate-50/50 p-1 text-slate-800">
       {(error || success) && (
         <div
           className={`flex items-center gap-3 rounded-2xl border p-4 text-xs ${
@@ -1192,24 +2604,21 @@ export default function MemberProviderPortalPage() {
 
           <button
             className="ml-auto"
-            onClick={() => {
-              setError('');
-              setSuccess('');
-            }}
+            onClick={clearMessages}
           >
             <X className="h-4 w-4" />
           </button>
         </div>
       )}
 
+      {/* HEADER */}
+
       <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-black">
-                {role === 'member'
-                  ? 'Member Portal'
-                  : 'Provider Portal'}
+                Members
               </h1>
 
               <span className="rounded-full bg-[#e8f5f3] px-2.5 py-1 text-[9px] font-extrabold text-[#1b7b68]">
@@ -1217,49 +2626,20 @@ export default function MemberProviderPortalPage() {
               </span>
             </div>
 
-            <p className="mt-1 text-xs text-slate-400">
-              {role === 'member'
-                ? 'Coverage, benefits, providers, claims and utilization.'
-                : 'Eligibility, claims, authorizations and settlements.'}
+            <p className="mt-1 max-w-2xl text-xs text-slate-400">
+              Manage canonical HMSMember identities created
+              through enrolment, then add and manage
+              dependants from each primary member profile.
             </p>
           </div>
 
           <div className="flex gap-2">
             <button
-              className={
-                role === 'member'
-                  ? primary
-                  : secondary
-              }
-              onClick={() =>
-                setRole('member')
-              }
-            >
-              <UserRound className="h-3.5 w-3.5" />
-              Member
-            </button>
-
-            <button
-              className={
-                role === 'provider'
-                  ? primary
-                  : secondary
-              }
-              onClick={() =>
-                setRole('provider')
-              }
-            >
-              <Users className="h-3.5 w-3.5" />
-              Provider
-            </button>
-
-            <button
               className={secondary}
               onClick={() =>
-                role === 'member'
-                  ? loadMember()
-                  : loadProvider()
+                void loadMembers()
               }
+              disabled={loading}
             >
               <RefreshCw
                 className={`h-3.5 w-3.5 ${
@@ -1270,1554 +2650,607 @@ export default function MemberProviderPortalPage() {
               />
               Refresh
             </button>
+
           </div>
-        </div>
-
-        <div className="mt-6 grid gap-3 md:grid-cols-3">
-          <Field label="HMO ID">
-            <input
-              className={input}
-              value={hmoId}
-              onChange={(event) =>
-                setHmoId(event.target.value)
-              }
-              placeholder="MongoDB HMO ID"
-            />
-          </Field>
-
-          <Field
-            label={
-              role === 'member'
-                ? 'Member ID'
-                : 'Provider ID'
-            }
-          >
-            <input
-              className={input}
-              value={
-                role === 'member'
-                  ? memberId
-                  : providerId
-              }
-              onChange={(event) => {
-                if (role === 'member') {
-                  setMemberId(
-                    event.target.value,
-                  );
-                } else {
-                  setProviderId(
-                    event.target.value,
-                  );
-                }
-              }}
-              placeholder="MongoDB ID"
-            />
-          </Field>
-
-          <button
-            className={`${primary} h-10.5 w-full self-end`}
-            disabled={
-              loading ||
-              !hmoId ||
-              (role === 'member'
-                ? !memberId
-                : !providerId)
-            }
-            onClick={() =>
-              role === 'member'
-                ? loadMember()
-                : loadProvider()
-            }
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <ChevronRight className="h-4 w-4" />
-            )}
-            Load portal
-          </button>
         </div>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto rounded-3xl border border-slate-100 bg-white p-2 shadow-sm">
-        {tabs.map(
-          ([id, label, Icon]: any) => (
-            <button
-              key={id}
-              className={`inline-flex shrink-0 items-center gap-2 rounded-2xl px-3.5 py-2.5 text-[10px] font-extrabold ${
-                tab === id
-                  ? 'bg-[#1b7b68] text-white'
-                  : 'text-slate-500 hover:bg-slate-50'
-              }`}
-              onClick={() =>
-                setTab(id)
-              }
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-            </button>
-          ),
-        )}
+      {/* STATS */}
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
+          <Activity className="h-5 w-5 text-[#1b7b68]" />
+
+          <div className="mt-4 text-2xl font-black">
+            {total}
+          </div>
+
+          <div className="mt-1 text-[10px] font-extrabold uppercase text-slate-500">
+            Total members
+          </div>
+
+          <div className="mt-1 text-[10px] text-slate-400">
+            Current filtered registry total
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
+          <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+
+          <div className="mt-4 text-2xl font-black">
+            {activeCount}
+          </div>
+
+          <div className="mt-1 text-[10px] font-extrabold uppercase text-slate-500">
+            Active on page
+          </div>
+
+          <div className="mt-1 text-[10px] text-slate-400">
+            Active coverage records
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
+          <Clock3 className="h-5 w-5 text-amber-600" />
+
+          <div className="mt-4 text-2xl font-black">
+            {pendingCount}
+          </div>
+
+          <div className="mt-1 text-[10px] font-extrabold uppercase text-slate-500">
+            Pending on page
+          </div>
+
+          <div className="mt-1 text-[10px] text-slate-400">
+            Awaiting activation
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
+          <Users className="h-5 w-5 text-sky-600" />
+
+          <div className="mt-4 text-2xl font-black">
+            {dependentCount}
+          </div>
+
+          <div className="mt-1 text-[10px] font-extrabold uppercase text-slate-500">
+            Dependants on page
+          </div>
+
+          <div className="mt-1 text-[10px] text-slate-400">
+            Spouse, child or dependent
+          </div>
+        </div>
       </div>
 
-      {role === 'member' ? (
-        <MemberView
-          tab={tab}
-          dash={dash}
-          profile={profile}
-          benefits={benefits}
-          providers={providers}
-          records={records}
-          notifs={notifs}
-          memberForm={memberForm}
-          setMemberForm={setMemberForm}
-          saveMember={saveMember}
-          busy={busy}
-          search={search}
-          setSearch={setSearch}
-        />
-      ) : (
-        <ProviderView
-          tab={tab}
-          dash={dash}
-          profile={profile}
-          providerForm={providerForm}
-          setProviderForm={
-            setProviderForm
-          }
-          saveProvider={saveProvider}
-          busy={busy}
-          members={members}
-          claims={claims}
-          auths={auths}
-          settlements={settlements}
-          search={search}
-          setSearch={setSearch}
-          elig={elig}
-          eligibility={eligibility}
-          claim={claim}
-          setClaim={setClaim}
-          createClaim={createClaim}
-          preauth={preauth}
-          setPreauth={setPreauth}
-          createAuth={createAuth}
-        />
-      )}
-    </div>
-  );
-}
+      {/* MEMBER REGISTRY */}
 
-/* =========================================================
-   MEMBER VIEW
-   ========================================================= */
+      <Card
+        title="Member registry"
+        sub="Search and filter members through the current /members API."
+        icon={Users}
+      >
+        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 xl:flex-row">
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-3 top-3 h-3.5 w-3.5 text-slate-400" />
 
-function MemberView({
-  tab,
-  dash,
-  profile,
-  benefits,
-  providers,
-  records,
-  notifs,
-  memberForm,
-  setMemberForm,
-  saveMember,
-  busy,
-  search,
-  setSearch,
-}: any) {
-  const name =
-    dash?.member?.name ||
-    profile?.member?.name ||
-    'Member';
-
-  return (
-    <>
-      {tab === 'overview' && (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Kpi
-              label="Claims"
-              value={
-                dash?.metrics?.claimCount ||
-                0
+            <input
+              className={`${input} pl-9`}
+              value={search}
+              onChange={(e) =>
+                setSearch(e.target.value)
               }
-              detail="All member claims"
-              icon={FileText}
-            />
-
-            <Kpi
-              label="Pending claims"
-              value={
-                dash?.metrics
-                  ?.pendingClaims || 0
-              }
-              detail="Awaiting processing"
-              icon={Clock3}
-              tone="amber"
-            />
-
-            <Kpi
-              label="Authorizations"
-              value={
-                dash?.metrics
-                  ?.preAuthCount || 0
-              }
-              detail="Requests"
-              icon={ShieldCheck}
-              tone="blue"
-            />
-
-            <Kpi
-              label="Utilization"
-              value={
-                dash?.metrics
-                  ?.utilizationCount || 0
-              }
-              detail="Events"
-              icon={Activity}
-              tone="green"
+              placeholder="Search policy, name, email or phone"
             />
           </div>
 
-          <Card
-            title={name}
-            sub="Coverage summary"
-            icon={UserRound}
-          >
-            <div className="grid gap-5 p-5 md:grid-cols-4">
-              <Info
-                label="Policy"
-                value={
-                  dash?.member
-                    ?.policyNumber
-                }
-              />
-
-              <Info
-                label="Status"
-                value={
-                  <Badge
-                    v={
-                      dash?.member
-                        ?.status
-                    }
-                  />
-                }
-              />
-
-              <Info
-                label="Plan"
-                value={sid(
-                  dash?.member?.planId,
-                )}
-              />
-
-              <Info
-                label="Coverage"
-                value={`${dt(
-                  dash?.member
-                    ?.effectiveFrom,
-                )} — ${dt(
-                  dash?.member
-                    ?.effectiveTo,
-                )}`}
-              />
-            </div>
-          </Card>
-        </>
-      )}
-
-      {tab === 'profile' && (
-        <Card
-          title="Member profile"
-          sub="Preferences and emergency contact"
-          icon={UserRound}
-          action={
-            <button
-              className={primary}
-              onClick={saveMember}
-              disabled={busy}
+          <div className="flex flex-wrap gap-2">
+            <select
+              className={input}
+              value={status}
+              onChange={(e) =>
+                setStatus(
+                  e.target.value as
+                    | 'ALL'
+                    | MemberStatus,
+                )
+              }
             >
-              {busy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <CheckCircle2 className="h-4 w-4" />
-              )}
-              Save
-            </button>
-          }
-        >
-          <div className="grid gap-5 p-5 md:grid-cols-2">
-            <Field label="Language">
-              <input
-                className={input}
-                value={
-                  memberForm.preferredLanguage
-                }
-                onChange={(event) =>
-                  setMemberForm({
-                    ...memberForm,
-                    preferredLanguage:
-                      event.target.value,
-                  })
-                }
-              />
-            </Field>
+              <option value="ALL">
+                All statuses
+              </option>
+              <option value="ACTIVE">
+                Active
+              </option>
+              <option value="PENDING">
+                Pending
+              </option>
+              <option value="SUSPENDED">
+                Suspended
+              </option>
+              <option value="TERMINATED">
+                Terminated
+              </option>
+            </select>
 
-            <Field label="Contact channel">
-              <select
-                className={input}
-                value={
-                  memberForm.preferredContactChannel
-                }
-                onChange={(event) =>
-                  setMemberForm({
-                    ...memberForm,
-                    preferredContactChannel:
-                      event.target.value,
-                  })
-                }
-              >
-                {[
-                  'EMAIL',
-                  'SMS',
-                  'PHONE',
-                  'PUSH',
-                ].map((value) => (
-                  <option
-                    key={value}
-                    value={value}
-                  >
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Toggle
-              label="Marketing consent"
-              value={
-                memberForm.marketingConsent
+            <select
+              className={input}
+              value={relationship}
+              onChange={(e) =>
+                setRelationship(
+                  e.target.value as
+                    | 'ALL'
+                    | Relationship,
+                )
               }
-              onChange={(value) =>
-                setMemberForm({
-                  ...memberForm,
-                  marketingConsent: value,
-                })
-              }
-            />
-
-            <Toggle
-              label="Health-data consent"
-              value={
-                memberForm.healthDataConsent
-              }
-              onChange={(value) =>
-                setMemberForm({
-                  ...memberForm,
-                  healthDataConsent: value,
-                })
-              }
-            />
-
-            <Field label="Emergency name">
-              <input
-                className={input}
-                value={
-                  memberForm.emergencyName
-                }
-                onChange={(event) =>
-                  setMemberForm({
-                    ...memberForm,
-                    emergencyName:
-                      event.target.value,
-                  })
-                }
-              />
-            </Field>
-
-            <Field label="Emergency phone">
-              <input
-                className={input}
-                value={
-                  memberForm.emergencyPhone
-                }
-                onChange={(event) =>
-                  setMemberForm({
-                    ...memberForm,
-                    emergencyPhone:
-                      event.target.value,
-                  })
-                }
-              />
-            </Field>
-
-            <Field label="Relationship">
-              <input
-                className={input}
-                value={
-                  memberForm.emergencyRelationship
-                }
-                onChange={(event) =>
-                  setMemberForm({
-                    ...memberForm,
-                    emergencyRelationship:
-                      event.target.value,
-                  })
-                }
-              />
-            </Field>
+            >
+              <option value="ALL">
+                All relationships
+              </option>
+              <option value="PRIMARY">
+                Primary
+              </option>
+              <option value="SPOUSE">
+                Spouse
+              </option>
+              <option value="CHILD">
+                Child
+              </option>
+              <option value="DEPENDENT">
+                Dependent
+              </option>
+            </select>
           </div>
-        </Card>
-      )}
+        </div>
 
-      {tab === 'benefits' && (
-        <Card
-          title="Benefits & plan"
-          sub="Current plan and benefits"
-          icon={HeartPulse}
-        >
-          <div className="p-5">
-            <div className="rounded-3xl bg-[#e8f5f3]/60 p-5">
-              <div className="text-[9px] font-extrabold uppercase text-[#1b7b68]">
-                Plan
-              </div>
-
-              <div className="mt-1 text-lg font-black">
-                {benefits?.plan?.name ||
-                  benefits?.plan?.code ||
-                  'No plan found'}
-              </div>
-            </div>
-
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
-              {(benefits?.benefits ||
-                []).map(
-                (benefit: any) => (
-                  <div
-                    key={String(
-                      benefit._id,
-                    )}
-                    className="rounded-2xl border border-slate-100 p-4"
-                  >
-                    <div className="flex justify-between gap-3">
-                      <div>
-                        <div className="text-xs font-black">
-                          {benefit.name ||
-                            benefit.code ||
-                            'Benefit'}
-                        </div>
-
-                        <div className="text-[10px] text-slate-400">
-                          {benefit.category ||
-                            'General'}
-                        </div>
-                      </div>
-
-                      <Badge
-                        v={
-                          benefit.status ||
-                          'ACTIVE'
-                        }
-                      />
-                    </div>
-                  </div>
-                ),
-              )}
-            </div>
+        {loading ? (
+          <div className="flex items-center justify-center p-16 text-xs text-slate-400">
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Loading members…
           </div>
-        </Card>
-      )}
-
-      {tab === 'providers' && (
-        <Card
-          title="Network providers"
-          sub="HMO provider directory"
-          icon={MapPin}
-        >
-          <div className="p-4">
-            <div className="relative max-w-xl">
-              <Search className="absolute left-3 top-3 h-3.5 w-3.5 text-slate-400" />
-
-              <input
-                className={`${input} pl-9`}
-                value={search}
-                onChange={(event) =>
-                  setSearch(
-                    event.target.value,
-                  )
-                }
-                placeholder="Search provider, specialty or city"
-              />
-            </div>
-          </div>
-
+        ) : members.length ? (
           <Table
             heads={[
-              'Provider',
-              'Type',
-              'Specialty',
-              'Location',
+              'Member',
+              'Policy',
+              'Plan',
+              'Relationship',
+              'Coverage',
               'Status',
+              'Actions',
             ]}
-            rows={providers
-              .filter(
-                (provider: any) =>
-                  [
-                    provider.name,
-                    provider.code,
-                    provider.providerType,
-                    provider.specialty,
-                    provider.city,
-                  ]
-                    .join(' ')
-                    .toLowerCase()
-                    .includes(
-                      search.toLowerCase(),
-                    ),
-              )
-              .map((provider: any) => [
-                <div key="name">
-                  <div className="font-black">
-                    {provider.name ||
-                      'Provider'}
+            rows={members.map(
+              (member) => [
+                <button
+                  key="member"
+                  className="text-left"
+                  onClick={() =>
+                    void openDetails(
+                      member,
+                    )
+                  }
+                >
+                  <div className="font-black text-slate-800 hover:text-[#1b7b68]">
+                    {fullName(member)}
                   </div>
 
-                  <div className="font-mono text-[9px] text-slate-400">
-                    {sid(
-                      provider._id,
+                  <div className="mt-0.5 text-[9px] text-slate-400">
+                    {member.email}
+                  </div>
+                </button>,
+
+                <div key="policy">
+                  <div className="font-black">
+                    {member.policyNumber}
+                  </div>
+
+                  <div className="text-[9px] text-slate-400">
+                    {member.phone}
+                  </div>
+                </div>,
+
+                <span
+                  key="plan"
+                  className="text-[10px]"
+                >
+                  {optionName(
+                    member.healthPlanId,
+                    healthPlans,
+                  )}
+                </span>,
+
+                human(
+                  member.relationship,
+                ),
+
+                <div key="coverage">
+                  <div>
+                    {dateOnly(
+                      member.startDate,
+                    )}
+                  </div>
+
+                  <div className="text-[9px] text-slate-400">
+                    to{' '}
+                    {dateOnly(
+                      member.endDate,
                     )}
                   </div>
                 </div>,
 
-                provider.providerType ||
-                  '—',
-
-                provider.specialty ||
-                  '—',
-
-                [
-                  provider.city,
-                  provider.state,
-                ]
-                  .filter(Boolean)
-                  .join(', ') ||
-                  provider.address ||
-                  '—',
-
-                <Badge
+                <StatusBadge
                   key="status"
-                  v={
-                    provider.status ||
-                    provider.accreditationStatus ||
-                    'ACTIVE'
-                  }
-                />,
-              ])}
-          />
-        </Card>
-      )}
-
-      {[
-        'claims',
-        'authorizations',
-        'invoices',
-        'utilization',
-      ].includes(tab) && (
-        <Card
-          title={human(tab)}
-          sub="Live member records"
-          icon={
-            tab === 'utilization'
-              ? Activity
-              : FileText
-          }
-        >
-          <Table
-            heads={[
-              'Reference',
-              'Status',
-              'Description',
-              'Date',
-              'Amount',
-            ]}
-            rows={records.map(
-              (record: any) => [
-                sid(
-                  record._id ||
-                    record.claimNumber ||
-                    record.authorizationNumber ||
-                    record.invoiceNumber,
-                ),
-
-                <Badge
-                  key="status"
-                  v={record.status}
+                  value={member.status}
                 />,
 
-                record.serviceName ||
-                  record.description ||
-                  record.serviceCode ||
-                  record.category ||
-                  '—',
+                <div
+                  key="actions"
+                  className="flex gap-1.5"
+                >
+                  <button
+                    title="View"
+                    className="rounded-xl border border-slate-200 p-2 hover:bg-slate-50"
+                    onClick={() =>
+                      void openDetails(
+                        member,
+                      )
+                    }
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                  </button>
 
-                dt(
-                  record.createdAt ||
-                    record.serviceDate ||
-                    record.treatmentDate ||
-                    record.requestedDate,
-                ),
-
-                money(
-                  record.totalClaimedAmount ??
-                    record.requestedAmount ??
-                    record.totalAmount ??
-                    record.amount,
-                ),
+                  <button
+                    title="Edit"
+                    className="rounded-xl border border-slate-200 p-2 hover:bg-slate-50"
+                    onClick={() =>
+                      openEdit(member)
+                    }
+                  >
+                    <Edit3 className="h-3.5 w-3.5" />
+                  </button>
+                </div>,
               ],
             )}
           />
+        ) : (
+          <EmptyState message="No members match the current filters." />
+        )}
 
-          {!records.length && (
-            <div className="p-10 text-center text-xs text-slate-400">
-              No records found.
-            </div>
-          )}
-        </Card>
-      )}
-
-      {tab === 'notifications' && (
-        <Card
-          title="Notifications"
-          sub="Member messages"
-          icon={Bell}
-        >
-          <div className="divide-y divide-slate-100">
-            {notifs.map(
-              (notification: any) => (
-                <div
-                  key={String(
-                    notification._id,
-                  )}
-                  className="p-5"
-                >
-                  <div className="text-sm font-black">
-                    {notification.title}
-                  </div>
-
-                  <div className="mt-1 text-xs text-slate-500">
-                    {notification.message}
-                  </div>
-
-                  <div className="mt-2 text-[9px] text-slate-400">
-                    {dt(
-                      notification.createdAt,
-                    )}
-                  </div>
-                </div>
-              ),
-            )}
-
-            {!notifs.length && (
-              <div className="p-10 text-center text-xs text-slate-400">
-                No notifications.
-              </div>
-            )}
-          </div>
-        </Card>
-      )}
-    </>
-  );
-}
-
-/* =========================================================
-   PROVIDER VIEW
-   ========================================================= */
-
-function ProviderView({
-  tab,
-  dash,
-  profile,
-  providerForm,
-  setProviderForm,
-  saveProvider,
-  busy,
-  members,
-  claims,
-  auths,
-  settlements,
-  search,
-  setSearch,
-  elig,
-  eligibility,
-  claim,
-  setClaim,
-  createClaim,
-  preauth,
-  setPreauth,
-  createAuth,
-}: any) {
-  return (
-    <>
-      {tab === 'overview' && (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Kpi
-              label="Claims"
-              value={
-                dash?.metrics?.claimCount ||
-                0
-              }
-              detail="Provider claims"
-              icon={FileText}
-            />
-
-            <Kpi
-              label="Pending"
-              value={
-                dash?.metrics
-                  ?.pendingClaims || 0
-              }
-              detail="Awaiting action"
-              icon={Clock3}
-              tone="amber"
-            />
-
-            <Kpi
-              label="Authorizations"
-              value={
-                dash?.metrics
-                  ?.preAuthCount || 0
-              }
-              detail="Requests"
-              icon={ShieldCheck}
-              tone="blue"
-            />
-
-            <Kpi
-              label="Settlements"
-              value={money(
-                dash?.metrics
-                  ?.settlementTotal,
-              )}
-              detail="Settlement value"
-              icon={WalletCards}
-              tone="green"
-            />
+        <div className="flex flex-col gap-3 border-t border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-[10px] text-slate-400">
+            Page {page} of {pages} · {total}{' '}
+            total members
           </div>
 
-          <Card
-            title={
-              dash?.provider?.name ||
-              profile?.provider?.name ||
-              'Provider'
-            }
-            sub="Provider summary"
-            icon={UserRound}
-          >
-            <div className="grid gap-5 p-5 md:grid-cols-4">
-              <Info
-                label="Code"
-                value={
-                  dash?.provider?.code
-                }
-              />
-
-              <Info
-                label="Type"
-                value={
-                  dash?.provider
-                    ?.providerType
-                }
-              />
-
-              <Info
-                label="Status"
-                value={
-                  <Badge
-                    v={
-                      dash?.provider
-                        ?.status
-                    }
-                  />
-                }
-              />
-
-              <Info
-                label="Provider ID"
-                value={sid(
-                  dash?.provider?.id,
-                )}
-              />
-            </div>
-          </Card>
-        </>
-      )}
-
-      {tab === 'profile' && (
-        <Card
-          title="Provider profile"
-          sub="Notification preferences"
-          icon={UserRound}
-          action={
+          <div className="flex gap-2">
             <button
-              className={primary}
-              onClick={saveProvider}
-              disabled={busy}
+              className={secondary}
+              disabled={
+                page <= 1 ||
+                loading
+              }
+              onClick={() =>
+                setPage((value) =>
+                  Math.max(
+                    1,
+                    value - 1,
+                  ),
+                )
+              }
             >
-              {busy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <CheckCircle2 className="h-4 w-4" />
-              )}
-              Save
+              <ChevronLeft className="h-3.5 w-3.5" />
+              Previous
             </button>
-          }
-        >
-          <div className="grid gap-5 p-5 md:grid-cols-2">
-            <Field label="Email">
-              <input
-                className={input}
-                value={
-                  providerForm.notificationEmail
-                }
-                onChange={(event) =>
-                  setProviderForm({
-                    ...providerForm,
-                    notificationEmail:
-                      event.target.value,
-                  })
-                }
-              />
-            </Field>
 
-            <Field label="Phone">
-              <input
-                className={input}
-                value={
-                  providerForm.notificationPhone
-                }
-                onChange={(event) =>
-                  setProviderForm({
-                    ...providerForm,
-                    notificationPhone:
-                      event.target.value,
-                  })
-                }
-              />
-            </Field>
-
-            <Field label="Contact channel">
-              <select
-                className={input}
-                value={
-                  providerForm.preferredContactChannel
-                }
-                onChange={(event) =>
-                  setProviderForm({
-                    ...providerForm,
-                    preferredContactChannel:
-                      event.target.value,
-                  })
-                }
-              >
-                {[
-                  'EMAIL',
-                  'SMS',
-                  'PHONE',
-                  'PUSH',
-                ].map((value) => (
-                  <option
-                    key={value}
-                    value={value}
-                  >
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <div className="space-y-3">
-              <Toggle
-                label="Claims notifications"
-                value={
-                  providerForm.claimsNotificationEnabled
-                }
-                onChange={(value) =>
-                  setProviderForm({
-                    ...providerForm,
-                    claimsNotificationEnabled:
-                      value,
-                  })
-                }
-              />
-
-              <Toggle
-                label="Payment notifications"
-                value={
-                  providerForm.paymentNotificationEnabled
-                }
-                onChange={(value) =>
-                  setProviderForm({
-                    ...providerForm,
-                    paymentNotificationEnabled:
-                      value,
-                  })
-                }
-              />
-            </div>
+            <button
+              className={secondary}
+              disabled={
+                page >= pages ||
+                loading
+              }
+              onClick={() =>
+                setPage((value) =>
+                  Math.min(
+                    pages,
+                    value + 1,
+                  ),
+                )
+              }
+            >
+              Next
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
           </div>
-        </Card>
+        </div>
+      </Card>
+
+      {/* CAPABILITIES */}
+
+      <Card
+        title="Backend-aligned capabilities"
+        sub="Actions exposed by the rebuilt member compatibility API."
+        icon={ShieldCheck}
+      >
+        <div className="grid gap-3 p-5 md:grid-cols-2 lg:grid-cols-4">
+          {(
+            [
+              [
+                'Eligibility',
+                'Live eligibility check for a member.',
+                BadgeCheck,
+              ],
+              [
+                'Digital card',
+                'Retrieve the HMO card issued by the registry.',
+                CreditCard,
+              ],
+              [
+                'Dependants',
+                'View dependants attached to a primary member.',
+                Users,
+              ],
+              [
+                'Lifecycle',
+                'Review auditable member history.',
+                History,
+              ],
+              [
+                'Renewal',
+                'Extend coverage through the renewal endpoint.',
+                CalendarDays,
+              ],
+              [
+                'Status',
+                'Activate, suspend or terminate coverage.',
+                Activity,
+              ],
+              [
+                'Profile',
+                'Edit canonical member demographics and coverage.',
+                UserRound,
+              ],
+              [
+                'Audit identity',
+                'All requests use the authenticated HMO context.',
+                ShieldCheck,
+              ],
+            ] as Array<
+              [
+                string,
+                string,
+                React.ElementType,
+              ]
+            >
+          ).map(
+            ([
+              title,
+              description,
+              Icon,
+            ]) => (
+              <div
+                key={title}
+                className="rounded-2xl border border-slate-100 p-4"
+              >
+                <Icon className="h-4 w-4 text-[#1b7b68]" />
+
+                <div className="mt-3 text-xs font-black">
+                  {title}
+                </div>
+
+                <div className="mt-1 text-[10px] leading-5 text-slate-400">
+                  {description}
+                </div>
+              </div>
+            ),
+          )}
+        </div>
+      </Card>
+
+      {/* MEMBER FORM */}
+
+      {formOpen && (
+        <MemberFormModal
+          open={formOpen}
+          editing={editing}
+          form={form}
+          setForm={setForm}
+          saving={saving}
+          error={formError}
+          onClose={() => {
+            if (!saving) {
+              setFormOpen(false);
+            }
+          }}
+          onSave={() =>
+            void saveMember()
+          }
+          healthPlans={healthPlans}
+          providers={providers}
+          parentMember={
+            form.primaryMemberId
+              ? primaryMembers.find(
+                  (member) => member._id === form.primaryMemberId,
+                ) || selected || null
+              : null
+          }
+        />
       )}
 
-      {tab === 'members' && (
-        <>
-          <Card
-            title="Provider member search"
-            sub="Find members and verify eligibility"
-            icon={Users}
-          >
-            <div className="flex gap-2 p-4">
+      {/* MEMBER DETAILS */}
+
+      {detailOpen && selected && (
+        <MemberDetailsModal
+          member={selected}
+          loading={
+            detailLoading || busy
+          }
+          eligibility={
+            eligibility
+          }
+          dependents={
+            dependents
+          }
+          history={history}
+          card={card}
+          onClose={() =>
+            setDetailOpen(false)
+          }
+          onEdit={() => {
+            setDetailOpen(false);
+            openEdit(selected);
+          }}
+          onStatus={(nextStatus) => {
+            if (nextStatus === 'SUSPENDED') {
+              setSuspendReason('');
+              setSuspendOpen(true);
+              return;
+            }
+            void updateStatus(selected, nextStatus);
+          }}
+          onRenew={openRenew}
+          onAddDependent={
+            openAddDependent
+          }
+          healthPlans={
+            healthPlans
+          }
+          primaryMembers={
+            primaryMembers
+          }
+        />
+      )}
+
+      {/* SUSPENSION */}
+
+      {suspendOpen && selected && (
+        <Modal
+          title="Suspend member"
+          sub={`${selected.policyNumber} · ${fullName(selected)}`}
+          onClose={() => {
+            if (!busy) setSuspendOpen(false);
+          }}
+        >
+          <div className="space-y-5 p-5">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">
+              A suspension reason is required before this member can be suspended.
+            </div>
+
+            <Field label="Suspension reason" required>
+              <textarea
+                className={input}
+                rows={5}
+                value={suspendReason}
+                onChange={(e) => setSuspendReason(e.target.value)}
+                placeholder="Enter the reason for suspending this member..."
+                autoFocus
+              />
+            </Field>
+
+            <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+              <button className={secondary} onClick={() => setSuspendOpen(false)} disabled={busy}>
+                Cancel
+              </button>
+              <button
+                className={danger}
+                onClick={() => void updateStatus(selected, 'SUSPENDED', suspendReason)}
+                disabled={busy || !suspendReason.trim()}
+              >
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                Suspend member
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* RENEWAL */}
+
+      {renewOpen && selected && (
+        <Modal
+          title="Renew member"
+          sub={`${selected.policyNumber} · ${fullName(
+            selected,
+          )}`}
+          onClose={() => {
+            if (!busy) {
+              setRenewOpen(false);
+            }
+          }}
+        >
+          <div className="space-y-5 p-5">
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-xs text-slate-600">
+              Renewal is sent to{' '}
+              <span className="font-black">
+                POST /members/:id/renew
+              </span>{' '}
+              and requires an end date. The
+              backend remains responsible for
+              lifecycle and card behavior.
+            </div>
+
+            <Field
+              label="New end date"
+              required
+            >
               <input
                 className={input}
-                value={search}
-                onChange={(event) =>
-                  setSearch(
-                    event.target.value,
+                type="date"
+                value={renewEndDate}
+                onChange={(e) =>
+                  setRenewEndDate(
+                    e.target.value,
                   )
                 }
-                placeholder="Member ID, name, policy, email or phone"
               />
+            </Field>
+
+            <Field label="Reason">
+              <textarea
+                className={input}
+                rows={4}
+                value={renewReason}
+                onChange={(e) =>
+                  setRenewReason(
+                    e.target.value,
+                  )
+                }
+                placeholder="Optional renewal reason"
+              />
+            </Field>
+
+            <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+              <button
+                className={secondary}
+                onClick={() =>
+                  setRenewOpen(false)
+                }
+                disabled={busy}
+              >
+                Cancel
+              </button>
 
               <button
                 className={primary}
-                onClick={eligibility}
+                onClick={() =>
+                  void renewMember()
+                }
                 disabled={
-                  !search.trim() || busy
+                  busy ||
+                  !renewEndDate
                 }
               >
                 {busy ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <Search className="h-3.5 w-3.5" />
+                  <RefreshCw className="h-4 w-4" />
                 )}
-                Check ID
+
+                Renew coverage
               </button>
             </div>
-
-            <Table
-              heads={[
-                'Member',
-                'Policy',
-                'Status',
-                'Contact',
-              ]}
-              rows={members.map(
-                (member: any) => [
-                  <div key="name">
-                    <div className="font-black">
-                      {member.name ||
-                        [
-                          member.firstName,
-                          member.lastName,
-                        ]
-                          .filter(Boolean)
-                          .join(' ') ||
-                        'Member'}
-                    </div>
-
-                    <div className="font-mono text-[9px] text-slate-400">
-                      {sid(member._id)}
-                    </div>
-                  </div>,
-
-                  member.policyNumber ||
-                    member.membershipNumber ||
-                    member.memberNumber ||
-                    '—',
-
-                  <Badge
-                    key="status"
-                    v={member.status}
-                  />,
-
-                  [
-                    member.phone,
-                    member.email,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ') || '—',
-                ],
-              )}
-            />
-
-            {!members.length && (
-              <div className="p-10 text-center text-xs text-slate-400">
-                No members loaded. Search from the backend to populate this list.
-              </div>
-            )}
-          </Card>
-
-          {elig && (
-            <Card
-              title="Eligibility result"
-              sub="Current HMO coverage check"
-              icon={ShieldCheck}
-            >
-              <div
-                className={`m-5 rounded-2xl border p-4 ${
-                  elig.eligible
-                    ? 'border-emerald-200 bg-emerald-50'
-                    : 'border-rose-200 bg-rose-50'
-                }`}
-              >
-                <div className="font-black">
-                  {elig.eligible
-                    ? 'Eligible'
-                    : 'Not eligible'}
-                </div>
-
-                <div className="mt-1 text-xs text-slate-500">
-                  {elig.reason}
-                </div>
-              </div>
-            </Card>
-          )}
-        </>
+          </div>
+        </Modal>
       )}
-
-      {tab === 'claims' && (
-        <>
-          <Card
-            title="Provider claims"
-            sub="Submitted claims"
-            icon={FileText}
-          >
-            <Table
-              heads={[
-                'Claim',
-                'Member',
-                'Status',
-                'Date',
-                'Amount',
-              ]}
-              rows={claims.map(
-                (item: any) => [
-                  item.claimNumber ||
-                    sid(item._id),
-
-                  sid(item.memberId),
-
-                  <Badge
-                    key="status"
-                    v={item.status}
-                  />,
-
-                  dt(
-                    item.treatmentDate,
-                  ),
-
-                  money(
-                    item.totalClaimedAmount,
-                  ),
-                ],
-              )}
-            />
-
-            {!claims.length && (
-              <div className="p-10 text-center text-xs text-slate-400">
-                No claims found.
-              </div>
-            )}
-          </Card>
-
-          <Card
-            title="Submit claim"
-            sub="CreateProviderClaimInput"
-            icon={Send}
-          >
-            <div className="grid gap-4 p-5 md:grid-cols-2">
-              <Field label="Member ID">
-                <input
-                  className={input}
-                  value={claim.memberId}
-                  onChange={(event) =>
-                    setClaim({
-                      ...claim,
-                      memberId:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Treatment date">
-                <input
-                  className={input}
-                  type="date"
-                  value={
-                    claim.treatmentDate
-                  }
-                  onChange={(event) =>
-                    setClaim({
-                      ...claim,
-                      treatmentDate:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Claim number">
-                <input
-                  className={input}
-                  value={claim.claimNumber}
-                  onChange={(event) =>
-                    setClaim({
-                      ...claim,
-                      claimNumber:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Pre-authorization ID">
-                <input
-                  className={input}
-                  value={
-                    claim.preAuthorizationId
-                  }
-                  onChange={(event) =>
-                    setClaim({
-                      ...claim,
-                      preAuthorizationId:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Diagnosis">
-                <input
-                  className={input}
-                  value={claim.diagnosis}
-                  onChange={(event) =>
-                    setClaim({
-                      ...claim,
-                      diagnosis:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="ICD code">
-                <input
-                  className={input}
-                  value={claim.icdCode}
-                  onChange={(event) =>
-                    setClaim({
-                      ...claim,
-                      icdCode:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Service code">
-                <input
-                  className={input}
-                  value={claim.serviceCode}
-                  onChange={(event) =>
-                    setClaim({
-                      ...claim,
-                      serviceCode:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Service name">
-                <input
-                  className={input}
-                  value={claim.serviceName}
-                  onChange={(event) =>
-                    setClaim({
-                      ...claim,
-                      serviceName:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Quantity">
-                <input
-                  className={input}
-                  type="number"
-                  min="1"
-                  value={claim.quantity}
-                  onChange={(event) =>
-                    setClaim({
-                      ...claim,
-                      quantity:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Unit amount">
-                <input
-                  className={input}
-                  type="number"
-                  min="0"
-                  value={claim.unitAmount}
-                  onChange={(event) =>
-                    setClaim({
-                      ...claim,
-                      unitAmount:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Claimed amount">
-                <input
-                  className={input}
-                  type="number"
-                  min="0"
-                  value={
-                    claim.claimedAmount
-                  }
-                  onChange={(event) =>
-                    setClaim({
-                      ...claim,
-                      claimedAmount:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Notes">
-                <textarea
-                  className={input}
-                  rows={3}
-                  value={claim.notes}
-                  onChange={(event) =>
-                    setClaim({
-                      ...claim,
-                      notes:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <div className="flex justify-end md:col-span-2">
-                <button
-                  className={primary}
-                  onClick={createClaim}
-                  disabled={busy}
-                >
-                  {busy ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                  Submit claim
-                </button>
-              </div>
-            </div>
-          </Card>
-        </>
-      )}
-
-      {tab === 'authorizations' && (
-        <>
-          <Card
-            title="Authorizations"
-            sub="Submitted pre-authorization requests"
-            icon={ShieldCheck}
-          >
-            <Table
-              heads={[
-                'Service',
-                'Member',
-                'Status',
-                'Requested',
-                'Amount',
-              ]}
-              rows={auths.map(
-                (authorization: any) => [
-                  authorization.serviceName ||
-                    authorization.serviceCode ||
-                    'Service',
-
-                  sid(
-                    authorization.memberId,
-                  ),
-
-                  <Badge
-                    key="status"
-                    v={
-                      authorization.status
-                    }
-                  />,
-
-                  dt(
-                    authorization.requestedDate,
-                  ),
-
-                  money(
-                    authorization.requestedAmount,
-                  ),
-                ],
-              )}
-            />
-
-            {!auths.length && (
-              <div className="p-10 text-center text-xs text-slate-400">
-                No authorization requests found.
-              </div>
-            )}
-          </Card>
-
-          <Card
-            title="New authorization"
-            sub="CreateProviderAuthorizationInput"
-            icon={Send}
-          >
-            <div className="grid gap-4 p-5 md:grid-cols-2">
-              <Field label="Member ID">
-                <input
-                  className={input}
-                  value={preauth.memberId}
-                  onChange={(event) =>
-                    setPreauth({
-                      ...preauth,
-                      memberId:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Benefit ID">
-                <input
-                  className={input}
-                  value={preauth.benefitId}
-                  onChange={(event) =>
-                    setPreauth({
-                      ...preauth,
-                      benefitId:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Benefit code">
-                <input
-                  className={input}
-                  value={
-                    preauth.benefitCode
-                  }
-                  onChange={(event) =>
-                    setPreauth({
-                      ...preauth,
-                      benefitCode:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Service code">
-                <input
-                  className={input}
-                  value={
-                    preauth.serviceCode
-                  }
-                  onChange={(event) =>
-                    setPreauth({
-                      ...preauth,
-                      serviceCode:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Service name">
-                <input
-                  className={input}
-                  value={
-                    preauth.serviceName
-                  }
-                  onChange={(event) =>
-                    setPreauth({
-                      ...preauth,
-                      serviceName:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Diagnosis codes">
-                <input
-                  className={input}
-                  value={
-                    preauth.diagnosisCodes
-                  }
-                  onChange={(event) =>
-                    setPreauth({
-                      ...preauth,
-                      diagnosisCodes:
-                        event.target.value,
-                    })
-                  }
-                  placeholder="ICD10-A, ICD10-B"
-                />
-              </Field>
-
-              <Field label="Requested amount">
-                <input
-                  className={input}
-                  type="number"
-                  min="0"
-                  value={
-                    preauth.requestedAmount
-                  }
-                  onChange={(event) =>
-                    setPreauth({
-                      ...preauth,
-                      requestedAmount:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Requested date">
-                <input
-                  className={input}
-                  type="date"
-                  value={
-                    preauth.requestedDate
-                  }
-                  onChange={(event) =>
-                    setPreauth({
-                      ...preauth,
-                      requestedDate:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Referral provider ID">
-                <input
-                  className={input}
-                  value={
-                    preauth.referralProviderId
-                  }
-                  onChange={(event) =>
-                    setPreauth({
-                      ...preauth,
-                      referralProviderId:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field label="Clinical notes">
-                <textarea
-                  className={input}
-                  rows={3}
-                  value={
-                    preauth.clinicalNotes
-                  }
-                  onChange={(event) =>
-                    setPreauth({
-                      ...preauth,
-                      clinicalNotes:
-                        event.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <div className="flex justify-end md:col-span-2">
-                <button
-                  className={primary}
-                  onClick={createAuth}
-                  disabled={busy}
-                >
-                  {busy ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                  Submit authorization
-                </button>
-              </div>
-            </div>
-          </Card>
-        </>
-      )}
-
-      {tab === 'settlements' && (
-        <Card
-          title="Settlements"
-          sub="Provider settlement records"
-          icon={WalletCards}
-        >
-          <Table
-            heads={[
-              'Settlement',
-              'Status',
-              'Amount',
-              'Created',
-            ]}
-            rows={settlements.map(
-              (settlement: any) => [
-                settlement.referenceNumber ||
-                  settlement.settlementNumber ||
-                  sid(settlement._id),
-
-                <Badge
-                  key="status"
-                  v={settlement.status}
-                />,
-
-                money(
-                  settlement.amount ??
-                    settlement.totalAmount,
-                ),
-
-                dt(
-                  settlement.createdAt,
-                ),
-              ],
-            )}
-          />
-
-          {!settlements.length && (
-            <div className="p-10 text-center text-xs text-slate-400">
-              No settlements found.
-            </div>
-          )}
-        </Card>
-      )}
-    </>
+    </div>
   );
 }
