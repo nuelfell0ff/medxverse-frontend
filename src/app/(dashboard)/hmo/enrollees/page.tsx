@@ -77,7 +77,7 @@ interface PrimaryRef {
 
 interface Enrollee {
   _id: string;
-  policyNumber: string;
+  policyNumber?: string;
   firstName: string;
   lastName: string;
   otherNames?: string;
@@ -155,7 +155,6 @@ interface Eligibility {
 }
 
 interface FormState {
-  policyNumber: string;
   firstName: string;
   lastName: string;
   otherNames: string;
@@ -190,7 +189,6 @@ const EMPTY_STATS: Stats = {
 };
 
 const EMPTY_FORM: FormState = {
-  policyNumber: '',
   firstName: '',
   lastName: '',
   otherNames: '',
@@ -523,7 +521,6 @@ export default function EnrolleesPage() {
   const openEdit = (item: Enrollee) => {
     setEditing(item);
     setForm({
-      policyNumber: item.policyNumber || '',
       firstName: item.firstName || '',
       lastName: item.lastName || '',
       otherNames: item.otherNames || '',
@@ -589,7 +586,6 @@ export default function EnrolleesPage() {
   const saveEnrollee = async () => {
     setFormError('');
 
-    if (!editing && !form.policyNumber.trim()) return setFormError('Policy number is required.');
     if (!form.firstName.trim()) return setFormError('First name is required.');
     if (!form.lastName.trim()) return setFormError('Last name is required.');
     if (!form.email.trim()) return setFormError('Email is required.');
@@ -625,7 +621,6 @@ export default function EnrolleesPage() {
       photoUrl: form.photoUrl.trim() || undefined,
     };
 
-    if (!editing) payload.policyNumber = form.policyNumber.trim().toUpperCase();
 
     try {
       setSaving(true);
@@ -862,7 +857,7 @@ export default function EnrolleesPage() {
                         </button>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="font-bold text-slate-700">{item.policyNumber}</div>
+                        <div className="font-bold text-slate-700">{item.policyNumber || '—'}</div>
                         <div className="mt-0.5 text-[10px] text-slate-400">{item.phone}</div>
                       </td>
                       <td className="px-6 py-4">
@@ -915,7 +910,7 @@ export default function EnrolleesPage() {
           <section className="rounded-3xl border border-slate-100 bg-slate-50/50 p-5">
             <h3 className="text-sm font-extrabold text-slate-800">Identity & Contact</h3>
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-              <Field label="Policy Number *"><input disabled={!!editing} value={form.policyNumber} onChange={(e) => setForm((f) => ({ ...f, policyNumber: e.target.value.toUpperCase() }))} className={`${inputClass} disabled:bg-slate-100 disabled:text-slate-400`} placeholder="HMO-000123" /></Field>
+              <Field label="Policy Number"><div className={`${inputClass} flex items-center bg-slate-50 text-slate-500`}>{editing && selected?.policyNumber ? selected.policyNumber : 'Generated automatically by the system'}</div></Field>
               <Field label="First Name *"><input value={form.firstName} onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))} className={inputClass} /></Field>
               <Field label="Last Name *"><input value={form.lastName} onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))} className={inputClass} /></Field>
               <Field label="Other Names"><input value={form.otherNames} onChange={(e) => setForm((f) => ({ ...f, otherNames: e.target.value }))} className={inputClass} /></Field>
@@ -975,7 +970,7 @@ export default function EnrolleesPage() {
         </div>
       </Modal>
 
-      <Modal open={viewOpen} title={selected ? fullName(selected) : 'Enrollee Details'} subtitle={selected ? `${selected.policyNumber} · ${relationshipLabel(selected.relationship)}` : undefined} onClose={() => setViewOpen(false)} wide>
+      <Modal open={viewOpen} title={selected ? fullName(selected) : 'Enrollee Details'} subtitle={selected ? `${selected.policyNumber || 'Generated automatically'} · ${relationshipLabel(selected.relationship)}` : undefined} onClose={() => setViewOpen(false)} wide>
         {selected && (
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">
             {detailsLoading && <div className="mb-4 flex items-center gap-2 rounded-2xl bg-slate-50 p-3 text-xs text-slate-500"><Loader2 className="h-4 w-4 animate-spin text-[#1b7b68]" /> Loading latest registry details...</div>}
@@ -993,7 +988,7 @@ export default function EnrolleesPage() {
                   <div><p className="text-[9px] font-extrabold uppercase text-slate-400">Date of Birth</p><p className="mt-1 text-xs font-bold text-slate-700">{moneyDate(selected.dateOfBirth)}</p></div>
                   <div><p className="text-[9px] font-extrabold uppercase text-slate-400">Gender</p><p className="mt-1 text-xs font-bold text-slate-700">{selected.gender}</p></div>
                   <div><p className="text-[9px] font-extrabold uppercase text-slate-400">Relationship</p><p className="mt-1 text-xs font-bold text-slate-700">{relationshipLabel(selected.relationship)}</p></div>
-                  <div><p className="text-[9px] font-extrabold uppercase text-slate-400">Policy</p><p className="mt-1 text-xs font-bold text-slate-700">{selected.policyNumber}</p></div>
+                  <div><p className="text-[9px] font-extrabold uppercase text-slate-400">Policy</p><p className="mt-1 text-xs font-bold text-slate-700">{(selected.policyNumber || 'Generated automatically')}</p></div>
                 </div>
               </section>
 
@@ -1018,7 +1013,7 @@ export default function EnrolleesPage() {
             {selected.relationship === 'PRIMARY' && (
               <section className="mt-4 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
                 <div className="flex items-center justify-between"><div className="flex items-center gap-2"><Users className="h-4 w-4 text-[#1b7b68]" /><h3 className="text-sm font-extrabold text-slate-800">Dependants</h3></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-500">{dependents.length}</span></div>
-                <div className="mt-4 overflow-x-auto">{dependents.length ? <table className="w-full text-left"><tbody>{dependents.map((dependent) => <tr key={dependent._id} className="border-b border-slate-50 last:border-0"><td className="py-3"><div className="text-xs font-bold text-slate-700">{fullName(dependent)}</div><div className="text-[10px] text-slate-400">{dependent.policyNumber}</div></td><td className="py-3 text-xs text-slate-500">{relationshipLabel(dependent.relationship)}</td><td className="py-3 text-right"><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${statusMeta(dependent.status).cls}`}>{statusMeta(dependent.status).label}</span></td></tr>)}</tbody></table> : <p className="py-5 text-center text-xs text-slate-400">No dependants linked to this member.</p>}</div>
+                <div className="mt-4 overflow-x-auto">{dependents.length ? <table className="w-full text-left"><tbody>{dependents.map((dependent) => <tr key={dependent._id} className="border-b border-slate-50 last:border-0"><td className="py-3"><div className="text-xs font-bold text-slate-700">{fullName(dependent)}</div><div className="text-[10px] text-slate-400">{dependent.policyNumber || 'Generated automatically'}</div></td><td className="py-3 text-xs text-slate-500">{relationshipLabel(dependent.relationship)}</td><td className="py-3 text-right"><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${statusMeta(dependent.status).cls}`}>{statusMeta(dependent.status).label}</span></td></tr>)}</tbody></table> : <p className="py-5 text-center text-xs text-slate-400">No dependants linked to this member.</p>}</div>
               </section>
             )}
 
@@ -1061,7 +1056,7 @@ export default function EnrolleesPage() {
       <Modal
         open={statusReasonOpen}
         title={pendingStatus === 'SUSPENDED' ? 'Suspend Enrollee' : 'Terminate Enrollee'}
-        subtitle={selected ? `${fullName(selected)} · ${selected.policyNumber}` : undefined}
+        subtitle={selected ? `${fullName(selected)} · ${selected.policyNumber || 'Generated automatically'}` : undefined}
         onClose={() => {
           if (statusUpdating) return;
           setStatusReasonOpen(false);
@@ -1110,7 +1105,7 @@ export default function EnrolleesPage() {
         </div>
       </Modal>
 
-      <Modal open={renewOpen} title="Renew Enrollee Coverage" subtitle={selected ? `${fullName(selected)} · ${selected.policyNumber}` : undefined} onClose={() => !renewing && setRenewOpen(false)}>
+      <Modal open={renewOpen} title="Renew Enrollee Coverage" subtitle={selected ? `${fullName(selected)} · ${selected.policyNumber || 'Generated automatically'}` : undefined} onClose={() => !renewing && setRenewOpen(false)}>
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-6">
           <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4 text-xs text-slate-600">Renewal will extend the enrollee's coverage and return the membership to <strong>ACTIVE</strong>. The new end date must be later than the current coverage end date.</div>
           <Field label="New Coverage End Date *"><input type="date" value={renewEndDate} onChange={(e) => setRenewEndDate(e.target.value)} className={inputClass} /></Field>
