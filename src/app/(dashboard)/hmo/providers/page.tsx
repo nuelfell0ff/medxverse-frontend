@@ -45,7 +45,7 @@ interface Performance { claimsCount: number; approvedClaims: number; rejectedCla
 interface Provider { _id: string; hmoId: string; code: string; name: string; type: ProviderType; status: ProviderStatus; licenseNumber?: string; taxId?: string; specialty?: string; phone?: string; email?: string; website?: string; address?: Address; primaryContact?: Contact; services: string[]; accreditation: Accreditation; contract: Contract; networkIds: string[]; tariffIds: string[]; performance: Performance; notes?: string; createdAt?: string; updatedAt?: string }
 interface ListResponse { providers: Provider[]; total: number; page: number; limit: number; totalPages: number }
 interface Stats { total: number; pending: number; active: number; inactive: number; suspended: number; expired: number; archived: number; accredited: number; expiringAccreditations: number }
-interface Form { code: string; name: string; type: ProviderType; licenseNumber: string; taxId: string; specialty: string; phone: string; email: string; website: string; street: string; city: string; state: string; country: string; postalCode: string; contactName: string; contactPhone: string; contactEmail: string; services: string; accreditationStatus: AccreditationStatus; accreditationNumber: string; accreditationAuthority: string; accreditationIssuedAt: string; accreditationExpiresAt: string; contractNumber: string; contractStatus: ContractStatus; contractStartDate: string; contractEndDate: string; paymentModel: PaymentModel; networkIds: string; notes: string }
+interface Form { name: string; type: ProviderType; licenseNumber: string; taxId: string; specialty: string; phone: string; email: string; website: string; street: string; city: string; state: string; country: string; postalCode: string; contactName: string; contactPhone: string; contactEmail: string; services: string; accreditationStatus: AccreditationStatus; accreditationNumber: string; accreditationAuthority: string; accreditationIssuedAt: string; accreditationExpiresAt: string; contractStatus: ContractStatus; contractStartDate: string; contractEndDate: string; paymentModel: PaymentModel; networkIds: string; notes: string }
 
 const PROVIDER_TYPES: ProviderType[] = ['HOSPITAL','CLINIC','PHARMACY','LABORATORY','SPECIALIST','DIAGNOSTIC_CENTER','OTHER'];
 const STATUSES: ProviderStatus[] = ['PENDING','ACTIVE','INACTIVE','SUSPENDED','EXPIRED','ARCHIVED'];
@@ -53,7 +53,7 @@ const ACCREDITATION_STATUSES: AccreditationStatus[] = ['PENDING','VERIFIED','EXP
 const CONTRACT_STATUSES: ContractStatus[] = ['DRAFT','ACTIVE','EXPIRED','TERMINATED'];
 const PAYMENT_MODELS: PaymentModel[] = ['FEE_FOR_SERVICE','CAPITATION','HYBRID','OTHER'];
 
-const EMPTY_FORM: Form = { code:'', name:'', type:'HOSPITAL', licenseNumber:'', taxId:'', specialty:'', phone:'', email:'', website:'', street:'', city:'', state:'', country:'Nigeria', postalCode:'', contactName:'', contactPhone:'', contactEmail:'', services:'', accreditationStatus:'PENDING', accreditationNumber:'', accreditationAuthority:'', accreditationIssuedAt:'', accreditationExpiresAt:'', contractNumber:'', contractStatus:'DRAFT', contractStartDate:'', contractEndDate:'', paymentModel:'FEE_FOR_SERVICE', networkIds:'', notes:'' };
+const EMPTY_FORM: Form = { name:'', type:'HOSPITAL', licenseNumber:'', taxId:'', specialty:'', phone:'', email:'', website:'', street:'', city:'', state:'', country:'Nigeria', postalCode:'', contactName:'', contactPhone:'', contactEmail:'', services:'', accreditationStatus:'PENDING', accreditationNumber:'', accreditationAuthority:'', accreditationIssuedAt:'', accreditationExpiresAt:'', contractStatus:'DRAFT', contractStartDate:'', contractEndDate:'', paymentModel:'FEE_FOR_SERVICE', networkIds:'', notes:'' };
 
 function token() { if (typeof window === 'undefined') return null; return localStorage.getItem('token') || localStorage.getItem('accessToken') || localStorage.getItem('authToken'); }
 function headers(): HeadersInit { const t = token(); return { 'Content-Type':'application/json', ...(t ? { Authorization:`Bearer ${t}` } : {}) }; }
@@ -76,11 +76,11 @@ export default function ProvidersPage() {
   useEffect(()=>{fetchProviders();},[fetchProviders]); useEffect(()=>{fetchStats()},[fetchStats]); useEffect(()=>{setPage(1)},[search,type,status,accreditation]);
 
   const openCreate=()=>{setSelected(null);setForm(EMPTY_FORM);setFormError('');setModal('create')};
-  const openEdit=(p:Provider)=>{setSelected(p);setForm({code:p.code,name:p.name,type:p.type,licenseNumber:p.licenseNumber||'',taxId:p.taxId||'',specialty:p.specialty||'',phone:p.phone||'',email:p.email||'',website:p.website||'',street:p.address?.street||'',city:p.address?.city||'',state:p.address?.state||'',country:p.address?.country||'Nigeria',postalCode:p.address?.postalCode||'',contactName:p.primaryContact?.name||'',contactPhone:p.primaryContact?.phone||'',contactEmail:p.primaryContact?.email||'',services:(p.services||[]).join(', '),accreditationStatus:p.accreditation?.status||'PENDING',accreditationNumber:p.accreditation?.number||'',accreditationAuthority:p.accreditation?.authority||'',accreditationIssuedAt:p.accreditation?.issuedAt?.slice(0,10)||'',accreditationExpiresAt:p.accreditation?.expiresAt?.slice(0,10)||'',contractNumber:p.contract?.contractNumber||'',contractStatus:p.contract?.status||'DRAFT',contractStartDate:p.contract?.startDate?.slice(0,10)||'',contractEndDate:p.contract?.endDate?.slice(0,10)||'',paymentModel:p.contract?.paymentModel||'FEE_FOR_SERVICE',networkIds:(p.networkIds||[]).join(', '),notes:p.notes||''});setFormError('');setModal('edit')};
+  const openEdit=(p:Provider)=>{setSelected(p);setForm({name:p.name,type:p.type,licenseNumber:p.licenseNumber||'',taxId:p.taxId||'',specialty:p.specialty||'',phone:p.phone||'',email:p.email||'',website:p.website||'',street:p.address?.street||'',city:p.address?.city||'',state:p.address?.state||'',country:p.address?.country||'Nigeria',postalCode:p.address?.postalCode||'',contactName:p.primaryContact?.name||'',contactPhone:p.primaryContact?.phone||'',contactEmail:p.primaryContact?.email||'',services:(p.services||[]).join(', '),accreditationStatus:p.accreditation?.status||'PENDING',accreditationNumber:p.accreditation?.number||'',accreditationAuthority:p.accreditation?.authority||'',accreditationIssuedAt:p.accreditation?.issuedAt?.slice(0,10)||'',accreditationExpiresAt:p.accreditation?.expiresAt?.slice(0,10)||'',contractStatus:p.contract?.status||'DRAFT',contractStartDate:p.contract?.startDate?.slice(0,10)||'',contractEndDate:p.contract?.endDate?.slice(0,10)||'',paymentModel:p.contract?.paymentModel||'FEE_FOR_SERVICE',networkIds:(p.networkIds||[]).join(', '),notes:p.notes||''});setFormError('');setModal('edit')};
   const openView=(p:Provider)=>{setSelected(p);setModal('view')};
 
-  const payload=()=>({code:form.code.trim().toUpperCase(),name:form.name.trim(),type:form.type,licenseNumber:form.licenseNumber.trim()||undefined,taxId:form.taxId.trim()||undefined,specialty:form.specialty.trim()||undefined,phone:form.phone.trim()||undefined,email:form.email.trim()||undefined,website:form.website.trim()||undefined,address:{street:form.street.trim()||undefined,city:form.city.trim()||undefined,state:form.state.trim()||undefined,country:form.country.trim()||undefined,postalCode:form.postalCode.trim()||undefined},primaryContact:{name:form.contactName.trim()||undefined,phone:form.contactPhone.trim()||undefined,email:form.contactEmail.trim()||undefined},services:form.services.split(',').map(v=>v.trim()).filter(Boolean),accreditation:{status:form.accreditationStatus,number:form.accreditationNumber.trim()||undefined,authority:form.accreditationAuthority.trim()||undefined,issuedAt:form.accreditationIssuedAt||undefined,expiresAt:form.accreditationExpiresAt||undefined},contract:{contractNumber:form.contractNumber.trim()||undefined,status:form.contractStatus,startDate:form.contractStartDate||undefined,endDate:form.contractEndDate||undefined,paymentModel:form.paymentModel,networkIds:form.networkIds.split(',').map(v=>v.trim()).filter(Boolean)},notes:form.notes.trim()||undefined});
-  const save=async()=>{setFormError('');if(!form.code.trim()){setFormError('Provider code is required.');return}if(!form.name.trim()){setFormError('Provider name is required.');return}try{setSaving(true);const r=await fetch(selected&&modal==='edit'?`${API_BASE_URL}/providers/${selected._id}`:`${API_BASE_URL}/providers`,{method:selected&&modal==='edit'?'PATCH':'POST',headers:headers(),body:JSON.stringify(payload())});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j?.message||j?.error||'Unable to save provider.');setModal(null);await Promise.all([fetchProviders(true),fetchStats()])}catch(e:any){setFormError(e?.message||'Unable to save provider.')}finally{setSaving(false)}};
+  const payload=()=>({name:form.name.trim(),type:form.type,licenseNumber:form.licenseNumber.trim()||undefined,taxId:form.taxId.trim()||undefined,specialty:form.specialty.trim()||undefined,phone:form.phone.trim()||undefined,email:form.email.trim()||undefined,website:form.website.trim()||undefined,address:{street:form.street.trim()||undefined,city:form.city.trim()||undefined,state:form.state.trim()||undefined,country:form.country.trim()||undefined,postalCode:form.postalCode.trim()||undefined},primaryContact:{name:form.contactName.trim()||undefined,phone:form.contactPhone.trim()||undefined,email:form.contactEmail.trim()||undefined},services:form.services.split(',').map(v=>v.trim()).filter(Boolean),accreditation:{status:form.accreditationStatus,number:form.accreditationNumber.trim()||undefined,authority:form.accreditationAuthority.trim()||undefined,issuedAt:form.accreditationIssuedAt||undefined,expiresAt:form.accreditationExpiresAt||undefined},contract:{status:form.contractStatus,startDate:form.contractStartDate||undefined,endDate:form.contractEndDate||undefined,paymentModel:form.paymentModel,networkIds:form.networkIds.split(',').map(v=>v.trim()).filter(Boolean)},notes:form.notes.trim()||undefined});
+  const save=async()=>{setFormError('');if(!form.name.trim()){setFormError('Provider name is required.');return}try{setSaving(true);const r=await fetch(selected&&modal==='edit'?`${API_BASE_URL}/providers/${selected._id}`:`${API_BASE_URL}/providers`,{method:selected&&modal==='edit'?'PATCH':'POST',headers:headers(),body:JSON.stringify(payload())});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j?.message||j?.error||'Unable to save provider.');setModal(null);await Promise.all([fetchProviders(true),fetchStats()])}catch(e:any){setFormError(e?.message||'Unable to save provider.')}finally{setSaving(false)}};
   const changeStatus=async(p:Provider,next:ProviderStatus)=>{try{const r=await fetch(`${API_BASE_URL}/providers/${p._id}/status`,{method:'PATCH',headers:headers(),body:JSON.stringify({status:next})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j?.message||'Unable to update provider status');await Promise.all([fetchProviders(true),fetchStats()])}catch(e:any){setError(e?.message||'Unable to update provider status')}};
 
   const activeRate=useMemo(()=>stats.total?Math.round((stats.active/stats.total)*100):0,[stats]);
@@ -98,7 +98,7 @@ export default function ProvidersPage() {
       </tbody></table></div>
       {!loading&&totalPages>1&&<div className="flex items-center justify-between border-t border-slate-100 px-5 py-4"><p className="text-[11px] font-medium text-slate-400">Page <b className="text-slate-600">{page}</b> of <b className="text-slate-600">{totalPages}</b></p><div className="flex gap-2"><button disabled={page<=1} onClick={()=>setPage(v=>Math.max(1,v-1))} className="rounded-xl border p-2 disabled:opacity-40"><ChevronLeft className="h-4 w-4"/></button><button disabled={page>=totalPages} onClick={()=>setPage(v=>Math.min(totalPages,v+1))} className="rounded-xl border p-2 disabled:opacity-40"><ChevronRight className="h-4 w-4"/></button></div></div>}
     </div>
-    {modal==='create'||modal==='edit'?<Editor form={form} setForm={setForm} saving={saving} error={formError} editing={modal==='edit'} onClose={()=>!saving&&setModal(null)} onSave={save}/>:null}
+    {modal==='create'||modal==='edit'?<Editor form={form} setForm={setForm} saving={saving} error={formError} editing={modal==='edit'} selectedCode={selected?.code} selectedContractNumber={selected?.contract?.contractNumber} onClose={()=>!saving&&setModal(null)} onSave={save}/>:null}
     {modal==='view'&&selected?<Viewer provider={selected} onClose={()=>setModal(null)} onEdit={()=>openEdit(selected)}/>:null}
   </div>;
 }
@@ -106,8 +106,334 @@ export default function ProvidersPage() {
 function Metric({label,value,icon:Icon}:{label:string;value:number;icon:React.ComponentType<{className?:string}>}){return <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p><p className="mt-2 text-3xl font-black tracking-tight text-slate-800">{value}</p></div><div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#e8f5f3] text-[#1b7b68]"><Icon className="h-5 w-5"/></div></div></div>}
 function Field({label,children,className=''}:{label:string;children:React.ReactNode;className?:string}){return <div className={className}><label className="mb-1.5 block text-[10px] font-extrabold text-slate-600">{label}</label>{children}</div>}
 const input='h-10 w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-3 text-xs font-medium outline-none focus:border-[#1b7b68] focus:bg-white focus:ring-4 focus:ring-[#1b7b68]/10';
-function Editor({form,setForm,saving,error,editing,onClose,onSave}:{form:Form;setForm:React.Dispatch<React.SetStateAction<Form>>;saving:boolean;error:string;editing:boolean;onClose:()=>void;onSave:()=>void}){const set=(key:keyof Form,value:string)=>setForm(f=>({...f,[key]:value}));return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm"><div className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"><div className="flex items-center justify-between border-b px-6 py-5"><div><h3 className="text-base font-bold">{editing?'Edit Provider':'Onboard Provider'}</h3><p className="mt-1 text-xs text-slate-400">Maintain provider identity, contact, accreditation, contract and network information.</p></div><button onClick={onClose} disabled={saving}><X className="h-4 w-4"/></button></div><div className="space-y-5 overflow-y-auto p-6">{error&&<div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{error}</div>}<section className="rounded-3xl border bg-slate-50/40 p-5"><h4 className="text-sm font-extrabold">Provider Identity</h4><div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3"><Field label="Provider Code *"><input className={input} value={form.code} onChange={e=>set('code',e.target.value.toUpperCase())}/></Field><Field label="Provider Name *"><input className={input} value={form.name} onChange={e=>set('name',e.target.value)}/></Field><Field label="Provider Type"><select className={input} value={form.type} onChange={e=>set('type',e.target.value)}>{PROVIDER_TYPES.map(v=><option key={v}>{v}</option>)}</select></Field><Field label="Licence Number"><input className={input} value={form.licenseNumber} onChange={e=>set('licenseNumber',e.target.value)}/></Field><Field label="Tax ID"><input className={input} value={form.taxId} onChange={e=>set('taxId',e.target.value)}/></Field><Field label="Specialty"><input className={input} value={form.specialty} onChange={e=>set('specialty',e.target.value)}/></Field><Field label="Phone"><input className={input} value={form.phone} onChange={e=>set('phone',e.target.value)}/></Field><Field label="Email"><input className={input} value={form.email} onChange={e=>set('email',e.target.value)}/></Field><Field label="Website"><input className={input} value={form.website} onChange={e=>set('website',e.target.value)}/></Field><Field label="Services" className="md:col-span-3"><input className={input} placeholder="Consultation, Surgery, Laboratory..." value={form.services} onChange={e=>set('services',e.target.value)}/></Field></div></section><section className="rounded-3xl border bg-white p-5"><h4 className="text-sm font-extrabold">Location & Contact</h4><div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3"><Field label="Street"><input className={input} value={form.street} onChange={e=>set('street',e.target.value)}/></Field><Field label="City"><input className={input} value={form.city} onChange={e=>set('city',e.target.value)}/></Field><Field label="State"><input className={input} value={form.state} onChange={e=>set('state',e.target.value)}/></Field><Field label="Country"><input className={input} value={form.country} onChange={e=>set('country',e.target.value)}/></Field><Field label="Postal Code"><input className={input} value={form.postalCode} onChange={e=>set('postalCode',e.target.value)}/></Field><Field label="Primary Contact"><input className={input} value={form.contactName} onChange={e=>set('contactName',e.target.value)}/></Field><Field label="Contact Phone"><input className={input} value={form.contactPhone} onChange={e=>set('contactPhone',e.target.value)}/></Field><Field label="Contact Email"><input className={input} value={form.contactEmail} onChange={e=>set('contactEmail',e.target.value)}/></Field></div></section><section className="rounded-3xl border border-emerald-100 bg-emerald-50/30 p-5"><h4 className="text-sm font-extrabold">Accreditation</h4><div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4"><Field label="Status"><select className={input} value={form.accreditationStatus} onChange={e=>set('accreditationStatus',e.target.value)}>{ACCREDITATION_STATUSES.map(v=><option key={v}>{v}</option>)}</select></Field><Field label="Accreditation Number"><input className={input} value={form.accreditationNumber} onChange={e=>set('accreditationNumber',e.target.value)}/></Field><Field label="Authority"><input className={input} value={form.accreditationAuthority} onChange={e=>set('accreditationAuthority',e.target.value)}/></Field><Field label="Expiry"><input type="date" className={input} value={form.accreditationExpiresAt} onChange={e=>set('accreditationExpiresAt',e.target.value)}/></Field></div></section><section className="rounded-3xl border bg-slate-50/40 p-5"><h4 className="text-sm font-extrabold">Contract & Network</h4><div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4"><Field label="Contract Number"><input className={input} value={form.contractNumber} onChange={e=>set('contractNumber',e.target.value)}/></Field><Field label="Contract Status"><select className={input} value={form.contractStatus} onChange={e=>set('contractStatus',e.target.value)}>{CONTRACT_STATUSES.map(v=><option key={v}>{v}</option>)}</select></Field><Field label="Payment Model"><select className={input} value={form.paymentModel} onChange={e=>set('paymentModel',e.target.value)}>{PAYMENT_MODELS.map(v=><option key={v}>{humanize(v)}</option>)}</select></Field><Field label="Networks"><input className={input} placeholder="NETWORK-A, NETWORK-B" value={form.networkIds} onChange={e=>set('networkIds',e.target.value)}/></Field><Field label="Notes" className="md:col-span-4"><textarea className="min-h-24 w-full rounded-2xl border border-slate-200 bg-slate-50/50 p-3 text-xs outline-none focus:border-[#1b7b68]" value={form.notes} onChange={e=>set('notes',e.target.value)}/></Field></div></section></div><div className="flex justify-end gap-2 border-t px-6 py-4"><button onClick={onClose} disabled={saving} className="rounded-xl border px-4 py-2.5 text-xs font-bold">Cancel</button><button onClick={onSave} disabled={saving} className="flex items-center gap-2 rounded-xl bg-[#1b7b68] px-5 py-2.5 text-xs font-bold text-white">{saving&&<Loader2 className="h-3.5 w-3.5 animate-spin"/>}{editing?'Save Changes':'Onboard Provider'}</button></div></div></div>}
-function Viewer({provider,onClose,onEdit}:{provider:Provider;onClose:()=>void;onEdit:()=>void}){return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm"><div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"><div className="flex items-center justify-between border-b px-6 py-5"><div><div className="flex items-center gap-2"><h3 className="text-base font-bold">{provider.name}</h3><span className={`rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase ${statusClass(provider.status)}`}>{humanize(provider.status)}</span></div><p className="mt-1 font-mono text-[10px] text-slate-400">{provider.code}</p></div><button onClick={onClose}><X className="h-4 w-4"/></button></div><div className="space-y-5 overflow-y-auto p-6"><div className="grid grid-cols-1 gap-3 sm:grid-cols-4"><Info label="Type" value={humanize(provider.type)}/><Info label="Accreditation" value={humanize(provider.accreditation.status)}/><Info label="Contract" value={humanize(provider.contract.status)}/><Info label="Payment Model" value={humanize(provider.contract.paymentModel)}/></div><div className="grid grid-cols-1 gap-4 md:grid-cols-2"><Panel title="Contact"><p>{provider.phone||'—'}</p><p>{provider.email||'—'}</p><p className="mt-2 text-slate-400">{[provider.address?.street,provider.address?.city,provider.address?.state,provider.address?.country].filter(Boolean).join(', ')||'No address recorded'}</p></Panel><Panel title="Accreditation"><p><b>Number:</b> {provider.accreditation.number||'—'}</p><p><b>Authority:</b> {provider.accreditation.authority||'—'}</p><p><b>Expires:</b> {dateText(provider.accreditation.expiresAt)}</p></Panel><Panel title="Contract"><p><b>Number:</b> {provider.contract.contractNumber||'—'}</p><p><b>Start:</b> {dateText(provider.contract.startDate)}</p><p><b>End:</b> {dateText(provider.contract.endDate)}</p><p><b>Networks:</b> {provider.networkIds?.join(', ')||'—'}</p></Panel><Panel title="Performance"><p><b>Claims:</b> {provider.performance.claimsCount}</p><p><b>Approved:</b> {provider.performance.approvedClaims}</p><p><b>Rejected:</b> {provider.performance.rejectedClaims}</p><p><b>Approved Value:</b> {money(provider.performance.totalApproved)}</p></Panel></div><Panel title="Services"><div className="flex flex-wrap gap-2">{provider.services?.length?provider.services.map(s=><span key={s} className="rounded-xl bg-[#e8f5f3] px-3 py-1.5 text-[10px] font-bold text-[#1b7b68]">{s}</span>):<span className="text-xs text-slate-400">No services recorded.</span>}</div></Panel></div><div className="flex justify-end gap-2 border-t px-6 py-4"><button onClick={onClose} className="rounded-xl border px-4 py-2.5 text-xs font-bold">Close</button><button onClick={onEdit} className="flex items-center gap-2 rounded-xl bg-[#1b7b68] px-4 py-2.5 text-xs font-bold text-white"><Edit3 className="h-3.5 w-3.5"/>Edit Provider</button></div></div></div>}
+function Editor({
+  form,
+  setForm,
+  saving,
+  error,
+  editing,
+  onClose,
+  onSave,
+  selectedCode,
+  selectedContractNumber,
+}: {
+  form: Form;
+  setForm: React.Dispatch<React.SetStateAction<Form>>;
+  saving: boolean;
+  error: string;
+  editing: boolean;
+  onClose: () => void;
+  onSave: () => void;
+  selectedCode?: string;
+  selectedContractNumber?: string;
+}) {
+  const set = (key: keyof Form, value: string) =>
+    setForm((current) => ({ ...current, [key]: value }));
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 p-3 backdrop-blur-sm">
+      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl">
+        <div className="flex shrink-0 items-start justify-between border-b border-slate-100 px-6 py-5">
+          <div>
+            <h2 className="text-lg font-black tracking-tight text-slate-800">
+              {editing ? 'Edit Provider' : 'Onboard Provider'}
+            </h2>
+            <p className="mt-1 text-[11px] font-medium text-slate-400">
+              Maintain provider identity, contact, accreditation, contract and network information.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-6">
+          {error && (
+            <div className="flex items-start gap-2.5 rounded-2xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-700">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <section className="rounded-3xl border border-slate-100 bg-slate-50/50 p-5">
+            <h3 className="text-sm font-extrabold text-slate-800">Provider Identity</h3>
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+              <Field label="Provider Code">
+                <div className={`${input} flex items-center bg-slate-100 text-slate-500`}>
+                  {editing ? selectedCode || 'Generated automatically' : 'Generated automatically'}
+                </div>
+              </Field>
+              <Field label="Provider Name *">
+                <input className={input} value={form.name} onChange={(e) => set('name', e.target.value)} />
+              </Field>
+              <Field label="Provider Type">
+                <select className={input} value={form.type} onChange={(e) => set('type', e.target.value)}>
+                  {PROVIDER_TYPES.map((value) => (
+                    <option key={value} value={value}>{humanize(value)}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Licence Number">
+                <input className={input} value={form.licenseNumber} onChange={(e) => set('licenseNumber', e.target.value)} />
+              </Field>
+              <Field label="Tax ID">
+                <input className={input} value={form.taxId} onChange={(e) => set('taxId', e.target.value)} />
+              </Field>
+              <Field label="Specialty">
+                <input className={input} value={form.specialty} onChange={(e) => set('specialty', e.target.value)} />
+              </Field>
+              <Field label="Phone">
+                <input className={input} value={form.phone} onChange={(e) => set('phone', e.target.value)} />
+              </Field>
+              <Field label="Email">
+                <input type="email" className={input} value={form.email} onChange={(e) => set('email', e.target.value)} />
+              </Field>
+              <Field label="Website">
+                <input className={input} value={form.website} onChange={(e) => set('website', e.target.value)} placeholder="https://..." />
+              </Field>
+              <Field label="Services" className="md:col-span-3">
+                <input className={input} placeholder="Consultation, Surgery, Laboratory..." value={form.services} onChange={(e) => set('services', e.target.value)} />
+              </Field>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+            <h3 className="text-sm font-extrabold text-slate-800">Location & Contact</h3>
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4">
+              <Field label="Street" className="md:col-span-2">
+                <input className={input} value={form.street} onChange={(e) => set('street', e.target.value)} />
+              </Field>
+              <Field label="City">
+                <input className={input} value={form.city} onChange={(e) => set('city', e.target.value)} />
+              </Field>
+              <Field label="State">
+                <input className={input} value={form.state} onChange={(e) => set('state', e.target.value)} />
+              </Field>
+              <Field label="Country">
+                <input className={input} value={form.country} onChange={(e) => set('country', e.target.value)} />
+              </Field>
+              <Field label="Postal Code">
+                <input className={input} value={form.postalCode} onChange={(e) => set('postalCode', e.target.value)} />
+              </Field>
+              <Field label="Primary Contact">
+                <input className={input} value={form.contactName} onChange={(e) => set('contactName', e.target.value)} />
+              </Field>
+              <Field label="Contact Phone">
+                <input className={input} value={form.contactPhone} onChange={(e) => set('contactPhone', e.target.value)} />
+              </Field>
+              <Field label="Contact Email">
+                <input type="email" className={input} value={form.contactEmail} onChange={(e) => set('contactEmail', e.target.value)} />
+              </Field>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-emerald-100 bg-emerald-50/30 p-5">
+            <h3 className="text-sm font-extrabold text-slate-800">Accreditation</h3>
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4">
+              <Field label="Status">
+                <select className={input} value={form.accreditationStatus} onChange={(e) => set('accreditationStatus', e.target.value)}>
+                  {ACCREDITATION_STATUSES.map((value) => <option key={value} value={value}>{humanize(value)}</option>)}
+                </select>
+              </Field>
+              <Field label="Accreditation Number">
+                <input className={input} value={form.accreditationNumber} onChange={(e) => set('accreditationNumber', e.target.value)} />
+              </Field>
+              <Field label="Authority">
+                <input className={input} value={form.accreditationAuthority} onChange={(e) => set('accreditationAuthority', e.target.value)} />
+              </Field>
+              <Field label="Issued Date">
+                <input type="date" className={input} value={form.accreditationIssuedAt} onChange={(e) => set('accreditationIssuedAt', e.target.value)} />
+              </Field>
+              <Field label="Expiry Date">
+                <input type="date" className={input} value={form.accreditationExpiresAt} onChange={(e) => set('accreditationExpiresAt', e.target.value)} />
+              </Field>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-slate-100 bg-slate-50/50 p-5">
+            <h3 className="text-sm font-extrabold text-slate-800">Contract & Network</h3>
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4">
+              <Field label="Contract Number">
+                <div className={`${input} flex items-center bg-slate-100 text-slate-500`}>
+                  {editing ? selectedContractNumber || 'Generated automatically' : 'Generated automatically'}
+                </div>
+              </Field>
+              <Field label="Contract Status">
+                <select className={input} value={form.contractStatus} onChange={(e) => set('contractStatus', e.target.value)}>
+                  {CONTRACT_STATUSES.map((value) => <option key={value} value={value}>{humanize(value)}</option>)}
+                </select>
+              </Field>
+              <Field label="Payment Model">
+                <select className={input} value={form.paymentModel} onChange={(e) => set('paymentModel', e.target.value)}>
+                  {PAYMENT_MODELS.map((value) => <option key={value} value={value}>{humanize(value)}</option>)}
+                </select>
+              </Field>
+              <Field label="Networks">
+                <input className={input} placeholder="NETWORK-A, NETWORK-B" value={form.networkIds} onChange={(e) => set('networkIds', e.target.value)} />
+              </Field>
+              <Field label="Contract Start">
+                <input type="date" className={input} value={form.contractStartDate} onChange={(e) => set('contractStartDate', e.target.value)} />
+              </Field>
+              <Field label="Contract End">
+                <input type="date" className={input} value={form.contractEndDate} onChange={(e) => set('contractEndDate', e.target.value)} />
+              </Field>
+              <Field label="Notes" className="md:col-span-2">
+                <textarea className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-700 outline-none transition focus:border-[#1b7b68] focus:ring-2 focus:ring-[#1b7b68]/10" value={form.notes} onChange={(e) => set('notes', e.target.value)} />
+              </Field>
+            </div>
+          </section>
+        </div>
+
+        <div className="flex shrink-0 justify-end gap-2 border-t border-slate-100 bg-white px-6 py-4">
+          <button type="button" onClick={onClose} disabled={saving} className="rounded-2xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50">
+            Cancel
+          </button>
+          <button type="button" onClick={onSave} disabled={saving} className="inline-flex items-center gap-2 rounded-2xl bg-[#1b7b68] px-5 py-2.5 text-xs font-extrabold text-white transition hover:bg-[#166b5b] disabled:opacity-60">
+            {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {editing ? 'Save Changes' : 'Onboard Provider'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Viewer({
+  provider,
+  onClose,
+  onEdit,
+}: {
+  provider: Provider;
+  onClose: () => void;
+  onEdit: () => void;
+}) {
+  const Icon = providerIcon(provider.type);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 p-3 backdrop-blur-sm">
+      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl">
+        <div className="flex shrink-0 items-start justify-between border-b border-slate-100 px-6 py-5">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-black tracking-tight text-slate-800">{provider.name}</h2>
+              <span className={`rounded-full border px-2.5 py-1 text-[9px] font-extrabold uppercase ${statusClass(provider.status)}`}>
+                {humanize(provider.status)}
+              </span>
+            </div>
+            <p className="mt-1 text-[11px] font-medium text-slate-400">
+              {humanize(provider.type)} · {provider.code || 'Provider code generated automatically'}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-6">
+          <section className="flex flex-col gap-4 rounded-3xl bg-[#e8f5f3]/70 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-[#1b7b68] shadow-sm">
+                <Icon className="h-6 w-6" />
+              </div>
+              <div>
+                <div className="text-base font-black text-slate-800">{provider.name}</div>
+                <div className="mt-1 text-xs text-slate-500">{provider.phone || 'No phone'} · {provider.email || 'No email'}</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className={`rounded-full border px-2.5 py-1 text-[9px] font-extrabold uppercase ${statusClass(provider.status)}`}>{humanize(provider.status)}</span>
+                  <span className={`rounded-full px-2.5 py-1 text-[9px] font-extrabold uppercase ${accreditationClass(provider.accreditation.status)}`}>{humanize(provider.accreditation.status)}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={onEdit} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50">
+                <Edit3 className="h-3.5 w-3.5" /> Edit
+              </button>
+            </div>
+          </section>
+
+          <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <Info label="Provider type" value={humanize(provider.type)} />
+            <Info label="Specialty" value={provider.specialty || '—'} />
+            <Info label="Licence number" value={provider.licenseNumber || '—'} />
+            <Info label="Tax ID" value={provider.taxId || '—'} />
+          </section>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Panel title="Location & Contact">
+              <p>{provider.phone || '—'}</p>
+              <p>{provider.email || '—'}</p>
+              <p>{provider.website || '—'}</p>
+              <p className="pt-2 text-slate-400">{[provider.address?.street, provider.address?.city, provider.address?.state, provider.address?.country, provider.address?.postalCode].filter(Boolean).join(', ') || 'No address recorded'}</p>
+              <p className="pt-2"><b>Primary contact:</b> {provider.primaryContact?.name || '—'}</p>
+              <p><b>Contact phone:</b> {provider.primaryContact?.phone || '—'}</p>
+              <p><b>Contact email:</b> {provider.primaryContact?.email || '—'}</p>
+            </Panel>
+
+            <Panel title="Accreditation">
+              <p><b>Status:</b> {humanize(provider.accreditation.status)}</p>
+              <p><b>Number:</b> {provider.accreditation.number || '—'}</p>
+              <p><b>Authority:</b> {provider.accreditation.authority || '—'}</p>
+              <p><b>Issued:</b> {dateText(provider.accreditation.issuedAt)}</p>
+              <p><b>Expires:</b> {dateText(provider.accreditation.expiresAt)}</p>
+              {provider.accreditation.notes && <p><b>Notes:</b> {provider.accreditation.notes}</p>}
+            </Panel>
+
+            <Panel title="Contract & Network">
+              <p><b>Contract number:</b> {provider.contract.contractNumber || '—'}</p>
+              <p><b>Status:</b> {humanize(provider.contract.status)}</p>
+              <p><b>Payment model:</b> {humanize(provider.contract.paymentModel)}</p>
+              <p><b>Start:</b> {dateText(provider.contract.startDate)}</p>
+              <p><b>End:</b> {dateText(provider.contract.endDate)}</p>
+              <p><b>Networks:</b> {provider.networkIds?.length ? provider.networkIds.join(', ') : '—'}</p>
+              {provider.contract.notes && <p><b>Notes:</b> {provider.contract.notes}</p>}
+            </Panel>
+
+            <Panel title="Performance">
+              <p><b>Claims:</b> {provider.performance.claimsCount}</p>
+              <p><b>Approved claims:</b> {provider.performance.approvedClaims}</p>
+              <p><b>Rejected claims:</b> {provider.performance.rejectedClaims}</p>
+              <p><b>Total billed:</b> {money(provider.performance.totalBilled)}</p>
+              <p><b>Total approved:</b> {money(provider.performance.totalApproved)}</p>
+              <p><b>Utilization:</b> {provider.performance.utilizationCount}</p>
+              <p><b>Avg. processing:</b> {provider.performance.averageProcessingDays ?? '—'} days</p>
+            </Panel>
+          </div>
+
+          <Panel title="Services">
+            <div className="flex flex-wrap gap-2">
+              {provider.services?.length ? provider.services.map((service) => (
+                <span key={service} className="rounded-xl bg-[#e8f5f3] px-3 py-1.5 text-[10px] font-bold text-[#1b7b68]">
+                  {service}
+                </span>
+              )) : <span className="text-xs text-slate-400">No services recorded.</span>}
+            </div>
+          </Panel>
+
+          {provider.notes && (
+            <Panel title="Notes">
+              <p className="whitespace-pre-wrap">{provider.notes}</p>
+            </Panel>
+          )}
+        </div>
+
+        <div className="flex shrink-0 justify-end gap-2 border-t border-slate-100 bg-white px-6 py-4">
+          <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50">
+            Close
+          </button>
+          <button type="button" onClick={onEdit} className="inline-flex items-center gap-2 rounded-2xl bg-[#1b7b68] px-5 py-2.5 text-xs font-extrabold text-white transition hover:bg-[#166b5b]">
+            <Edit3 className="h-3.5 w-3.5" /> Edit Provider
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Info({label,value}:{label:string;value:string}){return <div className="rounded-2xl bg-slate-50 p-4"><p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{label}</p><p className="mt-1 text-xs font-extrabold text-slate-700">{value}</p></div>}
 function Panel({title,children}:{title:string;children:React.ReactNode}){return <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"><p className="mb-2 text-[9px] font-bold uppercase tracking-wider text-slate-400">{title}</p><div className="space-y-1 text-xs text-slate-600">{children}</div></div>}
 function Skeleton(){return <>{Array.from({length:7}).map((_,i)=><tr key={i} className="animate-pulse"><td className="px-6 py-5"><div className="h-10 w-52 rounded-xl bg-slate-200"/></td>{Array.from({length:6}).map((__,j)=><td key={j} className="px-6 py-5"><div className="h-5 w-20 rounded-xl bg-slate-100"/></td>)}</tr>)}</>}
