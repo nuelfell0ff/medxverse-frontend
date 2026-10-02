@@ -15,6 +15,8 @@ import {
   Clock3,
   CreditCard,
   DollarSign,
+  Download,
+  FileDown,
   FileText,
   HeartPulse,
   History,
@@ -22,7 +24,9 @@ import {
   Loader2,
   Mail,
   MapPin,
+  Phone,
   Pill,
+  Printer,
   Receipt,
   RefreshCw,
   Search,
@@ -747,6 +751,631 @@ function TimelineRow({ item, onOpen }: { item: RegistryItem; onOpen: () => void 
   );
 }
 
+function escapeHtml(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function generatePatientReportHtml({
+  registry,
+  sections,
+  timeline,
+  patientName,
+  mrn,
+  docDate,
+}: {
+  registry: RegistryData;
+  sections: RegistrySection[];
+  timeline: RegistryItem[];
+  patientName: string;
+  mrn: string;
+  docDate: string;
+}): string {
+  const patient = registry.patient || {};
+  const overview = registry.overview || {};
+  const latestVitals = overview.latestVitals;
+  const allergies = asArray(patient.allergies);
+  const activeMedications = asArray<RegistryItem>(overview.activeMedications);
+  const diagnoses = asArray<RegistryItem>(overview.recentDiagnoses);
+
+  const rawJson = JSON.stringify(registry, null, 2);
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Medical Record — ${escapeHtml(patientName)} (MRN: ${escapeHtml(mrn)})</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 14mm 14mm 16mm 14mm;
+      @bottom-right {
+        content: "Page " counter(page);
+        font-size: 9px;
+        color: #94a3b8;
+      }
+    }
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #0f172a;
+      background: #f1f5f9;
+      font-size: 11.5px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+    .toolbar {
+      position: sticky;
+      top: 12px;
+      max-width: 960px;
+      margin: 0 auto 20px auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: rgba(15, 23, 42, 0.88);
+      backdrop-filter: blur(10px);
+      padding: 12px 18px;
+      border-radius: 14px;
+      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.25);
+      z-index: 1000;
+    }
+    .toolbar-info {
+      color: #f8fafc;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .toolbar-buttons {
+      display: flex;
+      gap: 8px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: 9px;
+      font-weight: 800;
+      font-size: 11px;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+    .btn-primary {
+      background: #1b7b68;
+      color: #ffffff;
+      box-shadow: 0 2px 8px rgba(27, 123, 104, 0.4);
+    }
+    .btn-primary:hover {
+      background: #146253;
+    }
+    .btn-secondary {
+      background: #334155;
+      color: #f8fafc;
+    }
+    .btn-secondary:hover {
+      background: #475569;
+    }
+    .btn-close {
+      background: #ef4444;
+      color: #ffffff;
+    }
+    .btn-close:hover {
+      background: #dc2626;
+    }
+    .sheet {
+      max-width: 960px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 40px;
+      border: 1px solid #e2e8f0;
+      border-radius: 18px;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.04);
+    }
+    @media print {
+      body {
+        background: #ffffff;
+        padding: 0;
+      }
+      .toolbar {
+        display: none !important;
+      }
+      .sheet {
+        border: none;
+        box-shadow: none;
+        padding: 0;
+        max-width: 100%;
+        border-radius: 0;
+      }
+      .page-break {
+        page-break-before: always;
+      }
+      a {
+        text-decoration: none;
+        color: inherit;
+      }
+    }
+    /* Brand Header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2.5px solid #1b7b68;
+      padding-bottom: 18px;
+      margin-bottom: 24px;
+    }
+    .hospital-title {
+      font-size: 24px;
+      font-weight: 900;
+      color: #1b7b68;
+      letter-spacing: -0.5px;
+      margin: 0;
+    }
+    .hospital-sub {
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748b;
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+    .doc-type-badge {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 3px 9px;
+      border-radius: 6px;
+      background: #e8f5f3;
+      color: #1b7b68;
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .header-meta {
+      text-align: right;
+      font-size: 10.5px;
+      color: #64748b;
+      line-height: 1.6;
+    }
+    .header-meta strong {
+      color: #0f172a;
+    }
+    /* Section Headings */
+    .section-title {
+      font-size: 12px;
+      font-weight: 900;
+      color: #0f172a;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      border-bottom: 1.5px solid #cbd5e1;
+      padding-bottom: 5px;
+      margin: 22px 0 10px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .section-count {
+      font-size: 9px;
+      font-weight: 800;
+      color: #1b7b68;
+      background: #e8f5f3;
+      padding: 2px 7px;
+      border-radius: 5px;
+    }
+    /* Grid Utilities */
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    @media (max-width: 700px) {
+      .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 9px;
+      padding: 8px 12px;
+    }
+    .card-label {
+      font-size: 8.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #94a3b8;
+      margin-bottom: 2px;
+    }
+    .card-val {
+      font-size: 11.5px;
+      font-weight: 800;
+      color: #1e293b;
+      word-break: break-word;
+    }
+    /* Status Badges */
+    .tag {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 5px;
+      font-size: 8.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      border: 1px solid transparent;
+    }
+    .tag-emerald { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+    .tag-amber { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+    .tag-rose { background: #fff1f2; color: #be123c; border-color: #fecdd3; }
+    .tag-slate { background: #f8fafc; color: #475569; border-color: #e2e8f0; }
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10.5px;
+      margin-top: 6px;
+      margin-bottom: 12px;
+    }
+    th {
+      background: #f1f5f9;
+      color: #334155;
+      font-weight: 800;
+      text-transform: uppercase;
+      font-size: 8.5px;
+      letter-spacing: 0.5px;
+      padding: 6px 8px;
+      text-align: left;
+      border-bottom: 1.5px solid #cbd5e1;
+    }
+    td {
+      padding: 6px 8px;
+      border-bottom: 1px solid #f1f5f9;
+      color: #1e293b;
+      vertical-align: top;
+    }
+    tr:nth-child(even) td {
+      background: #fafbfc;
+    }
+    .text-muted { color: #64748b; font-size: 9.5px; }
+    .footer-stamp {
+      margin-top: 36px;
+      padding-top: 18px;
+      border-top: 1px dashed #cbd5e1;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      font-size: 10px;
+      color: #64748b;
+    }
+    .sign-line {
+      width: 220px;
+      border-top: 1px solid #0f172a;
+      margin-top: 35px;
+      padding-top: 4px;
+      font-size: 9.5px;
+      font-weight: 700;
+      color: #0f172a;
+      text-align: center;
+    }
+    .disclaimer {
+      margin-top: 16px;
+      padding: 8px 12px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 9px;
+      color: #94a3b8;
+      text-align: center;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <div class="toolbar-info" style="display:flex;align-items:center;gap:7px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+      <span><strong>${escapeHtml(patientName)}</strong> • Complete Medical Record Document</span>
+    </div>
+    <div class="toolbar-buttons">
+      <button class="btn btn-primary" onclick="window.print()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+        Print / Save as PDF
+      </button>
+      <button class="btn btn-secondary" onclick="downloadHtmlFile()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        Download HTML
+      </button>
+      <button class="btn btn-secondary" onclick="downloadJsonFile()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+        Export JSON
+      </button>
+      <button class="btn btn-close" onclick="window.close()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        Close
+      </button>
+    </div>
+  </div>
+
+  <main class="sheet">
+    <header class="header">
+      <div>
+        <h1 class="hospital-title">MedXverse Hospital</h1>
+        <div class="hospital-sub">Hospital Management System & Clinical Registry</div>
+        <span class="doc-type-badge">Confidential Medical Health Record</span>
+      </div>
+      <div class="header-meta">
+        <div><strong>Record Date:</strong> ${escapeHtml(docDate)}</div>
+        <div><strong>Patient MRN:</strong> ${escapeHtml(mrn)}</div>
+        <div><strong>MPI:</strong> ${escapeHtml(patient.universalPatientId || '—')}</div>
+        <div><strong>Total Linked Records:</strong> ${escapeHtml(timeline.length)}</div>
+      </div>
+    </header>
+
+    <!-- SECTION 1: PATIENT IDENTIFICATION -->
+    <div class="section-title">
+      <span>Patient Identification & Demographics</span>
+      <span class="section-count">Primary Identity</span>
+    </div>
+    <div class="grid-4">
+      <div class="card">
+        <div class="card-label">Full Name</div>
+        <div class="card-val">${escapeHtml(patientName)}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">MRN / Record Number</div>
+        <div class="card-val" style="color:#1b7b68;">${escapeHtml(mrn)}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Universal Patient ID</div>
+        <div class="card-val">${escapeHtml(patient.universalPatientId || '—')}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Gender / Sex</div>
+        <div class="card-val">${escapeHtml(humanize(patient.gender))}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Date of Birth</div>
+        <div class="card-val">${escapeHtml(formatDate(patient.dateOfBirth))} (${escapeHtml(calculateAge(patient.dateOfBirth))} yrs)</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Blood Group / Genotype</div>
+        <div class="card-val">${escapeHtml(patient.bloodGroup || '—')} / ${escapeHtml(patient.genotype || '—')}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Phone Number</div>
+        <div class="card-val">${escapeHtml(patient.phone || '—')}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Email Address</div>
+        <div class="card-val">${escapeHtml(patient.email || '—')}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Residential Address</div>
+        <div class="card-val">${escapeHtml(typeof patient.address === 'string' ? patient.address : [patient.address?.street, patient.address?.city, patient.address?.state].filter(Boolean).join(', ') || '—')}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Marital Status / Nationality</div>
+        <div class="card-val">${escapeHtml(humanize(patient.maritalStatus || '—'))} / ${escapeHtml(humanize(patient.nationality || '—'))}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Occupation / Religion</div>
+        <div class="card-val">${escapeHtml(patient.occupation || '—')} / ${escapeHtml(patient.religion || '—')}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Emergency Contact</div>
+        <div class="card-val">${escapeHtml(getPersonName(patient.emergencyContact) || patient.emergencyContact?.phone || '—')}</div>
+      </div>
+    </div>
+
+    <!-- SECTION 2: CLINICAL ALERTS & LATEST VITALS -->
+    <div class="section-title">
+      <span>Clinical Observations & Vital Signs</span>
+      <span class="section-count">Critical Data</span>
+    </div>
+    <div class="grid-2">
+      <!-- Allergies & Alerts -->
+      <div class="card" style="background:#fff; border: 1.5px solid ${allergies.length ? '#fecdd3' : '#e2e8f0'};">
+        <div class="card-label" style="color: ${allergies.length ? '#be123c' : '#94a3b8'}; display:flex; align-items:center; gap:5px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          Active Allergies & Medical Warnings
+        </div>
+        <div style="margin-top: 4px;">
+          ${allergies.length ? allergies.map((a: any) => `
+            <span class="tag tag-rose" style="margin: 2px;">
+              ${escapeHtml(a.allergen || a.name || a)} ${a.severity ? `(${escapeHtml(a.severity)})` : ''}
+            </span>
+          `).join('') : '<span class="text-muted">No known active drug or substance allergies recorded.</span>'}
+        </div>
+        ${patient.isFlagged ? `
+          <div style="margin-top: 6px; padding: 4px 8px; background: #fff1f2; border-radius: 6px; color: #be123c; font-weight: 700; font-size: 10px; display:flex; align-items:center; gap:5px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            Flagged Case: ${escapeHtml(patient.flagReason || 'Requires clinical attention')}
+          </div>
+        ` : ''}
+      </div>
+
+      <!-- Latest Vitals -->
+      <div class="card" style="background:#fff;">
+        <div class="card-label" style="display:flex; align-items:center; gap:5px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+          Latest Vital Signs (${latestVitals?.recordedAt ? escapeHtml(formatDateTime(latestVitals.recordedAt)) : 'Recent'})
+        </div>
+        ${latestVitals ? `
+          <div class="grid-3" style="margin-top: 4px;">
+            <div><span class="text-muted">BP:</span> <strong>${escapeHtml(latestVitals.systolicBp && latestVitals.diastolicBp ? `${latestVitals.systolicBp}/${latestVitals.diastolicBp} mmHg` : '—')}</strong></div>
+            <div><span class="text-muted">Temp:</span> <strong>${escapeHtml(latestVitals.temperature ? `${latestVitals.temperature} °C` : '—')}</strong></div>
+            <div><span class="text-muted">Pulse:</span> <strong>${escapeHtml(latestVitals.pulseRate || latestVitals.heartRate ? `${latestVitals.pulseRate || latestVitals.heartRate} bpm` : '—')}</strong></div>
+            <div><span class="text-muted">SpO₂:</span> <strong>${escapeHtml(latestVitals.spo2 || latestVitals.oxygenSaturation ? `${latestVitals.spo2 || latestVitals.oxygenSaturation} %` : '—')}</strong></div>
+            <div><span class="text-muted">Resp:</span> <strong>${escapeHtml(latestVitals.respiratoryRate ? `${latestVitals.respiratoryRate} bpm` : '—')}</strong></div>
+            <div><span class="text-muted">Weight:</span> <strong>${escapeHtml(latestVitals.weight ? `${latestVitals.weight} kg` : '—')}</strong></div>
+          </div>
+        ` : '<span class="text-muted">No vital signs logged yet.</span>'}
+      </div>
+    </div>
+
+    <!-- SECTION 3: ACTIVE MEDICATIONS & DIAGNOSES -->
+    ${activeMedications.length || diagnoses.length ? `
+      <div class="section-title">
+        <span>Active Clinical Care & Regimens</span>
+        <span class="section-count">${activeMedications.length} Meds • ${diagnoses.length} Diagnoses</span>
+      </div>
+      <div class="grid-2">
+        <div>
+          <strong style="font-size: 11px; text-transform: uppercase; color: #1b7b68;">Active Medications</strong>
+          <table>
+            <thead>
+              <tr><th>Medication</th><th>Dosage / Route</th><th>Frequency</th></tr>
+            </thead>
+            <tbody>
+              ${activeMedications.length ? activeMedications.map((med: any) => `
+                <tr>
+                  <td><strong>${escapeHtml(getRecordTitle(med))}</strong></td>
+                  <td>${escapeHtml(med.details?.dosage || med.details?.dose || med.details?.route || '—')}</td>
+                  <td>${escapeHtml(med.details?.frequency || med.details?.duration || '—')}</td>
+                </tr>
+              `).join('') : '<tr><td colspan="3" class="text-muted">No active medications.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <strong style="font-size: 11px; text-transform: uppercase; color: #1b7b68;">Diagnoses & Clinical Notes</strong>
+          <table>
+            <thead>
+              <tr><th>Condition / Diagnosis</th><th>Recorded Date</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              ${diagnoses.length ? diagnoses.map((d: any) => `
+                <tr>
+                  <td><strong>${escapeHtml(getRecordTitle(d))}</strong></td>
+                  <td>${escapeHtml(formatDate(d.date))}</td>
+                  <td><span class="tag tag-emerald">${escapeHtml(humanize(d.status || 'Active'))}</span></td>
+                </tr>
+              `).join('') : '<tr><td colspan="3" class="text-muted">No diagnoses recorded.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    ` : ''}
+
+    <!-- SECTION 4: COMPLETE HMS MODULES -->
+    <div class="page-break"></div>
+    <div style="margin-top: 24px;">
+      <h2 style="font-size: 15px; font-weight: 900; color: #1b7b68; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">
+        Complete Departmental & Clinical Records
+      </h2>
+      <p class="text-muted" style="margin-top: 0; margin-bottom: 16px;">
+        All clinical documents, surgical interventions, lab investigations, imaging, and operational records across HMS modules.
+      </p>
+
+      ${sections.map((section) => `
+        <div style="margin-bottom: 20px;">
+          <div class="section-title">
+            <span>${escapeHtml(section.label)}</span>
+            <span class="section-count">${escapeHtml(section.count)} ${section.count === 1 ? 'record' : 'records'}</span>
+          </div>
+          ${section.items.length ? `
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 14%;">Date</th>
+                  <th style="width: 28%;">Record Title / Procedure</th>
+                  <th style="width: 14%;">Status</th>
+                  <th style="width: 20%;">Staff / Provider</th>
+                  <th style="width: 24%;">Clinical Notes / Summary</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${section.items.map((item) => {
+                  const staffList = extractStaff(item);
+                  const staffStr = staffList.map((s) => `${s.label}: ${s.name}`).join(', ');
+                  const summaryStr = getRecordSummary(item) || '—';
+                  const st = String(item.status || item.details?.status || '').toUpperCase();
+                  const tagClass = ['COMPLETED', 'PAID', 'DISPENSED', 'APPROVED', 'ACTIVE', 'DISCHARGED', 'VERIFIED'].includes(st) ? 'tag-emerald'
+                    : ['CANCELLED', 'REJECTED', 'FAILED'].includes(st) ? 'tag-rose'
+                    : ['PENDING', 'SCHEDULED', 'IN_PROGRESS', 'PARTIALLY_PAID', 'PARTIALLY_DISPENSED'].includes(st) ? 'tag-amber'
+                    : 'tag-slate';
+
+                  return `
+                    <tr>
+                      <td><strong>${escapeHtml(formatDate(item.date || dateValue(item.details || {})))}</strong></td>
+                      <td>
+                        <strong>${escapeHtml(getRecordTitle(item))}</strong>
+                        <div class="text-muted">${escapeHtml(humanize(item.sourceModel || item.resourceType || ''))}</div>
+                      </td>
+                      <td><span class="tag ${tagClass}">${escapeHtml(humanize(st || 'Recorded'))}</span></td>
+                      <td>${escapeHtml(staffStr || '—')}</td>
+                      <td>${escapeHtml(summaryStr)}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          ` : '<p class="text-muted" style="padding: 6px 0;">No records in this module.</p>'}
+        </div>
+      `).join('')}
+    </div>
+
+    <!-- SECTION 5: SIGN-OFF & ATTESTATION -->
+    <footer class="footer-stamp">
+      <div>
+        <div style="font-weight: 800; color: #0f172a; text-transform: uppercase; font-size: 10.5px;">MedXverse Hospital Management System</div>
+        <div>Electronic Medical Records & Patient Registry Division</div>
+        <div>Official Certified Medical Extract • Printed on ${escapeHtml(docDate)}</div>
+      </div>
+      <div>
+        <div class="sign-line">Attending Physician / Records Officer Signature</div>
+      </div>
+    </footer>
+
+    <div class="disclaimer">
+      <strong>CONFIDENTIAL MEDICAL DOCUMENT:</strong> This document contains protected health information (PHI) intended solely for the authorized clinical and administrative care of ${escapeHtml(patientName)}. Any unauthorized copying, distribution, or alteration is strictly prohibited under healthcare privacy regulations.
+    </div>
+  </main>
+
+  <script type="application/json" id="patient-data">
+    ${rawJson}
+  </script>
+
+  <script>
+    function downloadHtmlFile() {
+      const htmlContent = '<!DOCTYPE html>\\n' + document.documentElement.outerHTML;
+      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Medical_Record_${patientName.replace(/[^a-zA-Z0-9]/g, '_')}_${mrn}.html';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function downloadJsonFile() {
+      const dataEl = document.getElementById('patient-data');
+      if (!dataEl) return;
+      const blob = new Blob([dataEl.textContent.trim()], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Patient_Data_${patientName.replace(/[^a-zA-Z0-9]/g, '_')}_${mrn}.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>`;
+}
+
 export default function PatientDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -827,6 +1456,54 @@ export default function PatientDetailPage() {
   const recentLabs = asArray<RegistryItem>(registry?.overview?.recentLaboratory);
   const recentRadiology = asArray<RegistryItem>(registry?.overview?.recentRadiology);
 
+  const downloadFullDocument = useCallback(() => {
+    if (!registry || !registry.patient) return;
+    const patientObj = registry.patient;
+    const patientName = [patientObj.firstName, patientObj.otherNames, patientObj.lastName]
+      .filter(Boolean)
+      .join(' ') || 'Unnamed Patient';
+    const mrn = patientObj.mrn || 'N/A';
+    const docDate = new Date().toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const reportHtml = generatePatientReportHtml({
+      registry,
+      sections,
+      timeline,
+      patientName,
+      mrn,
+      docDate,
+    });
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      // Fallback: direct download as an HTML file if popups are blocked by browser
+      const blob = new Blob([reportHtml], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Medical_Record_${patientName.replace(/[^a-zA-Z0-9]/g, '_')}_${mrn}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(reportHtml);
+    printWindow.document.close();
+
+    printWindow.onload = () => {
+      printWindow.focus();
+    };
+  }, [registry, sections, timeline]);
+
   if (loading) {
     return (
       <div className="flex min-h-[70vh] items-center justify-center font-sans">
@@ -879,6 +1556,15 @@ export default function PatientDetailPage() {
           </div>
           <button type="button" onClick={() => void loadRegistry(true)} disabled={refreshing} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-600 hover:border-[#1b7b68]/30 hover:text-[#1b7b68]">
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} /> Refresh
+          </button>
+          <button
+            type="button"
+            onClick={downloadFullDocument}
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#1b7b68] px-4 text-xs font-black text-white shadow-md shadow-[#1b7b68]/20 transition-all hover:bg-[#146253] active:scale-95"
+            title="Download full document containing all patient details"
+          >
+            <Download className="h-4 w-4" />
+            <span>Download Full Record</span>
           </button>
         </div>
       </div>
@@ -993,7 +1679,7 @@ export default function PatientDetailPage() {
 }
 
 function PhoneIcon() {
-  return <span className="text-[10px]">☎</span>;
+  return <Phone className="h-3 w-3 text-slate-400" />;
 }
 
 function Metric({ label, value, icon: Icon }: { label: string; value: unknown; icon: React.ElementType }) {
