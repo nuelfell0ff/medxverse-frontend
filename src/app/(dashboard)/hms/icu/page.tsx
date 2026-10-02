@@ -240,7 +240,7 @@ export default function ICUPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [modal, setModal] = useState<'admission' | 'vitals' | 'ventilator' | 'status' | 'family' | null>(null);
 
-  const [admissionForm, setAdmissionForm] = useState({ patientId: '', wardId: '', bedNumber: '', careLevel: 'LEVEL_1_ICU', primaryDiagnosis: '', admissionReason: '', attendingPhysicianId: '', encounterId: '' });
+  const [admissionForm, setAdmissionForm] = useState({ patientId: '', wardId: '', bedNumber: '', careLevel: 'LEVEL_2_ICU', primaryDiagnosis: '', admissionReason: '', attendingPhysicianId: '', encounterId: '' });
   const [wardResults, setWardResults] = useState<WardRef[]>([]);
   const [selectedWard, setSelectedWard] = useState<WardRef | null>(null);
   const [wardSearch, setWardSearch] = useState('');
@@ -424,7 +424,7 @@ export default function ICUPage() {
 
   const selected = dashboard?.admission || admissions.find(item => item._id === selectedId) || null;
   const activeCount = admissions.filter(item => ['ADMITTED', 'STABILIZED'].includes(item.status)).length;
-  const criticalCount = admissions.filter(item => item.careLevel === 'LEVEL_1_ICU' && ['ADMITTED', 'STABILIZED'].includes(item.status)).length;
+  const criticalCount = admissions.filter(item => item.careLevel === 'LEVEL_3_CRITICAL' && ['ADMITTED', 'STABILIZED'].includes(item.status)).length;
   const pendingReviews = dashboard?.recentFlowsheet.filter(item => item.status === 'PENDING_REVIEW').length || 0;
   const normalizedScores = useMemo(() => scoreRecords(dashboard?.latestScores), [dashboard?.latestScores]);
   const latestSOFA = normalizedScores.find(item => item.scoreType === 'SOFA');
@@ -479,7 +479,7 @@ export default function ICUPage() {
     <div className="min-h-full space-y-5 font-sans text-slate-800 animate-in fade-in duration-300">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#1b7b68] text-white shadow-sm"><Activity size={22}/></div><div><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-black tracking-tight">ICU Command Center</h1><span className="rounded-full bg-[#e8f5f3] px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-wider text-[#1b7b68]">Critical care</span></div><p className="mt-1 text-xs text-slate-400">Patient surveillance, device telemetry, flowsheets, severity scoring and family communication.</p></div></div>
-        <div className="flex flex-wrap gap-2"><button onClick={() => void refresh()} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-600 shadow-sm"><RefreshCw size={15} className={refreshing ? 'animate-spin' : ''}/> Refresh</button><button onClick={() => { resetAdmissionSearch(); setAdmissionForm({ patientId: '', wardId: '', bedNumber: '', careLevel: 'LEVEL_1_ICU', primaryDiagnosis: '', admissionReason: '', attendingPhysicianId: '', encounterId: '' }); setModal('admission'); }} className="inline-flex items-center gap-2 rounded-2xl bg-[#1b7b68] px-4 py-2.5 text-xs font-extrabold text-white shadow-sm"><Plus size={15}/> New ICU admission</button></div>
+        <div className="flex flex-wrap gap-2"><button onClick={() => void refresh()} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-600 shadow-sm"><RefreshCw size={15} className={refreshing ? 'animate-spin' : ''}/> Refresh</button><button onClick={() => { resetAdmissionSearch(); setAdmissionForm({ patientId: '', wardId: '', bedNumber: '', careLevel: 'LEVEL_2_ICU', primaryDiagnosis: '', admissionReason: '', attendingPhysicianId: '', encounterId: '' }); setModal('admission'); }} className="inline-flex items-center gap-2 rounded-2xl bg-[#1b7b68] px-4 py-2.5 text-xs font-extrabold text-white shadow-sm"><Plus size={15}/> New ICU admission</button></div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -543,6 +543,7 @@ export default function ICUPage() {
           if (!admissionForm.patientId) { setError('Please select a patient from the search results.'); return; }
           if (!admissionForm.wardId) { setError('Please select an ICU ward from the search results.'); return; }
           if (!admissionForm.admissionReason.trim()) { setError('Please provide the admission reason.'); return; }
+          if (!admissionForm.primaryDiagnosis.trim()) { setError('Please provide the primary diagnosis.'); return; }
           const payload = {
             patientId: admissionForm.patientId,
             wardId: admissionForm.wardId,
@@ -553,7 +554,7 @@ export default function ICUPage() {
             ...(admissionForm.attendingPhysicianId ? { attendingPhysicianId: admissionForm.attendingPhysicianId } : {}),
             ...(admissionForm.encounterId ? { encounterId: admissionForm.encounterId } : {}),
           };
-          void runAction(() => api('/admissions', { method: 'POST', body: JSON.stringify(payload) }).then(() => undefined), 'ICU admission created.');
+          void runAction(() => api(`${ICU_BASE}/admissions`, { method: 'POST', body: JSON.stringify(payload) }).then(() => undefined), 'ICU admission created.');
         }} className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="relative text-[10px] font-extrabold text-slate-600">
@@ -603,7 +604,7 @@ export default function ICUPage() {
             </div>
 
             <label className="text-[10px] font-extrabold text-slate-600">Bed number<input required value={admissionForm.bedNumber} onChange={e => setAdmissionForm({ ...admissionForm, bedNumber: e.target.value })} className={inputClass} placeholder="ICU-01"/></label>
-            <label className="text-[10px] font-extrabold text-slate-600">Care level<select value={admissionForm.careLevel} onChange={e => setAdmissionForm({ ...admissionForm, careLevel: e.target.value })} className={selectClass}><option value="LEVEL_1_ICU">Level 1 ICU</option><option value="LEVEL_2_ICU">Level 2 ICU</option><option value="LEVEL_3_ICU">Level 3 ICU</option></select></label>
+            <label className="text-[10px] font-extrabold text-slate-600">Care level<select value={admissionForm.careLevel} onChange={e => setAdmissionForm({ ...admissionForm, careLevel: e.target.value })} className={selectClass}><option value="LEVEL_1_HIGH_DEPENDENCY">Level 1 high dependency</option><option value="LEVEL_2_ICU">Level 2 ICU</option><option value="LEVEL_3_CRITICAL">Level 3 critical</option></select></label>
 
             <div className="relative text-[10px] font-extrabold text-slate-600">
               <label>Attending physician</label>
