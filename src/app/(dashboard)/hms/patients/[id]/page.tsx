@@ -219,13 +219,13 @@ function calculateAge(dob?: string) {
 
 function statusClass(value?: unknown) {
   const status = String(value || '').toUpperCase();
-  if (['ACTIVE', 'COMPLETED', 'PAID', 'APPROVED', 'SUCCESS', 'AUTHORIZED', 'DISCHARGED'].includes(status)) {
+  if (['ACTIVE', 'COMPLETED', 'PAID', 'APPROVED', 'SUCCESS', 'AUTHORIZED', 'DISCHARGED', 'DISPENSED', 'VERIFIED', 'CONFIRMED', 'RESOLVED'].includes(status)) {
     return 'bg-emerald-50 text-emerald-700 border-emerald-100';
   }
-  if (['CANCELLED', 'CANCELED', 'REJECTED', 'FAILED', 'TERMINATED', 'DENIED'].includes(status)) {
+  if (['CANCELLED', 'CANCELED', 'REJECTED', 'FAILED', 'TERMINATED', 'DENIED', 'SAMPLE_REJECTED', 'RECOLLECTION_REQUIRED'].includes(status)) {
     return 'bg-rose-50 text-rose-700 border-rose-100';
   }
-  if (['PENDING', 'SCHEDULED', 'IN_PROGRESS', 'PROCESSING', 'ADMITTED', 'PLANNED'].includes(status)) {
+  if (['PENDING', 'SCHEDULED', 'IN_PROGRESS', 'PROCESSING', 'ADMITTED', 'PLANNED', 'PARTIALLY_PAID', 'PARTIALLY_DISPENSED', 'AWAITING_RESULTS', 'RESULTS_RECORDED', 'SAMPLE_COLLECTED', 'SPECIMEN_RECEIVED', 'SAMPLE_SCHEDULED'].includes(status)) {
     return 'bg-amber-50 text-amber-700 border-amber-100';
   }
   return 'bg-slate-50 text-slate-600 border-slate-200';
@@ -370,6 +370,7 @@ function normalizeSections(data: RegistryData | null) {
     icu: { key: 'icu', label: 'Intensive Care Unit' },
     outpatient: { key: 'outpatient', label: 'Outpatient Clinic' },
     surgery: { key: 'surgery', label: 'Surgery & OT' },
+    // Backend used to send 'ot' as a separate key — keep mapping for backward compat.
     ot: { key: 'surgery', label: 'Surgery & OT' },
     radiology: { key: 'radiology', label: 'Radiology' },
     laboratory: { key: 'laboratory', label: 'Laboratory' },
@@ -377,18 +378,34 @@ function normalizeSections(data: RegistryData | null) {
     appointments: { key: 'appointments', label: 'Appointments' },
     pharmacy: { key: 'pharmacy', label: 'Pharmacy' },
     billing: { key: 'billing', label: 'Billing & Invoices' },
+    admissions: { key: 'admissions', label: 'Admissions' },
+    consultations: { key: 'consultations', label: 'Consultations' },
+    telemedicine: { key: 'telemedicine', label: 'Telemedicine' },
+    dental: { key: 'dental', label: 'Dental' },
+    eyeclinic: { key: 'eyeclinic', label: 'Eye Clinic' },
+    mch: { key: 'mch', label: 'Maternal & Child Health' },
+    mentalhealth: { key: 'mentalhealth', label: 'Mental Health' },
+    bloodbank: { key: 'bloodbank', label: 'Blood Bank' },
+    bedward: { key: 'bedward', label: 'Bed & Ward' },
+    ambulance: { key: 'ambulance', label: 'Ambulance' },
+    dietary: { key: 'dietary', label: 'Dietary' },
   };
 
   const grouped = new Map<string, RegistrySection>();
 
   asArray<RegistrySection>(data?.sections).forEach((section) => {
-    const module = allowedModules[String(section.key || '').toLowerCase()];
+    const sectionKey = String(section.key || '').toLowerCase().replace(/[^a-z]/g, '');
+    const module = allowedModules[sectionKey] || allowedModules[String(section.key || '').toLowerCase()];
     if (!module) return;
 
     const items = asArray<RegistryItem>(section.items);
     const existing = grouped.get(module.key);
     if (existing) {
-      existing.items.push(...items);
+      // De-duplicate by item ID so two backend models covering the same record
+      // (e.g. SurgeryCase + SurgicalCase) don't produce two cards.
+      const seenIds = new Set(existing.items.map((item) => item.id).filter(Boolean));
+      const newItems = items.filter((item) => !item.id || !seenIds.has(item.id));
+      existing.items.push(...newItems);
       existing.count = existing.items.length;
       return;
     }
