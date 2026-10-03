@@ -15,6 +15,8 @@ import {
   ArrowRight,
   AlertCircle,
   Loader2,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 import { AccountType } from '@/types/auth.types';
@@ -38,14 +40,19 @@ export default function RegisterPage() {
     address: '',
   });
 
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
+    setFormData((current) => ({
+      ...current,
       [e.target.name]: e.target.value,
-    });
+    }));
+
+    if (errorMessage) {
+      setErrorMessage(null);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -58,20 +65,23 @@ export default function RegisterPage() {
       const response = await authService.register({
         ...formData,
         accountType,
-        code: formData.code.trim() ? formData.code : undefined,
+        code: formData.code.trim() ? formData.code.trim() : undefined,
         address: formData.address.trim()
-          ? formData.address
+          ? formData.address.trim()
           : undefined,
       });
 
       if (response.success) {
-        // Redirect directly to login page
         router.push('/auth/login?registered=true');
+      } else {
+        setErrorMessage(
+          'Registration failed. Please review your details and try again.'
+        );
       }
     } catch (err: any) {
       setErrorMessage(
-        err.message ||
-          'Registration failed. Please review your details.'
+        err?.message ||
+          'Registration failed. Please review your details and try again.'
       );
     } finally {
       setLoading(false);
@@ -79,264 +89,296 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f4f7f6] p-6 font-sans">
-      <div className="w-full max-w-xl rounded-3xl border border-slate-100 bg-white p-8 shadow-floating">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#1b7b68] px-5 py-10 font-sans">
+      {/* Background decorative circles */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full border border-white/[0.035] bg-white/[0.025]"
+      />
 
-        {/* Header & Logo */}
-        <div className="mb-6 flex flex-col items-center text-center">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -right-48 top-1/4 h-[620px] w-[620px] rounded-full border border-white/[0.035] bg-white/[0.025]"
+      />
 
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -bottom-64 -left-20 h-[560px] w-[560px] rounded-full border border-black/[0.035] bg-black/[0.025]"
+      />
+
+      {/* Main content */}
+      <div className="relative mx-auto z-10 w-full max-w-[520px]">
+        {/* Header */}
+        <div className="mb-8 flex flex-col items-center text-center">
+          {/* Logo intentionally hidden to match Login page */}
+{/*           
           <Link
             href="/"
             aria-label="MedXverse home"
-            className="group relative mb-4 block h-[58px] w-[180px] overflow-hidden sm:h-[62px] sm:w-[190px] lg:h-[66px] lg:w-[200px]"
+            className="mb-4 flex h-20 w-36 items-center justify-center transition-opacity hover:opacity-85"
           >
             <Image
               src={medxverseLogo}
               alt="MedXverse"
               priority
-              fill
-              sizes="200px"
-              className="h-auto w-[150px] object-contain transition-opacity duration-200 group-hover:opacity-85 sm:w-[160px] lg:w-[170px]"
-              style={{
-                left: '50%',
-                top: '50%',
-                transform: 'translate(-50%, -50%)',
-              }}
+              width={150}
+              height={70}
+              className="h-auto max-h-16 w-auto object-contain"
             />
           </Link>
+          */}
 
-          <h1 className="text-2xl font-bold tracking-tight text-slate-800">
-            Create Your Account
+          <h1 className="text-2xl font-semibold tracking-tight text-white">
+            Create account
           </h1>
 
-          <p className="mt-0.5 text-xs font-semibold uppercase tracking-widest text-teal-600">
-            Health Management System (MHMS)
+          <p className="mt-1 text-[10px] font-medium   tracking-[0.22em] text-white/65">
+            MedXverse Health Management System
           </p>
         </div>
 
-        {/* Account Type Toggle */}
-        <div className="mb-6">
-          <label className="mb-2 block text-center text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Register Account Category
-          </label>
+        {/* Error */}
+        {errorMessage && (
+          <div
+            role="alert"
+            className="mb-4 flex items-start gap-2.5 rounded-xl border border-rose-200/25 bg-rose-950/20 px-3.5 py-3 text-xs text-white backdrop-blur-sm"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
 
-          <div className="grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1.5">
+        {/* Account Type */}
+        <div className="mb-4">
+          <p className="mb-2 text-[9px] font-medium   tracking-[0.18em] text-white/50">
+            Account type
+          </p>
 
+          <div className="grid grid-cols-2 gap-2">
             {/* Hospital */}
             <button
               type="button"
               onClick={() =>
                 setAccountType(AccountType.HOSPITAL)
               }
-              className={`flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-all ${
+              className={`flex h-11 items-center justify-center gap-2 rounded-sm border px-3 text-[10px] font-semibold   tracking-[0.08em] transition-all ${
                 accountType === AccountType.HOSPITAL
-                  ? 'bg-teal-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'border-white bg-white text-[#1b7b68]'
+                  : 'border-white/45 bg-transparent text-white/75 hover:border-white hover:text-white'
               }`}
             >
-              <Building2 className="h-4 w-4" />
-              Hospital / Clinic
+              <Building2 className="h-4 w-4 shrink-0" />
+              <span>Hospital / Clinic</span>
             </button>
 
             {/* HMO */}
             <button
               type="button"
-              onClick={() =>
-                setAccountType(AccountType.HMO)
-              }
-              className={`flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-all ${
+              onClick={() => setAccountType(AccountType.HMO)}
+              className={`flex h-11 items-center justify-center gap-2 rounded-sm border px-3 text-[10px] font-semibold   tracking-[0.08em] transition-all ${
                 accountType === AccountType.HMO
-                  ? 'bg-teal-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'border-white bg-white text-[#1b7b68]'
+                  : 'border-white/45 bg-transparent text-white/75 hover:border-white hover:text-white'
               }`}
             >
-              <ShieldCheck className="h-4 w-4" />
-              HMO Organization
+              <ShieldCheck className="h-4 w-4 shrink-0" />
+              <span>HMO Organization</span>
             </button>
           </div>
         </div>
 
-        {/* Error Alert */}
-        {errorMessage && (
-          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-medium text-rose-700">
-            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-            <span>{errorMessage}</span>
-          </div>
-        )}
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-
+        {/* Registration Form */}
+        <form onSubmit={handleSubmit} className="space-y-3.5">
           {/* Organization Name */}
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-              {accountType === AccountType.HOSPITAL
-                ? 'Hospital / Organization Name'
-                : 'HMO Name'}
+          <div className="group relative">
+            <label htmlFor="name" className="sr-only">
+              Organization name
             </label>
 
-            <div className="relative">
-              <Building2 className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Building2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
 
-              <input
-                type="text"
-                name="name"
-                required
-                value={formData.name}
-                onChange={handleChange}
-                placeholder={
-                  accountType === AccountType.HOSPITAL
-                    ? 'St. Jude Medical Center'
-                    : 'Apex Health Care HMO'
-                }
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-800 transition-all focus:border-teal-600 focus:bg-white focus:outline-none"
-              />
-            </div>
+            <input
+              id="name"
+              type="text"
+              name="name"
+              autoComplete="organization"
+              required
+              value={formData.name}
+              onChange={handleChange}
+              placeholder={
+                accountType === AccountType.HOSPITAL
+                  ? 'HOSPITAL / ORGANIZATION NAME'
+                  : 'HMO ORGANIZATION NAME'
+              }
+              className="h-12 w-full rounded-sm border border-white bg-transparent px-11 text-[10px] font-medium   tracking-[0.1em] text-white outline-none transition-all placeholder:text-white/55 focus:border-white focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
+            />
           </div>
 
           {/* Email + Phone */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-
+          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
             {/* Email */}
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                Official Email
+            <div className="group relative">
+              <label htmlFor="email" className="sr-only">
+                Official email
               </label>
 
-              <div className="relative">
-                <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
 
-                <input
-                  type="email"
-                  name="email"
-                  required
-                  value={formData.email}
-                  onChange={handleChange}
-                  placeholder="admin@hospital.com"
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-800 transition-all focus:border-teal-600 focus:bg-white focus:outline-none"
-                />
-              </div>
+              <input
+                id="email"
+                type="email"
+                name="email"
+                autoComplete="email"
+                required
+                value={formData.email}
+                onChange={handleChange}
+                placeholder="OFFICIAL EMAIL"
+                className="h-12 w-full rounded-sm border border-white bg-transparent px-11 text-[10px] font-medium tracking-[0.1em] text-white outline-none transition-all placeholder:text-white/55 focus:border-white focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
+              />
             </div>
 
             {/* Phone */}
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                Contact Phone
+            <div className="group relative">
+              <label htmlFor="phone" className="sr-only">
+                Contact phone
               </label>
 
-              <div className="relative">
-                <Phone className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Phone className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
 
-                <input
-                  type="text"
-                  name="phone"
-                  required
-                  value={formData.phone}
-                  onChange={handleChange}
-                  placeholder="+234 800 000 0000"
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-800 transition-all focus:border-teal-600 focus:bg-white focus:outline-none"
-                />
-              </div>
+              <input
+                id="phone"
+                type="tel"
+                name="phone"
+                autoComplete="tel"
+                required
+                value={formData.phone}
+                onChange={handleChange}
+                placeholder="CONTACT PHONE"
+                className="h-12 w-full rounded-sm border border-white bg-transparent px-11 text-[10px] font-medium   tracking-[0.1em] text-white outline-none transition-all placeholder:text-white/55 focus:border-white focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
+              />
             </div>
           </div>
 
           {/* Password + Provider Code */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-
+          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
             {/* Password */}
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+            <div className="group relative">
+              <label htmlFor="password" className="sr-only">
                 Password
               </label>
 
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
 
-                <input
-                  type="password"
-                  name="password"
-                  required
-                  minLength={8}
-                  value={formData.password}
-                  onChange={handleChange}
-                  placeholder="••••••••"
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-800 transition-all focus:border-teal-600 focus:bg-white focus:outline-none"
-                />
-              </div>
+              <input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                name="password"
+                autoComplete="new-password"
+                required
+                minLength={8}
+                value={formData.password}
+                onChange={handleChange}
+                placeholder="PASSWORD"
+                className="h-12 w-full rounded-sm border border-white bg-transparent px-11 pr-11 text-[10px] font-medium tracking-[0.1em] text-white outline-none transition-all placeholder:text-white/55 focus:border-white focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
+              />
+
+              <button
+                type="button"
+                onClick={() =>
+                  setShowPassword((current) => !current)
+                }
+                aria-label={
+                  showPassword ? 'Hide password' : 'Show password'
+                }
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/55 transition-colors hover:text-white"
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
             </div>
 
             {/* Provider Code */}
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                Provider Code{' '}
-                <span className="font-normal text-slate-400">
-                  (Optional)
-                </span>
+            <div className="group relative">
+              <label htmlFor="code" className="sr-only">
+                Provider code
               </label>
 
-              <div className="relative">
-                <Hash className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Hash className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
 
-                <input
-                  type="text"
-                  name="code"
-                  value={formData.code}
-                  onChange={handleChange}
-                  placeholder="HOSP-001"
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm uppercase text-slate-800 transition-all focus:border-teal-600 focus:bg-white focus:outline-none"
-                />
-              </div>
+              <input
+                id="code"
+                type="text"
+                name="code"
+                autoComplete="off"
+                value={formData.code}
+                onChange={handleChange}
+                placeholder="PROVIDER CODE (OPTIONAL)"
+                className="h-12 w-full rounded-sm border border-white bg-transparent px-11 text-[10px] font-medium  tracking-[0.1em] text-white outline-none transition-all placeholder:text-white/55 focus:border-white focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
+              />
             </div>
           </div>
 
-          {/* Physical Address */}
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-              Physical Address
+          {/* Address */}
+          <div className="group relative">
+            <label htmlFor="address" className="sr-only">
+              Physical address
             </label>
 
-            <div className="relative">
-              <MapPin className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <MapPin className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
 
-              <input
-                type="text"
-                name="address"
-                value={formData.address}
-                onChange={handleChange}
-                placeholder="12 Health Avenue, Medical District"
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-800 transition-all focus:border-teal-600 focus:bg-white focus:outline-none"
-              />
-            </div>
+            <input
+              id="address"
+              type="text"
+              name="address"
+              autoComplete="street-address"
+              value={formData.address}
+              onChange={handleChange}
+              placeholder="PHYSICAL ADDRESS (OPTIONAL)"
+              className="h-12 w-full rounded-sm border border-white bg-transparent px-11 text-[10px] font-medium   tracking-[0.1em] text-white outline-none transition-all placeholder:text-white/55 focus:border-white focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
+            />
           </div>
 
           {/* Create Account */}
           <button
             type="submit"
             disabled={loading}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-teal-600 py-3.5 font-semibold text-white shadow-md shadow-teal-600/20 transition-all hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-1 flex h-12 w-full items-center justify-center gap-2 rounded-sm bg-white px-4 text-[11px] font-bold   tracking-[0.16em] text-[#1b7b68] shadow-lg shadow-black/10 transition-all hover:bg-white/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-65"
           >
             {loading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Creating account</span>
+              </>
             ) : (
               <>
-                <span>Create Account</span>
-                <ArrowRight className="h-4 w-4" />
+                <span>Create account</span>
+                <ArrowRight className="h-3.5 w-3.5" />
               </>
             )}
           </button>
         </form>
 
-        {/* Sign In */}
-        <p className="mt-6 text-center text-xs text-slate-500">
-          Already have an account?{' '}
-          <Link
-            href="/auth/login"
-            className="font-semibold text-teal-600 hover:underline"
-          >
-            Sign In
-          </Link>
+        {/* Login Link */}
+        <div className="mt-7 text-center">
+          <p className="text-[11px] text-white/55">
+            Already have an account?{' '}
+            <Link
+              href="/auth/login"
+              className="font-semibold text-white/90 transition-colors hover:text-white hover:underline"
+            >
+              Login
+            </Link>
+          </p>
+        </div>
+
+        {/* Footer */}
+        <p className="mt-8 text-center text-[9px] font-medium   tracking-[0.18em] text-white/30">
+          Secure registration for MedXverse
         </p>
       </div>
-    </div>
+    </main>
   );
 }

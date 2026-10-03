@@ -11,6 +11,8 @@ import {
   AlertCircle,
   CheckCircle2,
   Loader2,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 import { authService } from '@/services/auth.service';
@@ -26,24 +28,21 @@ function LoginForm() {
 
   const isJustRegistered = searchParams.get('registered') === 'true';
 
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-  });
-
+  const [formData, setFormData] = useState({ email: '', password: '' });
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
+    setFormData((current) => ({
+      ...current,
       [e.target.name]: e.target.value,
-    });
+    }));
+    if (errorMessage) setErrorMessage(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     setLoading(true);
     setErrorMessage(null);
 
@@ -52,21 +51,19 @@ function LoginForm() {
 
       if (response.success && response.data) {
         const { account, token } = response.data;
-
-        // Save authentication state
         setAuth(account, token);
 
-        // Redirect to the appropriate workspace
         if (account.accountType === AccountType.HMO) {
           router.push('/hmo');
         } else {
           router.push('/hms');
         }
+      } else {
+        setErrorMessage('Authentication failed. Invalid email or password.');
       }
     } catch (err: any) {
       setErrorMessage(
-        err.message ||
-          'Authentication failed. Invalid email or password.'
+        err?.message || 'Authentication failed. Invalid email or password.'
       );
     } finally {
       setLoading(false);
@@ -74,136 +71,156 @@ function LoginForm() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f4f7f6] p-6 font-sans">
-      <div className="w-full max-w-md rounded-3xl border border-slate-100 bg-white p-8 shadow-floating">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#1b7b68] px-5 py-10 font-sans">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full border border-white/[0.035] bg-white/[0.025]"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -right-48 top-1/3 h-[620px] w-[620px] rounded-full border border-white/[0.035] bg-white/[0.025]"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -bottom-64 -left-20 h-[560px] w-[560px] rounded-full border border-black/[0.035] bg-black/[0.025]"
+      />
 
-        {/* Header & Logo */}
+      <div className="relative z-10 w-full max-w-[390px]">
         <div className="mb-8 flex flex-col items-center text-center">
-
-          <Link
+          {/* <Link
             href="/"
             aria-label="MedXverse home"
-            className="group relative mb-4 block h-[58px] w-[180px] overflow-hidden sm:h-[62px] sm:w-[190px] lg:h-[66px] lg:w-[200px]"
+            className="mb-4 flex h-20 w-36 items-center justify-center transition-opacity hover:opacity-85"
           >
             <Image
               src={medxverseLogo}
               alt="MedXverse"
               priority
-              fill
-              sizes="200px"
-              className="h-auto w-[150px] object-contain transition-opacity duration-200 group-hover:opacity-85 sm:w-[160px] lg:w-[170px]"
-              style={{
-                left: '50%',
-                top: '50%',
-                transform: 'translate(-50%, -50%)',
-              }}
+              width={150}
+              height={70}
+              className="h-auto max-h-16 w-auto object-contain"
             />
-          </Link>
+          </Link> */}
 
-          <h1 className="text-2xl font-bold tracking-tight text-slate-800">
-            Welcome Back
+          <h1 className="text-2xl font-semibold tracking-tight text-white">
+            Welcome back
           </h1>
-
-          <p className="mt-0.5 text-xs font-semibold uppercase tracking-widest text-teal-600">
-            Medxverse Health Management System Login
+          <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.22em] text-white/65">
+            MedXverse Health Management System
           </p>
         </div>
 
-        {/* Just Registered Toast Alert */}
-        {isJustRegistered && (
-          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs font-medium text-emerald-800">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" />
-
-            <span>
-              Account created successfully! Please sign in with your
-              credentials.
-            </span>
-          </div>
-        )}
-
-        {/* Error Alert */}
-        {errorMessage && (
-          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-medium text-rose-700">
-            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-
-            <span>{errorMessage}</span>
-          </div>
-        )}
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-
-          {/* Email */}
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-              Account Email
-            </label>
-
-            <div className="relative">
-              <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
-              <input
-                type="email"
-                name="email"
-                required
-                value={formData.email}
-                onChange={handleChange}
-                placeholder="admin@hospital.com"
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-800 transition-all focus:border-teal-600 focus:bg-white focus:outline-none"
-              />
+        <div className="mb-4 space-y-2">
+          {isJustRegistered && (
+            <div className="flex items-start gap-2.5 rounded-xl border border-white/15 bg-white/10 px-3.5 py-3 text-xs text-white backdrop-blur-sm">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                Account created successfully. Please sign in with your credentials.
+              </span>
             </div>
+          )}
+
+          {errorMessage && (
+            <div
+              role="alert"
+              className="flex items-start gap-2.5 rounded-xl border border-rose-200/25 bg-rose-950/20 px-3.5 py-3 text-xs text-white backdrop-blur-sm"
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3.5">
+          <div className="group relative">
+            <label htmlFor="email" className="sr-only">
+              Account email
+            </label>
+            <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white transition-colors group-focus-within:text-white" />
+            <input
+              id="email"
+              type="email"
+              name="email"
+              autoComplete="email"
+              required
+              value={formData.email}
+              onChange={handleChange}
+              placeholder="EMAIL"
+              className="h-12 w-full rounded-sm border-1 border-white bg-transparent px-11 text-[11px] font-medium tracking-[0.12em] text-white outline-none transition-all placeholder:text-white/55 focus:border-white focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
+            />
           </div>
 
-          {/* Password */}
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+          <div className="group relative">
+            <label htmlFor="password" className="sr-only">
               Password
             </label>
-
-            <div className="relative">
-              <Lock className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
-              <input
-                type="password"
-                name="password"
-                required
-                value={formData.password}
-                onChange={handleChange}
-                placeholder="••••••••"
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-800 transition-all focus:border-teal-600 focus:bg-white focus:outline-none"
-              />
-            </div>
+            <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white transition-colors group-focus-within:text-white" />
+            <input
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              name="password"
+              autoComplete="current-password"
+              required
+              value={formData.password}
+              onChange={handleChange}
+              placeholder="PASSWORD"
+              className="h-12 w-full rounded-sm border-1 border-white bg-transparent px-11 pr-11 text-[11px] font-medium uppercase tracking-[0.12em] text-white outline-none transition-all placeholder:text-white/55 focus:border-white focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((current) => !current)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/55 transition-colors hover:text-white"
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
           </div>
 
-          {/* Sign In */}
+          <div className="flex justify-end pt-0.5">
+            <Link
+              href="/auth/forgot-password"
+              className="text-[10px] font-medium text-white/75 transition-colors hover:text-white hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
+
           <button
             type="submit"
             disabled={loading}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-teal-600 py-3.5 font-semibold text-white shadow-md shadow-teal-600/20 transition-all hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-1 flex h-12 w-full items-center justify-center gap-2 rounded-sm bg-white px-4 text-[11px] font-bold uppercase tracking-[0.16em] text-[#1b7b68] shadow-lg shadow-black/10 transition-all hover:bg-white/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-65"
           >
             {loading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Signing in</span>
+              </>
             ) : (
               <>
-                <span>Sign In</span>
-                <ArrowRight className="h-4 w-4" />
+                <span>Login</span>
+                <ArrowRight className="h-3.5 w-3.5" />
               </>
             )}
           </button>
         </form>
 
-        {/* Register */}
-        <p className="mt-8 text-center text-xs text-slate-500">
-          Don't have an account?{' '}
-          <Link
-            href="/auth/register"
-            className="font-semibold text-teal-600 hover:underline"
-          >
-            Register Account
-          </Link>
+        <div className="mt-7 text-center">
+          <p className="text-[11px] text-white/55">
+            Don&apos;t have an account?{' '}
+            <Link
+              href="/auth/register"
+              className="font-semibold text-white/90 hover:text-white hover:underline"
+            >
+              Register
+            </Link>
+          </p>
+        </div>
+
+        <p className="mt-8 text-center text-[9px] font-medium uppercase tracking-[0.18em] text-white/30">
+          Secure access to MedXverse
         </p>
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -211,8 +228,8 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-[#f4f7f6] p-6">
-          <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
+        <div className="flex min-h-screen items-center justify-center bg-[#1b7b68]">
+          <Loader2 className="h-7 w-7 animate-spin text-white" />
         </div>
       }
     >
