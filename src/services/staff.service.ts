@@ -9,6 +9,7 @@ import {
 } from '@/types/staff';
 
 import { useAuthStore } from '@/store/useAuthStore';
+import { handleUnauthorizedResponse } from '@/lib/auth-session';
 
 const DEFAULT_HOST =
   'https://medxverse-backend.onrender.com';
@@ -196,6 +197,10 @@ async function handleResponse<T>(
   const json = await res.json();
 
   if (!res.ok) {
+    if (res.status === 401) {
+      handleUnauthorizedResponse();
+    }
+
     throw new Error(
       json?.message || defaultErrorMessage
     );

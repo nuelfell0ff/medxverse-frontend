@@ -8,6 +8,7 @@ import {
   IProviderSchedule,
 } from '@/types/appointment';
 import { useAuthStore } from '@/store/useAuthStore';
+import { handleUnauthorizedResponse } from '@/lib/auth-session';
 
 const DEFAULT_HOST = 'https://medxverse-backend.onrender.com';
 const RAW_URL = (process.env.NEXT_PUBLIC_API_URL || DEFAULT_HOST).trim().replace(/\/+$/, '');
@@ -80,6 +81,10 @@ async function parseResponse<T>(res: Response, defaultErrorMessage: string): Pro
   }
 
   if (!res.ok) {
+    if (res.status === 401) {
+      handleUnauthorizedResponse();
+    }
+
     const message =
       typeof json === 'object' && json !== null && 'message' in json
         ? String((json as ApiEnvelope<T>).message || '')

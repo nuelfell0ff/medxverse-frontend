@@ -6,6 +6,7 @@ import {
   IPatient,
   PatientWithClinicalSummary,
 } from '@/types/patient';
+import { handleUnauthorizedResponse } from '@/lib/auth-session';
 import { getAuthHeaders, API_BASE_URL as APPOINTMENT_API_BASE_URL } from '@/services/appointment.service';
 
 const API_BASE_URL = APPOINTMENT_API_BASE_URL;
@@ -29,6 +30,9 @@ async function requestJson<T>(url: string, init: RequestInit = {}, message: stri
   }
 
   if (!res.ok) {
+    if (res.status === 401) {
+      handleUnauthorizedResponse();
+    }
     throw new Error(json?.message || `${message} (${res.status})`);
   }
 

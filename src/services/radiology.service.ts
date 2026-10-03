@@ -12,6 +12,7 @@ import {
   CriticalResultStatus,
   AIStudyPriority,
 } from '@/types/radiology';
+import { handleUnauthorizedResponse } from '@/lib/auth-session';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ||
@@ -50,6 +51,10 @@ async function request<T>(
   const json = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorizedResponse();
+    }
+
     throw new Error(
       json?.message ||
         json?.error ||
