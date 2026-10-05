@@ -1,7 +1,6 @@
-'use client';
+"use client";
 
 import React, { useState, Suspense } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -13,13 +12,13 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  Building2,
 } from 'lucide-react';
 
 import { authService } from '@/services/auth.service';
+import { staffAuthService } from '@/services/staff-auth.service';
 import { useAuthStore } from '@/store/useAuthStore';
-import { AccountType } from '@/types/auth.types';
-
-import medxverseLogo from '@/assets/images/IMG_0344-Photoroom.png';
+import { AccountType, AccountPayload } from '@/types/auth.types';
 
 function LoginForm() {
   const router = useRouter();
@@ -27,9 +26,16 @@ function LoginForm() {
   const setAuth = useAuthStore((state) => state.setAuth);
 
   const isJustRegistered = searchParams.get('registered') === 'true';
+  const wasStaffActivated = searchParams.get('staffActivated') === 'true';
+  const activatedEmail = searchParams.get('email') || '';
 
-  const [formData, setFormData] = useState({ email: '', password: '' });
+  const [formData, setFormData] = useState({
+    email: activatedEmail,
+    password: '',
+    hospitalCode: '',
+  });
   const [showPassword, setShowPassword] = useState(false);
+  const [staffMode, setStaffMode] = useState(wasStaffActivated);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -41,30 +47,89 @@ function LoginForm() {
     if (errorMessage) setErrorMessage(null);
   };
 
+  const buildStaffAccount = (staff: {
+    id: string;
+    staffId: string;
+    hospitalId: string;
+    email: string;
+    role: string;
+    firstName: string;
+    lastName: string;
+  }): AccountPayload => ({
+    id: staff.hospitalId,
+    hospitalId: staff.hospitalId,
+    name: `${staff.firstName} ${staff.lastName}`.trim(),
+    email: staff.email,
+    accountType: AccountType.HOSPITAL,
+    userType: 'STAFF',
+    staffId: staff.staffId,
+    userId: staff.id,
+    role: staff.role,
+    firstName: staff.firstName,
+    lastName: staff.lastName,
+  });
+
+  const loginAsStaff = async () => {
+    const response = await staffAuthService.login(
+      formData.email,
+      formData.password,
+      formData.hospitalCode
+    );
+
+    if (!response.success || !response.data) {
+      throw new Error('Staff authentication failed.');
+    }
+
+    const account = buildStaffAccount(response.data.staff);
+    setAuth(account, response.data.token);
+    router.push('/staff');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMessage(null);
 
     try {
-      const response = await authService.login(formData);
-
-      if (response.success && response.data) {
-        const { account, token } = response.data;
-        setAuth(account, token);
-
-        if (account.accountType === AccountType.HMO) {
-          router.push('/hmo');
-        } else {
-          router.push('/hms');
-        }
-      } else {
-        setErrorMessage('Authentication failed. Invalid email or password.');
+      if (staffMode) {
+        await loginAsStaff();
+        return;
       }
+
+      try {
+        const response = await authService.login({
+          email: formData.email,
+          password: formData.password,
+        });
+
+        if (response.success && response.data) {
+          const { account, token } = response.data;
+          setAuth(account, token);
+
+          if (account.userType === 'STAFF') {
+            router.push('/staff');
+          } else if (account.accountType === AccountType.HMO) {
+            router.push('/hmo');
+          } else {
+            router.push('/hms');
+          }
+          return;
+        }
+      } catch (accountError: any) {
+        // Staff accounts are intentionally separate from Account records in the
+        // backend. If the normal account login cannot find the account, try the
+        // staff authentication endpoint using the same login form.
+        await loginAsStaff();
+        return;
+      }
+
+      throw new Error('Authentication failed. Invalid email or password.');
     } catch (err: any) {
-      setErrorMessage(
-        err?.message || 'Authentication failed. Invalid email or password.'
-      );
+      const message = err?.message || 'Authentication failed. Invalid email or password.';
+      if (message.toLowerCase().includes('more than one hospital')) {
+        setStaffMode(true);
+      }
+      setErrorMessage(message);
     } finally {
       setLoading(false);
     }
@@ -72,36 +137,12 @@ function LoginForm() {
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#1b7b68] px-5 py-10 font-sans">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full border border-white/[0.035] bg-white/[0.025]"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -right-48 top-1/3 h-[620px] w-[620px] rounded-full border border-white/[0.035] bg-white/[0.025]"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -bottom-64 -left-20 h-[560px] w-[560px] rounded-full border border-black/[0.035] bg-black/[0.025]"
-      />
+      <div aria-hidden="true" className="pointer-events-none absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full border border-white/[0.035] bg-white/[0.025]" />
+      <div aria-hidden="true" className="pointer-events-none absolute -right-48 top-1/3 h-[620px] w-[620px] rounded-full border border-white/[0.035] bg-white/[0.025]" />
+      <div aria-hidden="true" className="pointer-events-none absolute -bottom-64 -left-20 h-[560px] w-[560px] rounded-full border border-black/[0.035] bg-black/[0.025]" />
 
       <div className="relative z-10 w-full max-w-[390px]">
         <div className="mb-8 flex flex-col items-center text-center">
-          {/* <Link
-            href="/"
-            aria-label="MedXverse home"
-            className="mb-4 flex h-20 w-36 items-center justify-center transition-opacity hover:opacity-85"
-          >
-            <Image
-              src={medxverseLogo}
-              alt="MedXverse"
-              priority
-              width={150}
-              height={70}
-              className="h-auto max-h-16 w-auto object-contain"
-            />
-          </Link> */}
-
           <h1 className="text-2xl font-semibold tracking-tight text-white">
             Welcome back
           </h1>
@@ -114,29 +155,43 @@ function LoginForm() {
           {isJustRegistered && (
             <div className="flex items-start gap-2.5 rounded-xl border border-white/15 bg-white/10 px-3.5 py-3 text-xs text-white backdrop-blur-sm">
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>
-                Account created successfully. Please sign in with your credentials.
-              </span>
+              <span>Account created successfully. Please sign in with your credentials.</span>
+            </div>
+          )}
+
+          {wasStaffActivated && (
+            <div className="flex items-start gap-2.5 rounded-xl border border-white/15 bg-white/10 px-3.5 py-3 text-xs text-white backdrop-blur-sm">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>Your staff account is active. Sign in to enter your hospital workspace.</span>
             </div>
           )}
 
           {errorMessage && (
-            <div
-              role="alert"
-              className="flex items-start gap-2.5 rounded-xl border border-rose-200/25 bg-rose-950/20 px-3.5 py-3 text-xs text-white backdrop-blur-sm"
-            >
+            <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-rose-200/25 bg-rose-950/20 px-3.5 py-3 text-xs text-white backdrop-blur-sm">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{errorMessage}</span>
             </div>
           )}
         </div>
 
+        <div className="mb-3 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-white/60">
+          <span>{staffMode ? 'Staff workspace sign in' : 'Secure account sign in'}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setStaffMode((current) => !current);
+              setErrorMessage(null);
+            }}
+            className="font-bold text-white/90 hover:text-white hover:underline"
+          >
+            {staffMode ? 'Use hospital / HMO' : 'Staff sign in'}
+          </button>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-3.5">
           <div className="group relative">
-            <label htmlFor="email" className="sr-only">
-              Account email
-            </label>
-            <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white transition-colors group-focus-within:text-white" />
+            <label htmlFor="email" className="sr-only">Account email</label>
+            <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
             <input
               id="email"
               type="email"
@@ -146,15 +201,13 @@ function LoginForm() {
               value={formData.email}
               onChange={handleChange}
               placeholder="EMAIL"
-              className="h-12 w-full rounded-sm border-1 border-white bg-transparent px-11 text-[11px] font-medium tracking-[0.12em] text-white outline-none transition-all placeholder:text-white/55 focus:border-white focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
+              className="h-12 w-full rounded-sm border border-white bg-transparent px-11 text-[11px] font-medium tracking-[0.12em] text-white outline-none transition-all placeholder:text-white/55 focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
             />
           </div>
 
           <div className="group relative">
-            <label htmlFor="password" className="sr-only">
-              Password
-            </label>
-            <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white transition-colors group-focus-within:text-white" />
+            <label htmlFor="password" className="sr-only">Password</label>
+            <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
             <input
               id="password"
               type={showPassword ? 'text' : 'password'}
@@ -164,7 +217,7 @@ function LoginForm() {
               value={formData.password}
               onChange={handleChange}
               placeholder="PASSWORD"
-              className="h-12 w-full rounded-sm border-1 border-white bg-transparent px-11 pr-11 text-[11px] font-medium uppercase tracking-[0.12em] text-white outline-none transition-all placeholder:text-white/55 focus:border-white focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
+              className="h-12 w-full rounded-sm border border-white bg-transparent px-11 pr-11 text-[11px] font-medium uppercase tracking-[0.12em] text-white outline-none transition-all placeholder:text-white/55 focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
             />
             <button
               type="button"
@@ -176,11 +229,25 @@ function LoginForm() {
             </button>
           </div>
 
+          {staffMode && (
+            <div className="group relative">
+              <label htmlFor="hospitalCode" className="sr-only">Hospital code</label>
+              <Building2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
+              <input
+                id="hospitalCode"
+                type="text"
+                name="hospitalCode"
+                autoComplete="organization"
+                value={formData.hospitalCode}
+                onChange={handleChange}
+                placeholder="HOSPITAL CODE (ONLY IF REQUESTED)"
+                className="h-12 w-full rounded-sm border border-white/70 bg-transparent px-11 text-[11px] font-medium tracking-[0.12em] text-white outline-none transition-all placeholder:text-white/50 focus:border-white focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
+              />
+            </div>
+          )}
+
           <div className="flex justify-end pt-0.5">
-            <Link
-              href="/auth/forgot-password"
-              className="text-[10px] font-medium text-white/75 transition-colors hover:text-white hover:underline"
-            >
+            <Link href="/auth/forgot-password" className="text-[10px] font-medium text-white/75 transition-colors hover:text-white hover:underline">
               Forgot password?
             </Link>
           </div>
@@ -191,15 +258,9 @@ function LoginForm() {
             className="mt-1 flex h-12 w-full items-center justify-center gap-2 rounded-sm bg-white px-4 text-[11px] font-bold uppercase tracking-[0.16em] text-[#1b7b68] shadow-lg shadow-black/10 transition-all hover:bg-white/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-65"
           >
             {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Signing in</span>
-              </>
+              <><Loader2 className="h-4 w-4 animate-spin" /><span>Signing in</span></>
             ) : (
-              <>
-                <span>Login</span>
-                <ArrowRight className="h-3.5 w-3.5" />
-              </>
+              <><span>Login</span><ArrowRight className="h-3.5 w-3.5" /></>
             )}
           </button>
         </form>
@@ -207,12 +268,7 @@ function LoginForm() {
         <div className="mt-7 text-center">
           <p className="text-[11px] text-white/55">
             Don&apos;t have an account?{' '}
-            <Link
-              href="/auth/register"
-              className="font-semibold text-white/90 hover:text-white hover:underline"
-            >
-              Register
-            </Link>
+            <Link href="/auth/register" className="font-semibold text-white/90 hover:text-white hover:underline">Register</Link>
           </p>
         </div>
 
@@ -226,13 +282,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-screen items-center justify-center bg-[#1b7b68]">
-          <Loader2 className="h-7 w-7 animate-spin text-white" />
-        </div>
-      }
-    >
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-[#1b7b68]"><Loader2 className="h-7 w-7 animate-spin text-white" /></div>}>
       <LoginForm />
     </Suspense>
   );

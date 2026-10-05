@@ -63,7 +63,12 @@ function isAuthenticationEndpoint(input: RequestInfo | URL): boolean {
         ? input.toString()
         : input.url;
 
-  return url.includes('/auth/login') || url.includes('/auth/register');
+  return (
+    url.includes('/auth/login') ||
+    url.includes('/auth/register') ||
+    url.includes('/auth/staff/login') ||
+    url.includes('/auth/staff/invitation')
+  );
 }
 
 export default function AuthSessionGuard() {

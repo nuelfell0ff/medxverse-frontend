@@ -26,6 +26,8 @@ export default function HmsLayout({ children }: { children: React.ReactNode }) {
 
     if (!isAuthenticated) {
       router.replace('/auth/login');
+    } else if (account?.userType === 'STAFF') {
+      router.replace('/staff');
     } else if (account?.accountType === 'HMO') {
       router.replace('/hmo');
     }
@@ -49,7 +51,7 @@ export default function HmsLayout({ children }: { children: React.ReactNode }) {
   }
 
   // If not authenticated or wrong account type, hold render until redirect triggers
-  if (!isAuthenticated || account?.accountType !== 'HOSPITAL') {
+  if (!isAuthenticated || account?.accountType !== 'HOSPITAL' || account?.userType === 'STAFF') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <Loader2 className="w-8 h-8 animate-spin text-[#1b7b68]" />

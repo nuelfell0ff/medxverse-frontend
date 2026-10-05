@@ -16,6 +16,7 @@ interface AuthState {
   // Helper Methods
   hasModule: (moduleKey: string | string[]) => boolean;
   isHmo: () => boolean;
+  isStaff: () => boolean;
   getHospitalId: () => string | null;
 }
 
@@ -104,6 +105,8 @@ export const useAuthStore = create<AuthState>()(
       },
 
       isHmo: () => get().account?.accountType === AccountType.HMO,
+
+      isStaff: () => get().account?.userType === 'STAFF',
     }),
     {
       name: 'medxverse-auth-storage',

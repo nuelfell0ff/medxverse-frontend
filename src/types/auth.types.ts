@@ -13,9 +13,16 @@ export interface AccountPayload {
   code?: string;
   address?: string;
   modules?: string[];
+  userType?: 'ACCOUNT' | 'STAFF';
+  role?: string;
+  staffId?: string;
+  userId?: string;
+  hospitalId?: string;
+  firstName?: string;
+  lastName?: string;
+  jobTitle?: string;
 
   // Hospital context fields for multi-tenant isolation
-  hospitalId?: string;
   hospital?: string | { _id?: string; id?: string; name?: string };
 }
 

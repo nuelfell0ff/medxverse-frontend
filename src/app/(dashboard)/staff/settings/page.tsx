@@ -1,0 +1,9 @@
+'use client';
+
+import { useAuthStore } from '@/store/useAuthStore';
+import { ShieldCheck, UserRound } from 'lucide-react';
+
+export default function StaffSettingsPage() {
+  const account = useAuthStore((state) => state.account);
+  return <div className="max-w-3xl space-y-6"><div><p className="text-[9px] font-bold uppercase tracking-[0.2em] text-[#1b7b68]">Account</p><h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-800">Staff settings</h1><p className="mt-1 text-xs text-slate-500">Your current hospital staff identity and access context.</p></div><div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm"><div className="flex items-center gap-4"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e8f5f3] text-[#1b7b68]"><UserRound className="h-5 w-5" /></div><div><h2 className="text-sm font-bold text-slate-800">{account?.name}</h2><p className="text-xs text-slate-400">{account?.email}</p></div></div><div className="mt-6 grid gap-3 sm:grid-cols-2"><div className="rounded-xl bg-slate-50 p-4"><p className="text-[9px] uppercase tracking-wider text-slate-400">Role</p><p className="mt-1 text-xs font-semibold text-slate-700">{account?.role || 'Staff'}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-[9px] uppercase tracking-wider text-slate-400">Staff ID</p><p className="mt-1 text-xs font-semibold text-slate-700">{account?.staffId || '—'}</p></div></div></div><div className="flex gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-5 text-xs text-emerald-800"><ShieldCheck className="h-5 w-5 shrink-0" /><div><p className="font-bold">Hospital-scoped access</p><p className="mt-1 leading-5">Communication and staff workspace requests are authorized against your authenticated hospital staff account on the backend.</p></div></div></div>;
+}

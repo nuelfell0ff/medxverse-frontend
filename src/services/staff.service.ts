@@ -461,6 +461,62 @@ export class StaffApiService {
   }
 
   /**
+   * Send a staff account invitation.
+   *
+   * The backend uses the authenticated hospital context and
+   * the selected staff member's saved contact email.
+   */
+  public static async sendStaffInvitation(
+    staffId: string
+  ): Promise<{
+    invitationId: string;
+    expiresAt: string;
+    email: string;
+    sent: boolean;
+    developmentInviteUrl?: string;
+  }> {
+    if (!staffId?.trim()) {
+      throw new Error('Staff ID is required');
+    }
+
+    const res = await fetch(
+      `${API_BASE_URL}/auth/staff/invite/${encodeURIComponent(staffId)}`,
+      {
+        method: 'POST',
+        headers: getAuthHeaders(),
+
+      }
+    );
+
+    const json = await handleResponse<{
+      data?: {
+        invitationId: string;
+        expiresAt: string;
+        email: string;
+        sent: boolean;
+        developmentInviteUrl?: string;
+      };
+      invitationId?: string;
+      expiresAt?: string;
+      email?: string;
+      sent?: boolean;
+      developmentInviteUrl?: string;
+    }>(
+      res,
+      'Failed to send staff invitation'
+    );
+
+    return json.data || {
+      invitationId: json.invitationId || '',
+      expiresAt: json.expiresAt || '',
+      email: json.email || '',
+      sent: Boolean(json.sent),
+      developmentInviteUrl:
+        json.developmentInviteUrl,
+    };
+  }
+
+  /**
    * Toggle active/inactive status.
    */
   public static async toggleStaffStatus(

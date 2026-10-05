@@ -553,6 +553,11 @@ export default function StaffPage() {
   const [saving, setSaving] =
     useState(false);
 
+  const [
+    invitingStaffId,
+    setInvitingStaffId,
+  ] = useState<string | null>(null);
+
   /* ------------------------------------------------------------------------ */
   /* LOAD DASHBOARD                                                           */
   /* ------------------------------------------------------------------------ */
@@ -972,6 +977,68 @@ export default function StaffPage() {
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  /* ------------------------------------------------------------------------ */
+  /* STAFF INVITATION                                                         */
+  /* ------------------------------------------------------------------------ */
+
+  const handleSendInvitation = async (
+    staff: IStaff
+  ) => {
+    const email =
+      staff.contact?.email?.trim();
+
+    if (!email) {
+      alert(
+        'This staff member does not have an email address. Add an email address to the staff profile first.'
+      );
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Send a staff account invitation to ${staff.firstName} ${staff.lastName} at ${email}?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setInvitingStaffId(staff._id);
+
+      const result =
+        await StaffApiService.sendStaffInvitation(
+          staff._id
+        );
+
+      if (result.sent) {
+        alert(
+          `Invitation sent successfully to ${result.email}.`
+        );
+        return;
+      }
+
+      if (result.developmentInviteUrl) {
+        window.prompt(
+          'Email delivery is not configured for this development environment. Copy the invitation link below:',
+          result.developmentInviteUrl
+        );
+        return;
+      }
+
+      alert(
+        'The invitation was created, but the email was not sent.'
+      );
+    } catch (err: unknown) {
+      alert(
+        err instanceof Error
+          ? err.message
+          : 'Failed to send staff invitation'
+      );
+    } finally {
+      setInvitingStaffId(null);
     }
   };
 
@@ -1611,6 +1678,30 @@ export default function StaffPage() {
                                 title="Edit staff"
                               >
                                 <Edit3 className="w-4 h-4" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleSendInvitation(
+                                    staff
+                                  )
+                                }
+                                disabled={
+                                  invitingStaffId ===
+                                  staff._id
+                                }
+                                className="p-2 rounded-lg hover:bg-emerald-50 text-[#1b7b68] disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Send staff account invitation"
+                              >
+                                <Mail
+                                  className={`w-4 h-4 ${
+                                    invitingStaffId ===
+                                    staff._id
+                                      ? 'animate-pulse'
+                                      : ''
+                                  }`}
+                                />
                               </button>
 
                               <button

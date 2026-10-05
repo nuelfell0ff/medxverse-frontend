@@ -34,7 +34,7 @@ export default function HmoLayout({
       return;
     }
 
-    // Authenticated hospital accounts should not access HMO pages
+    // Authenticated hospital/staff accounts should not access HMO pages
     if (account?.accountType === 'HOSPITAL') {
       router.replace('/hms');
     }
@@ -59,7 +59,7 @@ export default function HmoLayout({
 
   // If not authenticated or not an HMO account,
   // hold rendering while the redirect takes effect.
-  if (!isAuthenticated || account?.accountType !== 'HMO') {
+  if (!isAuthenticated || account?.accountType !== 'HMO' || account?.userType === 'STAFF') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <Loader2 className="w-8 h-8 animate-spin text-[#1b7b68]" />

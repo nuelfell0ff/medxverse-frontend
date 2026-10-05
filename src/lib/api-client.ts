@@ -20,6 +20,8 @@ export const apiClient = axios.create({
 const AUTH_ROUTES_THAT_MUST_NOT_REDIRECT = [
   '/auth/login',
   '/auth/register',
+  '/auth/staff/login',
+  '/auth/staff/invitation',
 ];
 
 const isAuthRequest = (url?: string) => {
