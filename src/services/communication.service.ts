@@ -165,10 +165,18 @@ export const communicationService = {
 };
 
 export function getCommunicationWebSocketUrl(token: string): string {
-  const raw = (
+  const configuredApiUrl = (
     process.env.NEXT_PUBLIC_API_URL ||
     'https://medxverse-backend.onrender.com/api/v1'
-  ).trim().replace(/\/+$/, '');
-  const origin = raw.replace(/\/api\/v1$/, '').replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
-  return `${origin}/ws/communication?token=${encodeURIComponent(token)}`;
+  ).trim();
+
+  // NEXT_PUBLIC_API_URL is the REST API base, normally ending in /api/v1.
+  // WebSockets are mounted at the server root, so remove only that API suffix.
+  const apiUrl = configuredApiUrl.replace(/\/+$/, '');
+  const serverOrigin = apiUrl
+    .replace(/\/api\/v1\/?$/i, '')
+    .replace(/^https:/i, 'wss:')
+    .replace(/^http:/i, 'ws:');
+
+  return `${serverOrigin}/ws/communication?token=${encodeURIComponent(token.trim())}`;
 }
