@@ -88,7 +88,10 @@ export default function StaffMessagesPage() {
   const [error, setError] = useState<string | null>(null);
   const [socketState, setSocketState] = useState<'connecting' | 'connected' | 'offline'>('offline');
   const socketRef = useRef<WebSocket | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttemptRef = useRef(0);
+  const selectedIdRef = useRef<string | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
   const filteredConversations = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -151,52 +154,141 @@ export default function StaffMessagesPage() {
   }, [loadConversation, selectedId]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    requestAnimationFrame(() => {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    });
   }, [messages]);
 
   useEffect(() => {
     if (!token || account?.userType !== 'STAFF') return;
-    setSocketState('connecting');
-    const socket = new WebSocket(getCommunicationWebSocketUrl(token));
-    socketRef.current = socket;
 
-    socket.onopen = () => setSocketState('connected');
-    socket.onerror = () => setSocketState('offline');
-    socket.onclose = () => {
-      setSocketState('offline');
-      socketRef.current = null;
+    let cancelled = false;
+    let socket: WebSocket | null = null;
+
+    const clearReconnectTimer = () => {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
     };
-    socket.onmessage = (event) => {
+
+    const connect = () => {
+      if (cancelled) return;
+      clearReconnectTimer();
+      setSocketState('connecting');
+
       try {
-        const payload = JSON.parse(event.data);
-        if (payload.type === 'message.created' && payload.payload) {
+        socket = new WebSocket(getCommunicationWebSocketUrl(token));
+        socketRef.current = socket;
+      } catch {
+        setSocketState('offline');
+        scheduleReconnect();
+        return;
+      }
+
+      socket.onopen = () => {
+        if (cancelled) return;
+        reconnectAttemptRef.current = 0;
+        setSocketState('connected');
+      };
+
+      socket.onerror = () => {
+        if (!cancelled) setSocketState('offline');
+      };
+
+      socket.onclose = () => {
+        if (socketRef.current === socket) socketRef.current = null;
+        if (cancelled) return;
+        setSocketState('offline');
+        scheduleReconnect();
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.type !== 'message.created' || !payload.payload) return;
+
           const incoming = payload.payload as Message;
+          const conversationId = String(payload.conversationId || incoming.conversationId || '');
+          if (!conversationId) return;
+          const isOpen = selectedIdRef.current === conversationId;
+
           setConversations((current) => {
-            const existing = current.find((item) => item._id === payload.conversationId);
-            if (!existing) return current;
-            const isOpen = selectedId === payload.conversationId;
-            return current.map((item) => item._id === payload.conversationId ? {
+            const existing = current.find((item) => item._id === conversationId);
+            if (!existing) {
+              // A newly-created conversation may not have been in the inbox yet.
+              // Refresh the inbox so it appears immediately without a page reload.
+              void loadInbox();
+              return current;
+            }
+            return current.map((item) => item._id === conversationId ? {
               ...item,
               lastMessageAt: incoming.createdAt || new Date().toISOString(),
               lastMessagePreview: incoming.body || '[message]',
               unreadCount: isOpen ? 0 : (item.unreadCount || 0) + 1,
             } : item);
           });
-          if (selectedId === payload.conversationId) {
+
+          if (isOpen) {
             setMessages((current) => current.some((message) => message._id === incoming._id) ? current : [...current, incoming]);
-            void communicationService.markRead(payload.conversationId).catch(() => undefined);
+            void communicationService.markRead(conversationId).catch(() => undefined);
           }
+        } catch {
+          // Ignore malformed socket events. The polling fallback remains available.
         }
-      } catch {
-        // Ignore malformed socket events; the REST API remains the source of truth.
-      }
+      };
     };
 
-    return () => {
-      socket.close();
-      socketRef.current = null;
+    const scheduleReconnect = () => {
+      if (cancelled || reconnectTimerRef.current) return;
+      const attempt = reconnectAttemptRef.current;
+      const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+      reconnectAttemptRef.current = Math.min(attempt + 1, 6);
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null;
+        connect();
+      }, delay);
     };
-  }, [account?.userType, selectedId, token]);
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      clearReconnectTimer();
+      if (socket && socket.readyState === WebSocket.OPEN) socket.close(1000, 'Leaving communication page');
+      else if (socket) socket.close();
+      if (socketRef.current === socket) socketRef.current = null;
+    };
+  }, [account?.userType, token, loadInbox]);
+
+  useEffect(() => {
+    if (!token || account?.userType !== 'STAFF') return;
+    const poll = window.setInterval(() => {
+      if (socketRef.current?.readyState === WebSocket.OPEN) return;
+      void loadInbox();
+      const conversationId = selectedIdRef.current;
+      if (conversationId) {
+        void communicationService.getMessages(conversationId).then((result) => {
+          setMessages((current) => {
+            const pending = current.filter((message) => String(message._id).startsWith('local-'));
+            const serverMessages = result.items || [];
+            const merged = [...serverMessages];
+            for (const item of pending) {
+              if (!merged.some((message) => message._id === item._id)) merged.push(item);
+            }
+            return merged;
+          });
+        }).catch(() => undefined);
+      }
+    }, 2500);
+    return () => window.clearInterval(poll);
+  }, [account?.userType, loadInbox, token]);
 
   useEffect(() => {
     if (!showNewChat) return;
@@ -331,7 +423,7 @@ export default function StaffMessagesPage() {
   };
 
   return (
-    <div className="relative h-[calc(100vh-8rem)] min-h-[620px] overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-sm">
+    <div className="relative h-[calc(100vh-8rem)] max-h-[calc(100vh-8rem)] overflow-hidden overscroll-none rounded-[24px] border border-slate-100 bg-white shadow-sm">
       <div className="grid h-full grid-cols-1 md:grid-cols-[300px_minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)_280px]">
         <aside className={`${selectedId ? 'hidden md:flex' : 'flex'} min-h-0 flex-col border-r border-slate-100 bg-white`}>
           <div className="border-b border-slate-100 p-4">
@@ -364,12 +456,11 @@ export default function StaffMessagesPage() {
 
             {error && <div className="mx-4 mt-3 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</div>}
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+            <div ref={messagesContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
               {loadingMessages ? <div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-[#1b7b68]" /></div> : messages.length ? <div className="mx-auto max-w-3xl space-y-3">{messages.map((message) => {
                 const mine = message.senderUserId === currentUserId;
                 return <div key={message._id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[82%] rounded-2xl px-4 py-2.5 shadow-sm ${mine ? 'rounded-br-md bg-[#1b7b68] text-white' : 'rounded-bl-md border border-slate-100 bg-white text-slate-700'}`}><p className="whitespace-pre-wrap text-sm leading-5">{message.body || `[${message.type.toLowerCase()}]`}</p><div className={`mt-1 flex items-center justify-end gap-1 text-[9px] ${mine ? 'text-white/60' : 'text-slate-400'}`}>{formatTime(message.createdAt)}{mine && <Check className="h-3 w-3" />}</div></div></div>;
               })}</div> : <div className="flex h-full flex-col items-center justify-center text-center"><div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e8f5f3] text-[#1b7b68]"><MessageCircle className="h-6 w-6" /></div><h3 className="mt-4 text-sm font-bold text-slate-700">Start the conversation</h3><p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">Messages sent here are scoped to your hospital and delivered to the participants in this conversation.</p></div>}
-              <div ref={messagesEndRef} />
             </div>
 
             <div className="border-t border-slate-100 bg-white p-3 sm:p-4">
