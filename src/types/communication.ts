@@ -23,7 +23,17 @@ export type TicketCategory =
 
 export interface CommunicationParticipant {
   type?: string;
-  userId?: string;
+  userId?: string | { _id?: string; email?: string; role?: string; staffId?: string };
+  displayName?: string;
+  staff?: {
+    _id?: string;
+    staffId?: string;
+    firstName?: string;
+    lastName?: string;
+    role?: string;
+    jobTitle?: string;
+    profilePhotoUrl?: string;
+  };
   joinedAt?: string;
   lastReadAt?: string;
   muted?: boolean;

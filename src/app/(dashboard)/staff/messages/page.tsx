@@ -24,8 +24,21 @@ function idOf(value: unknown): string {
   return String(value);
 }
 
-function conversationLabel(conversation: Conversation): string {
+function conversationLabel(conversation: Conversation, currentUserId = ''): string {
   if (conversation.title) return conversation.title;
+  if (conversation.type === 'DIRECT') {
+    const other = (conversation.participants || []).find((participant) => {
+      const userId = idOf(participant.userId);
+      return userId && userId !== currentUserId;
+    });
+    if (other?.displayName) return other.displayName;
+    if (other?.staff) {
+      const name = `${other.staff.firstName || ''} ${other.staff.lastName || ''}`.trim();
+      if (name) return name;
+    }
+    const user = typeof other?.userId === 'object' ? other.userId : undefined;
+    if (user?.email) return user.email;
+  }
   if (conversation.type === 'PATIENT_CARE') {
     const patient = typeof conversation.patientId === 'object' ? conversation.patientId : undefined;
     if (patient) return `${patient.firstName || ''} ${patient.lastName || ''}`.trim() || 'Patient care team';
@@ -81,7 +94,7 @@ export default function StaffMessagesPage() {
     const query = search.trim().toLowerCase();
     if (!query) return conversations;
     return conversations.filter((conversation) => {
-      const label = conversationLabel(conversation).toLowerCase();
+      const label = conversationLabel(conversation, currentUserId).toLowerCase();
       const preview = (conversation.lastMessagePreview || '').toLowerCase();
       return label.includes(query) || preview.includes(query);
     });
@@ -266,14 +279,44 @@ export default function StaffMessagesPage() {
   const send = async () => {
     const body = draft.trim();
     if (!body || !selectedId || sending) return;
-    setSending(true);
+
+    const conversationId = selectedId;
+    const optimisticId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const optimisticMessage: Message = {
+      _id: optimisticId,
+      conversationId,
+      senderType: 'STAFF',
+      senderUserId: currentUserId,
+      body,
+      type: 'TEXT',
+      createdAt: new Date().toISOString(),
+      readBy: currentUserId ? [{ userId: currentUserId, readAt: new Date().toISOString() }] : [],
+    };
+
+    // Render immediately. The API request completes in the background.
     setError(null);
+    setDraft('');
+    setMessages((current) => [...current, optimisticMessage]);
+    setConversations((current) => current.map((item) => item._id === conversationId
+      ? { ...item, lastMessageAt: optimisticMessage.createdAt, lastMessagePreview: body }
+      : item
+    ));
+    setSending(true);
+
     try {
-      const message = await communicationService.sendMessage(selectedId, body);
-      setMessages((current) => current.some((item) => item._id === message._id) ? current : [...current, message]);
-      setConversations((current) => current.map((item) => item._id === selectedId ? { ...item, lastMessageAt: message.createdAt, lastMessagePreview: message.body || '' } : item));
-      setDraft('');
+      const message = await communicationService.sendMessage(conversationId, body);
+      setMessages((current) => current.map((item) => item._id === optimisticId ? message : item));
+      setConversations((current) => current.map((item) => item._id === conversationId
+        ? { ...item, lastMessageAt: message.createdAt || optimisticMessage.createdAt, lastMessagePreview: message.body || body }
+        : item
+      ));
     } catch (err: any) {
+      setMessages((current) => current.filter((item) => item._id !== optimisticId));
+      setConversations((current) => current.map((item) => item._id === conversationId
+        ? { ...item, lastMessagePreview: 'Message failed to send' }
+        : item
+      ));
+      setDraft(body);
       setError(err?.message || 'Unable to send your message.');
     } finally {
       setSending(false);
@@ -301,7 +344,7 @@ export default function StaffMessagesPage() {
 
           <div className="min-h-0 flex-1 overflow-y-auto p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {loadingInbox ? <div className="flex h-40 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-[#1b7b68]" /></div> : filteredConversations.length ? filteredConversations.map((conversation) => {
-              const label = conversationLabel(conversation);
+              const label = conversationLabel(conversation, currentUserId);
               const active = selectedId === conversation._id;
               return <button key={conversation._id} type="button" onClick={() => setSelectedId(conversation._id)} className={`flex w-full items-start gap-3 rounded-xl p-3 text-left transition ${active ? 'bg-[#e8f5f3]' : 'hover:bg-slate-50'}`}>
                 <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xs font-bold ${active ? 'bg-[#1b7b68] text-white' : 'bg-slate-100 text-slate-500'}`}>{avatarLetters(label)}</div>
@@ -315,7 +358,7 @@ export default function StaffMessagesPage() {
         <section className={`${selectedId ? 'flex' : 'hidden md:flex'} min-w-0 flex-col bg-[#f8fafc]`}>
           {selectedConversation ? <>
             <header className="flex items-center justify-between border-b border-slate-100 bg-white px-4 py-3 sm:px-5">
-              <div className="flex min-w-0 items-center gap-3"><button type="button" onClick={() => setSelectedId(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 md:hidden" aria-label="Back to conversations">←</button><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-xs font-bold text-[#1b7b68]">{avatarLetters(conversationLabel(selectedConversation))}</div><div className="min-w-0"><h2 className="truncate text-sm font-bold text-slate-800">{conversationLabel(selectedConversation)}</h2><p className="mt-0.5 truncate text-[10px] uppercase tracking-wider text-slate-400">{selectedConversation.type.replace('_', ' ')} · {socketState === 'connected' ? 'Real-time connected' : 'Syncing via secure API'}</p></div></div>
+              <div className="flex min-w-0 items-center gap-3"><button type="button" onClick={() => setSelectedId(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 md:hidden" aria-label="Back to conversations">←</button><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f5f3] text-xs font-bold text-[#1b7b68]">{avatarLetters(conversationLabel(selectedConversation, currentUserId))}</div><div className="min-w-0"><h2 className="truncate text-sm font-bold text-slate-800">{conversationLabel(selectedConversation, currentUserId)}</h2><p className="mt-0.5 truncate text-[10px] uppercase tracking-wider text-slate-400">{selectedConversation.type.replace('_', ' ')} · {socketState === 'connected' ? 'Real-time connected' : 'Syncing via secure API'}</p></div></div>
               <button type="button" className="rounded-xl p-2 text-slate-400 hover:bg-slate-50" aria-label="Conversation options"><MoreHorizontal className="h-5 w-5" /></button>
             </header>
 
@@ -339,7 +382,7 @@ export default function StaffMessagesPage() {
         </section>
 
         <aside className="hidden border-l border-slate-100 bg-white p-4 lg:block">
-          {selectedConversation ? <div className="space-y-5"><div><p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Conversation</p><h3 className="mt-1 text-sm font-bold text-slate-800">{conversationLabel(selectedConversation)}</h3><p className="mt-1 text-[10px] text-slate-400">{selectedConversation.priority || 'NORMAL'} priority</p></div>{typeof selectedConversation.patientId === 'object' && selectedConversation.patientId && <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4"><p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#1b7b68]">Patient context</p><p className="mt-2 text-sm font-bold text-slate-800">{selectedConversation.patientId.firstName} {selectedConversation.patientId.lastName}</p><p className="mt-1 text-[10px] text-slate-400">MRN: {selectedConversation.patientId.mrn || '—'}</p><div className="mt-3 grid grid-cols-2 gap-2 text-[10px]"><div className="rounded-lg bg-white p-2"><p className="text-slate-400">Gender</p><p className="mt-0.5 font-semibold text-slate-700">{selectedConversation.patientId.gender || '—'}</p></div><div className="rounded-lg bg-white p-2"><p className="text-slate-400">Phone</p><p className="mt-0.5 font-semibold text-slate-700">{selectedConversation.patientId.phone || '—'}</p></div></div></div>}<div className="rounded-2xl border border-slate-100 p-4"><p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Participants</p><p className="mt-2 text-xs text-slate-500">{selectedConversation.participants?.length || 0} participant{selectedConversation.participants?.length === 1 ? '' : 's'}</p></div></div> : <div className="pt-3 text-center"><Users className="mx-auto h-6 w-6 text-slate-200" /><p className="mt-2 text-xs font-semibold text-slate-500">Conversation context</p><p className="mt-1 text-[10px] leading-4 text-slate-400">Patient and participant details appear here when a conversation is selected.</p></div>}
+          {selectedConversation ? <div className="space-y-5"><div><p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Conversation</p><h3 className="mt-1 text-sm font-bold text-slate-800">{conversationLabel(selectedConversation, currentUserId)}</h3><p className="mt-1 text-[10px] text-slate-400">{selectedConversation.priority || 'NORMAL'} priority</p></div>{typeof selectedConversation.patientId === 'object' && selectedConversation.patientId && <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4"><p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#1b7b68]">Patient context</p><p className="mt-2 text-sm font-bold text-slate-800">{selectedConversation.patientId.firstName} {selectedConversation.patientId.lastName}</p><p className="mt-1 text-[10px] text-slate-400">MRN: {selectedConversation.patientId.mrn || '—'}</p><div className="mt-3 grid grid-cols-2 gap-2 text-[10px]"><div className="rounded-lg bg-white p-2"><p className="text-slate-400">Gender</p><p className="mt-0.5 font-semibold text-slate-700">{selectedConversation.patientId.gender || '—'}</p></div><div className="rounded-lg bg-white p-2"><p className="text-slate-400">Phone</p><p className="mt-0.5 font-semibold text-slate-700">{selectedConversation.patientId.phone || '—'}</p></div></div></div>}<div className="rounded-2xl border border-slate-100 p-4"><p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Participants</p><p className="mt-2 text-xs text-slate-500">{selectedConversation.participants?.length || 0} participant{selectedConversation.participants?.length === 1 ? '' : 's'}</p></div></div> : <div className="pt-3 text-center"><Users className="mx-auto h-6 w-6 text-slate-200" /><p className="mt-2 text-xs font-semibold text-slate-500">Conversation context</p><p className="mt-1 text-[10px] leading-4 text-slate-400">Patient and participant details appear here when a conversation is selected.</p></div>}
         </aside>
       </div>
 
