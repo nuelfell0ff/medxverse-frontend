@@ -384,5 +384,14 @@ class CommunicationSocketManager {
   }
 }
 
+type CommunicationSocketGlobal = typeof globalThis & {
+  __medxverseCommunicationSocketManager__?: CommunicationSocketManager;
+};
+
+const communicationSocketGlobal =
+  globalThis as CommunicationSocketGlobal;
+
 export const communicationSocketManager =
-  new CommunicationSocketManager();
+  communicationSocketGlobal.__medxverseCommunicationSocketManager__ ??
+  (communicationSocketGlobal.__medxverseCommunicationSocketManager__ =
+    new CommunicationSocketManager());

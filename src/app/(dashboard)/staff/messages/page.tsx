@@ -128,6 +128,7 @@ export default function StaffMessagesPage() {
   const [loadingInbox, setLoadingInbox] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
   const [draft, setDraft] = useState('');
   const [search, setSearch] = useState('');
   const [staffSearch, setStaffSearch] = useState('');
@@ -280,7 +281,6 @@ export default function StaffMessagesPage() {
    */
   useEffect(() => {
     if (!token || account?.userType !== 'STAFF') {
-      communicationSocketManager.disconnect();
       socketConnectedRef.current = false;
       setSocketState('offline');
       return;
@@ -568,7 +568,16 @@ export default function StaffMessagesPage() {
   const send = async () => {
     const body = draft.trim();
 
-    if (!body || !selectedId || sending) return;
+    if (
+      !body ||
+      !selectedId ||
+      sending ||
+      sendingRef.current
+    ) {
+      return;
+    }
+
+    sendingRef.current = true;
 
     const conversationId = selectedId;
 
@@ -672,6 +681,7 @@ export default function StaffMessagesPage() {
           'Unable to send your message.',
       );
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   };
