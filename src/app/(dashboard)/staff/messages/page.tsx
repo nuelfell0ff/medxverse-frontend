@@ -278,14 +278,12 @@ export default function StaffMessagesPage() {
   /*
    * REAL-TIME WEBSOCKET
    *
-   * Important:
-   * We do not immediately destroy a CONNECTING socket during React
-   * effect cleanup. Next.js development mode / React StrictMode can
-   * run an effect cleanup and immediately run it again.
+   * Keep one socket instance across React re-renders. Next.js/React
+   * StrictMode may run effect cleanup and setup back-to-back in development,
+   * so cleanup is delayed briefly and an existing socket is reused.
    *
-   * Immediate socket.close() during that cycle was causing:
-   *
-   * "WebSocket is closed before the connection is established."
+   * When a socket is reused, its handlers are rebound to the newest
+   * effect generation. This prevents stale handlers from ignoring events.
    */
   useEffect(() => {
     if (!token || account?.userType !== 'STAFF') {
@@ -311,26 +309,13 @@ export default function StaffMessagesPage() {
 
     const scheduleReconnect = () => {
       if (cancelled) return;
-
-      if (socketGenerationRef.current !== generation) {
-        return;
-      }
-
-      if (reconnectTimerRef.current) {
-        return;
-      }
+      if (socketGenerationRef.current !== generation) return;
+      if (reconnectTimerRef.current) return;
 
       const attempt = reconnectAttemptRef.current;
+      const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
 
-      const delay = Math.min(
-        1000 * Math.pow(2, attempt),
-        10000,
-      );
-
-      reconnectAttemptRef.current = Math.min(
-        attempt + 1,
-        6,
-      );
+      reconnectAttemptRef.current = Math.min(attempt + 1, 6);
 
       reconnectTimerRef.current = setTimeout(() => {
         reconnectTimerRef.current = null;
@@ -346,55 +331,7 @@ export default function StaffMessagesPage() {
       }, delay);
     };
 
-    const connect = () => {
-      if (
-        cancelled ||
-        socketGenerationRef.current !== generation
-      ) {
-        return;
-      }
-
-      clearReconnectTimer();
-
-      const existingSocket = socketRef.current;
-
-      /*
-       * Reuse an existing connection when possible.
-       */
-      if (
-        existingSocket &&
-        socketUrlRef.current === socketUrl &&
-        (
-          existingSocket.readyState === WebSocket.CONNECTING ||
-          existingSocket.readyState === WebSocket.OPEN
-        )
-      ) {
-        if (
-          existingSocket.readyState === WebSocket.OPEN
-        ) {
-          setSocketState('connected');
-        } else {
-          setSocketState('connecting');
-        }
-
-        return;
-      }
-
-      setSocketState('connecting');
-
-      let socket: WebSocket;
-
-      try {
-        socket = new WebSocket(socketUrl);
-      } catch {
-        setSocketState('offline');
-        scheduleReconnect();
-        return;
-      }
-
-      socketRef.current = socket;
-      socketUrlRef.current = socketUrl;
-
+    const bindSocketHandlers = (socket: WebSocket) => {
       socket.onopen = () => {
         if (
           cancelled ||
@@ -418,8 +355,7 @@ export default function StaffMessagesPage() {
         }
 
         /*
-         * Do not reconnect from onerror.
-         * onclose will handle the reconnect.
+         * onclose owns the reconnect path.
          */
         setSocketState('offline');
       };
@@ -452,6 +388,11 @@ export default function StaffMessagesPage() {
 
         try {
           const payload = JSON.parse(event.data);
+
+          if (payload.type === 'communication.connected') {
+            setSocketState('connected');
+            return;
+          }
 
           if (
             payload.type !== 'message.created' ||
@@ -522,37 +463,91 @@ export default function StaffMessagesPage() {
       };
     };
 
-    /*
-     * If a valid socket already exists for this same URL, reuse it.
-     */
-    if (
-      socketRef.current &&
-      socketUrlRef.current === socketUrl &&
-      (
-        socketRef.current.readyState === WebSocket.CONNECTING ||
-        socketRef.current.readyState === WebSocket.OPEN
-      )
-    ) {
+    const connect = () => {
       if (
-        socketRef.current.readyState === WebSocket.OPEN
+        cancelled ||
+        socketGenerationRef.current !== generation
       ) {
-        setSocketState('connected');
-      } else {
-        setSocketState('connecting');
+        return;
       }
-    } else {
-      connect();
-    }
+
+      clearReconnectTimer();
+
+      const existingSocket = socketRef.current;
+
+      /*
+       * Reuse a valid socket for this token/URL.
+       */
+      if (
+        existingSocket &&
+        socketUrlRef.current === socketUrl &&
+        (
+          existingSocket.readyState === WebSocket.CONNECTING ||
+          existingSocket.readyState === WebSocket.OPEN
+        )
+      ) {
+        bindSocketHandlers(existingSocket);
+
+        setSocketState(
+          existingSocket.readyState === WebSocket.OPEN
+            ? 'connected'
+            : 'connecting',
+        );
+
+        return;
+      }
+
+      /*
+       * Replace a stale socket without allowing its close event to start
+       * another reconnect loop.
+       */
+      if (existingSocket) {
+        existingSocket.onopen = null;
+        existingSocket.onerror = null;
+        existingSocket.onclose = null;
+        existingSocket.onmessage = null;
+
+        try {
+          if (
+            existingSocket.readyState === WebSocket.OPEN ||
+            existingSocket.readyState === WebSocket.CONNECTING
+          ) {
+            existingSocket.close(1000, 'Replacing communication socket');
+          }
+        } catch {
+          // Ignore socket replacement cleanup errors.
+        }
+
+        socketRef.current = null;
+        socketUrlRef.current = null;
+      }
+
+      setSocketState('connecting');
+
+      let socket: WebSocket;
+
+      try {
+        socket = new WebSocket(socketUrl);
+      } catch {
+        setSocketState('offline');
+        scheduleReconnect();
+        return;
+      }
+
+      socketRef.current = socket;
+      socketUrlRef.current = socketUrl;
+
+      bindSocketHandlers(socket);
+    };
+
+    connect();
 
     return () => {
       /*
-       * Delay cleanup slightly so React StrictMode does not destroy
-       * the connection during its development effect cycle.
+       * React StrictMode can do setup -> cleanup -> setup immediately.
+       * Give the next setup a chance to reuse this same connection.
        */
       closeTimerRef.current = setTimeout(() => {
-        /*
-         * A newer effect owns this connection now.
-         */
         if (
           socketGenerationRef.current !== generation
         ) {
@@ -560,21 +555,26 @@ export default function StaffMessagesPage() {
         }
 
         cancelled = true;
-
         clearReconnectTimer();
 
         const socket = socketRef.current;
 
         if (socket) {
+          /*
+           * Detach handlers first so this intentional shutdown cannot
+           * trigger the reconnect loop.
+           */
+          socket.onopen = null;
+          socket.onerror = null;
+          socket.onclose = null;
+          socket.onmessage = null;
+
           try {
             if (
               socket.readyState === WebSocket.OPEN ||
               socket.readyState === WebSocket.CONNECTING
             ) {
-              socket.close(
-                1000,
-                'Leaving communication page',
-              );
+              socket.close(1000, 'Leaving communication page');
             }
           } catch {
             // Ignore cleanup errors.
@@ -583,9 +583,8 @@ export default function StaffMessagesPage() {
 
         socketRef.current = null;
         socketUrlRef.current = null;
-
         setSocketState('offline');
-      }, 200);
+      }, 250);
     };
   }, [account?.userType, token, loadInbox]);
 
