@@ -1,4 +1,5 @@
 import { apiClient } from '@/lib/api-client';
+
 import {
   CommunicationPatient,
   Conversation,
@@ -12,15 +13,22 @@ import {
 } from '@/types/communication';
 
 export const communicationService = {
-  getInbox: async (page = 1, limit = 30): Promise<InboxResponse> => {
+  getInbox: async (
+    page = 1,
+    limit = 30
+  ): Promise<InboxResponse> => {
     const response = await apiClient.get('/communication/inbox', {
       params: { page, limit },
     });
+
     return response.data;
   },
 
   setPresence: async (status: PresenceStatus) => {
-    const response = await apiClient.patch('/communication/presence', { status });
+    const response = await apiClient.patch('/communication/presence', {
+      status,
+    });
+
     return response.data;
   },
 
@@ -28,27 +36,44 @@ export const communicationService = {
     const response = await apiClient.get('/communication/my-patients', {
       params: search.trim() ? { q: search.trim() } : undefined,
     });
+
     return response.data;
   },
 
-  searchStaff: async (search: string): Promise<StaffSearchResult[]> => {
+  searchStaff: async (
+    search: string
+  ): Promise<StaffSearchResult[]> => {
     const response = await apiClient.get('/communication/staff/search', {
-      params: { q: search.trim(), limit: 30 },
+      params: {
+        q: search.trim(),
+        limit: 30,
+      },
     });
+
     return response.data;
   },
 
   searchMessages: async (search: string): Promise<Message[]> => {
     const response = await apiClient.get('/communication/messages/search', {
-      params: { q: search.trim(), limit: 50 },
+      params: {
+        q: search.trim(),
+        limit: 50,
+      },
     });
+
     return response.data;
   },
 
-  createDirectConversation: async (targetUserId: string): Promise<Conversation> => {
-    const response = await apiClient.post('/communication/conversations/direct', {
-      targetUserId,
-    });
+  createDirectConversation: async (
+    targetUserId: string
+  ): Promise<Conversation> => {
+    const response = await apiClient.post(
+      '/communication/conversations/direct',
+      {
+        targetUserId,
+      }
+    );
+
     return response.data;
   },
 
@@ -56,10 +81,14 @@ export const communicationService = {
     title: string,
     memberIds: string[]
   ): Promise<Conversation> => {
-    const response = await apiClient.post('/communication/conversations/group', {
-      title,
-      memberIds,
-    });
+    const response = await apiClient.post(
+      '/communication/conversations/group',
+      {
+        title,
+        memberIds,
+      }
+    );
+
     return response.data;
   },
 
@@ -68,18 +97,27 @@ export const communicationService = {
     memberIds: string[],
     title?: string
   ): Promise<Conversation> => {
-    const response = await apiClient.post('/communication/conversations/patient', {
-      patientId,
-      memberIds,
-      ...(title?.trim() ? { title: title.trim() } : {}),
-    });
+    const response = await apiClient.post(
+      '/communication/conversations/patient',
+      {
+        patientId,
+        memberIds,
+        ...(title?.trim() ? { title: title.trim() } : {}),
+      }
+    );
+
     return response.data;
   },
 
-  getConversation: async (conversationId: string): Promise<Conversation> => {
+  getConversation: async (
+    conversationId: string
+  ): Promise<Conversation> => {
     const response = await apiClient.get(
-      `/communication/conversations/${encodeURIComponent(conversationId)}`
+      `/communication/conversations/${encodeURIComponent(
+        conversationId
+      )}`
     );
+
     return response.data;
   },
 
@@ -89,9 +127,17 @@ export const communicationService = {
     limit = 50
   ): Promise<MessagesResponse> => {
     const response = await apiClient.get(
-      `/communication/conversations/${encodeURIComponent(conversationId)}/messages`,
-      { params: { page, limit } }
+      `/communication/conversations/${encodeURIComponent(
+        conversationId
+      )}/messages`,
+      {
+        params: {
+          page,
+          limit,
+        },
+      }
     );
+
     return response.data;
   },
 
@@ -100,21 +146,32 @@ export const communicationService = {
     body: string
   ): Promise<Message> => {
     const response = await apiClient.post(
-      `/communication/conversations/${encodeURIComponent(conversationId)}/messages`,
-      { body, type: 'TEXT', attachments: [] }
+      `/communication/conversations/${encodeURIComponent(
+        conversationId
+      )}/messages`,
+      {
+        body,
+        type: 'TEXT',
+        attachments: [],
+      }
     );
+
     return response.data;
   },
 
   markRead: async (conversationId: string) => {
     const response = await apiClient.post(
-      `/communication/conversations/${encodeURIComponent(conversationId)}/read`
+      `/communication/conversations/${encodeURIComponent(
+        conversationId
+      )}/read`
     );
+
     return response.data;
   },
 
   getDepartments: async (): Promise<Department[]> => {
     const response = await apiClient.get('/communication/departments');
+
     return response.data;
   },
 
@@ -122,29 +179,47 @@ export const communicationService = {
     departmentId: string,
     title?: string
   ): Promise<Conversation> => {
-    const response = await apiClient.post('/communication/conversations/department', {
-      departmentId,
-      ...(title?.trim() ? { title: title.trim() } : {}),
-    });
-    return response.data;
-  },
-
-  joinDepartmentConversation: async (conversationId: string): Promise<Conversation> => {
     const response = await apiClient.post(
-      `/communication/conversations/${encodeURIComponent(conversationId)}/join`
+      '/communication/conversations/department',
+      {
+        departmentId,
+        ...(title?.trim() ? { title: title.trim() } : {}),
+      }
     );
+
     return response.data;
   },
 
-  getTickets: async (filters?: Record<string, string>): Promise<Ticket[]> => {
+  joinDepartmentConversation: async (
+    conversationId: string
+  ): Promise<Conversation> => {
+    const response = await apiClient.post(
+      `/communication/conversations/${encodeURIComponent(
+        conversationId
+      )}/join`
+    );
+
+    return response.data;
+  },
+
+  getTickets: async (
+    filters?: Record<string, string>
+  ): Promise<Ticket[]> => {
     const response = await apiClient.get('/communication/tickets', {
       params: filters,
     });
+
     return response.data;
   },
 
-  createTicket: async (input: Record<string, unknown>): Promise<Ticket> => {
-    const response = await apiClient.post('/communication/tickets', input);
+  createTicket: async (
+    input: Record<string, unknown>
+  ): Promise<Ticket> => {
+    const response = await apiClient.post(
+      '/communication/tickets',
+      input
+    );
+
     return response.data;
   },
 
@@ -156,27 +231,37 @@ export const communicationService = {
       `/communication/tickets/${encodeURIComponent(ticketId)}`,
       input
     );
+
     return response.data;
   },
 
-  getPatientFromMyPatientItem: (item: any): CommunicationPatient | undefined => {
+  getPatientFromMyPatientItem: (
+    item: any
+  ): CommunicationPatient | undefined => {
     return item?.patient;
   },
 };
 
-export function getCommunicationWebSocketUrl(token: string): string {
+export function getCommunicationWebSocketUrl(
+  token: string
+): string {
   const configuredApiUrl = (
     process.env.NEXT_PUBLIC_API_URL ||
     'https://medxverse-backend.onrender.com/api/v1'
   ).trim();
 
-  // NEXT_PUBLIC_API_URL is the REST API base, normally ending in /api/v1.
-  // WebSockets are mounted at the server root, so remove only that API suffix.
+  // NEXT_PUBLIC_API_URL is the REST API base,
+  // normally ending in /api/v1.
+  // WebSockets are mounted at the server root,
+  // so remove only that API suffix.
   const apiUrl = configuredApiUrl.replace(/\/+$/, '');
+
   const serverOrigin = apiUrl
     .replace(/\/api\/v1\/?$/i, '')
     .replace(/^https:/i, 'wss:')
     .replace(/^http:/i, 'ws:');
 
-  return `${serverOrigin}/ws/communication?token=${encodeURIComponent(token.trim())}`;
+  return `${serverOrigin}/ws/communication?token=${encodeURIComponent(
+    token.trim()
+  )}`;
 }

@@ -14,10 +14,12 @@ import {
   X,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
+import { communicationService } from '@/services/communication.service';
+
 import {
-  communicationService,
-  getCommunicationWebSocketUrl,
-} from '@/services/communication.service';
+  communicationSocketManager,
+  type CommunicationSocketEvent,
+} from '@/services/communication.socket';
 import {
   Conversation,
   Department,
@@ -147,16 +149,9 @@ export default function StaffMessagesPage() {
     'connecting' | 'connected' | 'offline'
   >('offline');
 
-  const socketRef = useRef<WebSocket | null>(null);
-  const socketUrlRef = useRef<string | null>(null);
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const watchdogTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const reconnectAttemptRef = useRef(0);
+  const socketConnectedRef = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
-
-  const socketGenerationRef = useRef(0);
 
   const filteredConversations = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -279,382 +274,80 @@ export default function StaffMessagesPage() {
   /*
    * REAL-TIME WEBSOCKET
    *
-   * The communication socket must survive React/Next.js development
-   * remounts and must reconnect when the browser or network drops it.
-   *
-   * Important details:
-   * - Reuses an existing socket when possible.
-   * - Never lets an old socket handler control a newer socket.
-   * - Delays cleanup so React StrictMode can reuse the connection.
-   * - Reconnects after unexpected closes.
-   * - Detects a socket that gets stuck in CONNECTING.
-   * - The backend owns the WebSocket protocol heartbeat (ping/pong).
-   * - The client logs the server's close code/reason for diagnostics.
+   * The socket lifecycle is owned by communicationSocketManager.
+   * This page only subscribes to events. React remounts therefore do
+   * not create/close the underlying WebSocket connection.
    */
   useEffect(() => {
     if (!token || account?.userType !== 'STAFF') {
+      communicationSocketManager.disconnect();
+      socketConnectedRef.current = false;
+      setSocketState('offline');
       return;
     }
 
-    const socketUrl = getCommunicationWebSocketUrl(token);
-    const generation = ++socketGenerationRef.current;
+    const unsubscribe = communicationSocketManager.subscribe((event: CommunicationSocketEvent) => {
+      socketConnectedRef.current = event.state === 'connected';
+      setSocketState(event.state);
 
-    let cancelled = false;
-
-    const clearReconnectTimer = () => {
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
-      }
-    };
-
-    const clearWatchdog = () => {
-      if (watchdogTimerRef.current) {
-        clearInterval(watchdogTimerRef.current);
-        watchdogTimerRef.current = null;
-      }
-    };
-
-    const scheduleReconnect = () => {
-      if (cancelled) return;
-      if (socketGenerationRef.current !== generation) return;
-      if (reconnectTimerRef.current) return;
-
-      const attempt = reconnectAttemptRef.current;
-      const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
-
-      reconnectAttemptRef.current = Math.min(attempt + 1, 6);
-
-      reconnectTimerRef.current = setTimeout(() => {
-        reconnectTimerRef.current = null;
-
-        if (
-          cancelled ||
-          socketGenerationRef.current !== generation
-        ) {
-          return;
-        }
-
-        connect();
-      }, delay);
-    };
-
-    const detachSocket = (socket: WebSocket) => {
-      socket.onopen = null;
-      socket.onerror = null;
-      socket.onclose = null;
-      socket.onmessage = null;
-    };
-
-    const closeSocket = (
-      socket: WebSocket,
-      reason: string,
-    ) => {
-      detachSocket(socket);
-
-      try {
-        if (
-          socket.readyState === WebSocket.OPEN ||
-          socket.readyState === WebSocket.CONNECTING
-        ) {
-          socket.close(1000, reason);
-        }
-      } catch {
-        // Ignore browser cleanup errors.
-      }
-
-      if (socketRef.current === socket) {
-        socketRef.current = null;
-        socketUrlRef.current = null;
-      }
-    };
-
-    const bindSocketHandlers = (socket: WebSocket) => {
-      socket.onopen = () => {
-        if (
-          cancelled ||
-          socketGenerationRef.current !== generation ||
-          socketRef.current !== socket
-        ) {
-          return;
-        }
-
-        reconnectAttemptRef.current = 0;
-        setSocketState('connected');
-
-        console.info(
-          '[Communication WebSocket] Connected:',
-          socketUrl.replace(/([?&]token=)[^&]+/i, '$1[redacted]'),
-        );
-      };
-
-      socket.onerror = (event) => {
-        if (
-          cancelled ||
-          socketGenerationRef.current !== generation ||
-          socketRef.current !== socket
-        ) {
-          return;
-        }
-
-        console.warn(
-          '[Communication WebSocket] Socket error event:',
-          event,
-        );
-
-        /*
-         * The browser normally follows an error with close.
-         * Keep reconnect ownership in onclose to avoid duplicate timers.
-         */
-        setSocketState('offline');
-      };
-
-      socket.onclose = (event) => {
-        if (socketRef.current === socket) {
-          socketRef.current = null;
-          socketUrlRef.current = null;
-        }
-
-        if (
-          cancelled ||
-          socketGenerationRef.current !== generation
-        ) {
-          return;
-        }
-
-        console.warn(
-          '[Communication WebSocket] Connection closed:',
-          {
-            code: event.code,
-            reason: event.reason || 'No reason supplied',
-            wasClean: event.wasClean,
-          },
-        );
-
-        setSocketState('offline');
-        scheduleReconnect();
-      };
-
-      socket.onmessage = (event) => {
-        if (
-          cancelled ||
-          socketGenerationRef.current !== generation ||
-          socketRef.current !== socket
-        ) {
-          return;
-        }
-
-        try {
-          const payload = JSON.parse(event.data);
-
-          if (payload.type === 'communication.connected') {
-            setSocketState('connected');
-            return;
-          }
-
-          if (
-            payload.type !== 'message.created' ||
-            !payload.payload
-          ) {
-            return;
-          }
-
-          const incoming = payload.payload as Message;
-
-          const conversationId = String(
-            payload.conversationId ||
-              incoming.conversationId ||
-              '',
-          );
-
-          if (!conversationId) return;
-
-          const isOpen =
-            selectedIdRef.current === conversationId;
-
-          setConversations((current) => {
-            const existing = current.find(
-              (item) => item._id === conversationId,
-            );
-
-            if (!existing) {
-              void loadInbox();
-              return current;
-            }
-
-            return current.map((item) =>
-              item._id === conversationId
-                ? {
-                    ...item,
-                    lastMessageAt:
-                      incoming.createdAt ||
-                      new Date().toISOString(),
-                    lastMessagePreview:
-                      incoming.body || '[message]',
-                    unreadCount: isOpen
-                      ? 0
-                      : (item.unreadCount || 0) + 1,
-                  }
-                : item,
-            );
-          });
-
-          if (isOpen) {
-            setMessages((current) =>
-              current.some(
-                (message) =>
-                  message._id === incoming._id,
-              )
-                ? current
-                : [...current, incoming],
-            );
-
-            void communicationService
-              .markRead(conversationId)
-              .catch(() => undefined);
-          }
-        } catch {
-          /*
-           * Ignore malformed socket events.
-           */
-        }
-      };
-    };
-
-    const connect = () => {
-      if (
-        cancelled ||
-        socketGenerationRef.current !== generation
-      ) {
+      if (event.type !== 'message.created' || !event.payload) {
         return;
       }
 
-      clearReconnectTimer();
+      const incoming = event.payload as Message;
+      const conversationId = String(
+        event.conversationId || incoming.conversationId || '',
+      );
 
-      const existingSocket = socketRef.current;
+      if (!conversationId) return;
 
-      /*
-       * Reuse a valid socket for the same authenticated URL.
-       * Handlers are rebound so the current effect generation owns it.
-       */
-      if (
-        existingSocket &&
-        socketUrlRef.current === socketUrl &&
-        (
-          existingSocket.readyState === WebSocket.CONNECTING ||
-          existingSocket.readyState === WebSocket.OPEN
-        )
-      ) {
-        bindSocketHandlers(existingSocket);
+      const isOpen = selectedIdRef.current === conversationId;
 
-        setSocketState(
-          existingSocket.readyState === WebSocket.OPEN
-            ? 'connected'
-            : 'connecting',
+      setConversations((current) => {
+        const existing = current.find(
+          (item) => item._id === conversationId,
         );
 
-        return;
-      }
+        if (!existing) {
+          void loadInbox();
+          return current;
+        }
 
-      /*
-       * Replace a stale socket without allowing its close event to
-       * schedule another reconnect.
-       */
-      if (existingSocket) {
-        closeSocket(
-          existingSocket,
-          'Replacing stale communication socket',
+        return current.map((item) =>
+          item._id === conversationId
+            ? {
+                ...item,
+                lastMessageAt:
+                  incoming.createdAt || new Date().toISOString(),
+                lastMessagePreview: incoming.body || '[message]',
+                unreadCount: isOpen
+                  ? 0
+                  : (item.unreadCount || 0) + 1,
+              }
+            : item,
         );
+      });
+
+      if (isOpen) {
+        setMessages((current) =>
+          current.some((message) => message._id === incoming._id)
+            ? current
+            : [...current, incoming],
+        );
+
+        void communicationService
+          .markRead(conversationId)
+          .catch(() => undefined);
       }
+    });
 
-      setSocketState('connecting');
+    communicationSocketManager.connect(token);
+    socketConnectedRef.current = communicationSocketManager.isConnected();
+    setSocketState(
+      socketConnectedRef.current ? 'connected' : 'connecting',
+    );
 
-      let socket: WebSocket;
-
-      try {
-        socket = new WebSocket(socketUrl);
-      } catch {
-        setSocketState('offline');
-        scheduleReconnect();
-        return;
-      }
-
-      socketRef.current = socket;
-      socketUrlRef.current = socketUrl;
-
-      bindSocketHandlers(socket);
-    };
-
-    connect();
-
-    /*
-     * Watch for a socket that remains CONNECTING for too long.
-     * Browsers can occasionally leave a WebSocket in that state after
-     * a network/interface change without firing close immediately.
-     */
-    watchdogTimerRef.current = setInterval(() => {
-      if (
-        cancelled ||
-        socketGenerationRef.current !== generation
-      ) {
-        return;
-      }
-
-      const socket = socketRef.current;
-
-      if (!socket) {
-        connect();
-        return;
-      }
-
-      if (socket.readyState === WebSocket.CLOSED) {
-        socketRef.current = null;
-        socketUrlRef.current = null;
-        setSocketState('offline');
-        scheduleReconnect();
-      }
-    }, 5000);
-
-    return () => {
-      /*
-       * React StrictMode can perform:
-       * setup -> cleanup -> setup
-       * immediately during development.
-       *
-       * Delay the actual close so the next setup can reuse the socket.
-       */
-      if (closeTimerRef.current) {
-        clearTimeout(closeTimerRef.current);
-      }
-
-      closeTimerRef.current = setTimeout(() => {
-        if (
-          socketGenerationRef.current !== generation
-        ) {
-          return;
-        }
-
-        cancelled = true;
-
-        clearReconnectTimer();
-        clearWatchdog();
-
-        const socket = socketRef.current;
-
-        if (socket) {
-          closeSocket(
-            socket,
-            'Leaving communication page',
-          );
-        }
-
-        socketRef.current = null;
-        socketUrlRef.current = null;
-        setSocketState('offline');
-
-        closeTimerRef.current = null;
-      }, 1000);
-    };
+    return unsubscribe;
   }, [account?.userType, token, loadInbox]);
 
   /*
@@ -666,10 +359,7 @@ export default function StaffMessagesPage() {
     if (!token || account?.userType !== 'STAFF') return;
 
     const poll = window.setInterval(() => {
-      if (
-        socketRef.current?.readyState ===
-        WebSocket.OPEN
-      ) {
+      if (socketConnectedRef.current) {
         return;
       }
 
