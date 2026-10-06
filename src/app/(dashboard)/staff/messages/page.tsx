@@ -151,6 +151,7 @@ export default function StaffMessagesPage() {
   const socketUrlRef = useRef<string | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const watchdogTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconnectAttemptRef = useRef(0);
   const selectedIdRef = useRef<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -278,12 +279,17 @@ export default function StaffMessagesPage() {
   /*
    * REAL-TIME WEBSOCKET
    *
-   * Keep one socket instance across React re-renders. Next.js/React
-   * StrictMode may run effect cleanup and setup back-to-back in development,
-   * so cleanup is delayed briefly and an existing socket is reused.
+   * The communication socket must survive React/Next.js development
+   * remounts and must reconnect when the browser or network drops it.
    *
-   * When a socket is reused, its handlers are rebound to the newest
-   * effect generation. This prevents stale handlers from ignoring events.
+   * Important details:
+   * - Reuses an existing socket when possible.
+   * - Never lets an old socket handler control a newer socket.
+   * - Delays cleanup so React StrictMode can reuse the connection.
+   * - Reconnects after unexpected closes.
+   * - Detects a socket that gets stuck in CONNECTING.
+   * - The backend owns the WebSocket protocol heartbeat (ping/pong).
+   * - The client logs the server's close code/reason for diagnostics.
    */
   useEffect(() => {
     if (!token || account?.userType !== 'STAFF') {
@@ -295,15 +301,17 @@ export default function StaffMessagesPage() {
 
     let cancelled = false;
 
-    if (closeTimerRef.current) {
-      clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
-    }
-
     const clearReconnectTimer = () => {
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
+      }
+    };
+
+    const clearWatchdog = () => {
+      if (watchdogTimerRef.current) {
+        clearInterval(watchdogTimerRef.current);
+        watchdogTimerRef.current = null;
       }
     };
 
@@ -331,6 +339,36 @@ export default function StaffMessagesPage() {
       }, delay);
     };
 
+    const detachSocket = (socket: WebSocket) => {
+      socket.onopen = null;
+      socket.onerror = null;
+      socket.onclose = null;
+      socket.onmessage = null;
+    };
+
+    const closeSocket = (
+      socket: WebSocket,
+      reason: string,
+    ) => {
+      detachSocket(socket);
+
+      try {
+        if (
+          socket.readyState === WebSocket.OPEN ||
+          socket.readyState === WebSocket.CONNECTING
+        ) {
+          socket.close(1000, reason);
+        }
+      } catch {
+        // Ignore browser cleanup errors.
+      }
+
+      if (socketRef.current === socket) {
+        socketRef.current = null;
+        socketUrlRef.current = null;
+      }
+    };
+
     const bindSocketHandlers = (socket: WebSocket) => {
       socket.onopen = () => {
         if (
@@ -343,9 +381,14 @@ export default function StaffMessagesPage() {
 
         reconnectAttemptRef.current = 0;
         setSocketState('connected');
+
+        console.info(
+          '[Communication WebSocket] Connected:',
+          socketUrl.replace(/([?&]token=)[^&]+/i, '$1[redacted]'),
+        );
       };
 
-      socket.onerror = () => {
+      socket.onerror = (event) => {
         if (
           cancelled ||
           socketGenerationRef.current !== generation ||
@@ -354,13 +397,19 @@ export default function StaffMessagesPage() {
           return;
         }
 
+        console.warn(
+          '[Communication WebSocket] Socket error event:',
+          event,
+        );
+
         /*
-         * onclose owns the reconnect path.
+         * The browser normally follows an error with close.
+         * Keep reconnect ownership in onclose to avoid duplicate timers.
          */
         setSocketState('offline');
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         if (socketRef.current === socket) {
           socketRef.current = null;
           socketUrlRef.current = null;
@@ -372,6 +421,15 @@ export default function StaffMessagesPage() {
         ) {
           return;
         }
+
+        console.warn(
+          '[Communication WebSocket] Connection closed:',
+          {
+            code: event.code,
+            reason: event.reason || 'No reason supplied',
+            wasClean: event.wasClean,
+          },
+        );
 
         setSocketState('offline');
         scheduleReconnect();
@@ -476,7 +534,8 @@ export default function StaffMessagesPage() {
       const existingSocket = socketRef.current;
 
       /*
-       * Reuse a valid socket for this token/URL.
+       * Reuse a valid socket for the same authenticated URL.
+       * Handlers are rebound so the current effect generation owns it.
        */
       if (
         existingSocket &&
@@ -498,28 +557,14 @@ export default function StaffMessagesPage() {
       }
 
       /*
-       * Replace a stale socket without allowing its close event to start
-       * another reconnect loop.
+       * Replace a stale socket without allowing its close event to
+       * schedule another reconnect.
        */
       if (existingSocket) {
-        existingSocket.onopen = null;
-        existingSocket.onerror = null;
-        existingSocket.onclose = null;
-        existingSocket.onmessage = null;
-
-        try {
-          if (
-            existingSocket.readyState === WebSocket.OPEN ||
-            existingSocket.readyState === WebSocket.CONNECTING
-          ) {
-            existingSocket.close(1000, 'Replacing communication socket');
-          }
-        } catch {
-          // Ignore socket replacement cleanup errors.
-        }
-
-        socketRef.current = null;
-        socketUrlRef.current = null;
+        closeSocket(
+          existingSocket,
+          'Replacing stale communication socket',
+        );
       }
 
       setSocketState('connecting');
@@ -542,11 +587,46 @@ export default function StaffMessagesPage() {
 
     connect();
 
+    /*
+     * Watch for a socket that remains CONNECTING for too long.
+     * Browsers can occasionally leave a WebSocket in that state after
+     * a network/interface change without firing close immediately.
+     */
+    watchdogTimerRef.current = setInterval(() => {
+      if (
+        cancelled ||
+        socketGenerationRef.current !== generation
+      ) {
+        return;
+      }
+
+      const socket = socketRef.current;
+
+      if (!socket) {
+        connect();
+        return;
+      }
+
+      if (socket.readyState === WebSocket.CLOSED) {
+        socketRef.current = null;
+        socketUrlRef.current = null;
+        setSocketState('offline');
+        scheduleReconnect();
+      }
+    }, 5000);
+
     return () => {
       /*
-       * React StrictMode can do setup -> cleanup -> setup immediately.
-       * Give the next setup a chance to reuse this same connection.
+       * React StrictMode can perform:
+       * setup -> cleanup -> setup
+       * immediately during development.
+       *
+       * Delay the actual close so the next setup can reuse the socket.
        */
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+      }
+
       closeTimerRef.current = setTimeout(() => {
         if (
           socketGenerationRef.current !== generation
@@ -555,36 +635,25 @@ export default function StaffMessagesPage() {
         }
 
         cancelled = true;
+
         clearReconnectTimer();
+        clearWatchdog();
 
         const socket = socketRef.current;
 
         if (socket) {
-          /*
-           * Detach handlers first so this intentional shutdown cannot
-           * trigger the reconnect loop.
-           */
-          socket.onopen = null;
-          socket.onerror = null;
-          socket.onclose = null;
-          socket.onmessage = null;
-
-          try {
-            if (
-              socket.readyState === WebSocket.OPEN ||
-              socket.readyState === WebSocket.CONNECTING
-            ) {
-              socket.close(1000, 'Leaving communication page');
-            }
-          } catch {
-            // Ignore cleanup errors.
-          }
+          closeSocket(
+            socket,
+            'Leaving communication page',
+          );
         }
 
         socketRef.current = null;
         socketUrlRef.current = null;
         setSocketState('offline');
-      }, 250);
+
+        closeTimerRef.current = null;
+      }, 1000);
     };
   }, [account?.userType, token, loadInbox]);
 
