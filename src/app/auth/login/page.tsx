@@ -217,7 +217,7 @@ function LoginForm() {
               value={formData.password}
               onChange={handleChange}
               placeholder="PASSWORD"
-              className="h-12 w-full rounded-sm border border-white bg-transparent px-11 pr-11 text-[11px] font-medium uppercase tracking-[0.12em] text-white outline-none transition-all placeholder:text-white/55 focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
+              className="h-12 w-full rounded-sm border border-white bg-transparent px-11 pr-11 text-[11px] font-medium tracking-[0.12em] text-white outline-none transition-all placeholder:text-white/55 focus:bg-white/[0.04] focus:ring-1 focus:ring-white/15"
             />
             <button
               type="button"
