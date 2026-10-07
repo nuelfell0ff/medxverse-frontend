@@ -25,6 +25,8 @@ const navigation = [
   { label: 'Messages', href: '/staff/messages', icon: MessageCircle },
   { label: 'My Patients', href: '/staff/patients', icon: Users },
   { label: 'Tasks & Tickets', href: '/staff/tasks', icon: Ticket },
+  { label: 'Work Activity', href: '/staff/activity', icon: Activity },
+  { label: 'Settings', href: '/staff/settings', icon: Settings },
 ];
 
 interface StaffShellProps {
@@ -189,10 +191,10 @@ export default function StaffShell({ children }: StaffShellProps) {
           })}
 
           {!collapsed && <div className="px-3 pb-1 pt-6 text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">Account</div>}
-          <Link href="/staff/settings" className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-500 transition hover:bg-[#e8f5f3] hover:text-[#1b7b68] ${collapsed ? 'justify-center px-0' : ''}`}>
+          {/* <Link href="/staff/settings" className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-500 transition hover:bg-[#e8f5f3] hover:text-[#1b7b68] ${collapsed ? 'justify-center px-0' : ''}`}>
             <Settings className="h-4 w-4 shrink-0 text-slate-400" />
             {!collapsed && <span>Settings</span>}
-          </Link>
+          </Link> */}
         </nav>
 
         <div className="mt-2 space-y-2 border-t border-slate-100 pt-3">
