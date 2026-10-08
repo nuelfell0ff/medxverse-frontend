@@ -132,6 +132,12 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       icon: Receipt,
       moduleKey: 'billing',
     },
+
+    {
+      label: 'Settings',
+      href: '/hms/settings',
+      icon: Settings,
+    },
   ],
 
   [AccountType.HMO]: [

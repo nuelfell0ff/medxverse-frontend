@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/useAuthStore';
 import {
   PanelLeft,
@@ -18,6 +18,7 @@ interface NavbarProps {
 
 export default function Navbar({ isSidebarCollapsed, onToggleSidebar }: NavbarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { account, hasHydrated } = useAuthStore();
   const isHmo = account?.accountType === 'HMO';
 
@@ -103,14 +104,24 @@ export default function Navbar({ isSidebarCollapsed, onToggleSidebar }: NavbarPr
 
       {/* Right Actions & Profile */}
       <div className="flex items-center gap-2 md:gap-3 shrink-0">
-        <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-all">
+        <button
+          type="button"
+          onClick={() => router.push(account?.accountType === 'HMO' ? '/hmo/settings' : '/hms/settings')}
+          className={`p-2 rounded-xl transition-all ${
+            pathname === '/hms/settings' || pathname.startsWith('/hms/settings/') || pathname === '/hmo/settings' || pathname.startsWith('/hmo/settings/')
+              ? 'bg-[#e8f5f3] text-[#1b7b68]'
+              : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+          }`}
+          aria-label="Open settings"
+          title="Settings"
+        >
           <Settings className="w-5 h-5" />
         </button>
 
-        <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-all relative">
+        {/* <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-all relative">
           <Bell className="w-5 h-5" />
           <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full ring-2 ring-white" />
-        </button>
+        </button> */}
 
         <div className="h-6 w-px bg-slate-200 mx-1 hidden md:block" />
 

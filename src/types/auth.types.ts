@@ -21,6 +21,8 @@ export interface AccountPayload {
   firstName?: string;
   lastName?: string;
   jobTitle?: string;
+  logoUrl?: string;
+  isActive?: boolean;
 
   // Hospital context fields for multi-tenant isolation
   hospital?: string | { _id?: string; id?: string; name?: string };

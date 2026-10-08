@@ -13,4 +13,22 @@ export const authService = {
   getProfile: async (): Promise<ApiResponse<AccountPayload>> => {
     return apiClient.get('/auth/me');
   },
+
+  updateProfile: async (input: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    logoUrl?: string;
+  }): Promise<ApiResponse<AccountPayload>> => {
+    return apiClient.patch('/auth/me', input);
+  },
+
+  changePassword: async (input: {
+    currentPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+  }): Promise<ApiResponse<{ changedAt: string }>> => {
+    return apiClient.post('/auth/change-password', input);
+  },
 };
