@@ -286,60 +286,106 @@ export default function StaffMessagesPage() {
       return;
     }
 
-    const unsubscribe = communicationSocketManager.subscribe((event: CommunicationSocketEvent) => {
-      socketConnectedRef.current = event.state === 'connected';
-      setSocketState(event.state);
+    const unsubscribe = communicationSocketManager.subscribe(
+      (event: CommunicationSocketEvent) => {
+        socketConnectedRef.current =
+          event.state === 'connected';
+        setSocketState(event.state);
 
-      if (event.type !== 'message.created' || !event.payload) {
-        return;
-      }
+        if (
+          event.type === 'conversation.created' &&
+          event.payload
+        ) {
+          const conversation =
+            event.payload as Conversation;
 
-      const incoming = event.payload as Message;
-      const conversationId = String(
-        event.conversationId || incoming.conversationId || '',
-      );
+          if (!conversation._id) {
+            return;
+          }
 
-      if (!conversationId) return;
+          setConversations((current) => {
+            const existingIndex = current.findIndex(
+              (item) => item._id === conversation._id,
+            );
 
-      const isOpen = selectedIdRef.current === conversationId;
+            if (existingIndex === -1) {
+              return [conversation, ...current];
+            }
 
-      setConversations((current) => {
-        const existing = current.find(
-          (item) => item._id === conversationId,
-        );
+            const next = [...current];
+            next[existingIndex] = {
+              ...next[existingIndex],
+              ...conversation,
+            };
 
-        if (!existing) {
-          void loadInbox();
-          return current;
+            return next;
+          });
+
+          return;
         }
 
-        return current.map((item) =>
-          item._id === conversationId
-            ? {
-                ...item,
-                lastMessageAt:
-                  incoming.createdAt || new Date().toISOString(),
-                lastMessagePreview: incoming.body || '[message]',
-                unreadCount: isOpen
-                  ? 0
-                  : (item.unreadCount || 0) + 1,
-              }
-            : item,
-        );
-      });
+        if (
+          event.type !== 'message.created' ||
+          !event.payload
+        ) {
+          return;
+        }
 
-      if (isOpen) {
-        setMessages((current) =>
-          current.some((message) => message._id === incoming._id)
-            ? current
-            : [...current, incoming],
+        const incoming = event.payload as Message;
+        const conversationId = String(
+          event.conversationId ||
+            incoming.conversationId ||
+            '',
         );
 
-        void communicationService
-          .markRead(conversationId)
-          .catch(() => undefined);
-      }
-    });
+        if (!conversationId) return;
+
+        const isOpen =
+          selectedIdRef.current === conversationId;
+
+        setConversations((current) => {
+          const existing = current.find(
+            (item) => item._id === conversationId,
+          );
+
+          if (!existing) {
+            void loadInbox();
+            return current;
+          }
+
+          return current.map((item) =>
+            item._id === conversationId
+              ? {
+                  ...item,
+                  lastMessageAt:
+                    incoming.createdAt ||
+                    new Date().toISOString(),
+                  lastMessagePreview:
+                    incoming.body || '[message]',
+                  unreadCount: isOpen
+                    ? 0
+                    : (item.unreadCount || 0) + 1,
+                }
+              : item,
+          );
+        });
+
+        if (isOpen) {
+          setMessages((current) =>
+            current.some(
+              (message) =>
+                message._id === incoming._id,
+            )
+              ? current
+              : [...current, incoming],
+          );
+
+          void communicationService
+            .markRead(conversationId)
+            .catch(() => undefined);
+        }
+      },
+    );
 
     communicationSocketManager.connect(token);
     socketConnectedRef.current = communicationSocketManager.isConnected();
@@ -353,7 +399,7 @@ export default function StaffMessagesPage() {
   /*
    * HTTP FALLBACK
    *
-   * If WebSocket is unavailable, refresh every 2.5 seconds.
+   * If WebSocket is unavailable, refresh every 5 seconds while the WebSocket is unavailable.
    */
   useEffect(() => {
     if (!token || account?.userType !== 'STAFF') return;
@@ -399,7 +445,7 @@ export default function StaffMessagesPage() {
           })
           .catch(() => undefined);
       }
-    }, 2500);
+    }, 5000);
 
     return () =>
       window.clearInterval(poll);
@@ -407,13 +453,6 @@ export default function StaffMessagesPage() {
 
   useEffect(() => {
     if (!showNewChat) return;
-
-    if (newChatMode === 'PATIENT') {
-      void communicationService
-        .getMyPatients()
-        .then(setPatientOptions)
-        .catch(() => setPatientOptions([]));
-    }
 
     if (newChatMode === 'DEPARTMENT') {
       void communicationService
@@ -1182,12 +1221,11 @@ export default function StaffMessagesPage() {
               </button>
             </div>
 
-            <div className="mt-5 grid grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1">
+            <div className="mt-5 grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
               {(
                 [
                   ['DIRECT', 'Direct'],
                   ['GROUP', 'Group'],
-                  ['PATIENT', 'Patient care'],
                   ['DEPARTMENT', 'Department'],
                 ] as const
               ).map(([value, label]) => (
@@ -1222,7 +1260,7 @@ export default function StaffMessagesPage() {
                         e.target.value,
                       )
                     }
-                    placeholder="Search by email or role"
+                    placeholder="Search staff by name, ID, role, or email"
                     className="h-11 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-[#1b7b68]"
                   />
                 </div>
@@ -1369,121 +1407,6 @@ export default function StaffMessagesPage() {
                     <Users className="h-4 w-4" />
                   )}
                   Create group
-                </button>
-              </div>
-            )}
-
-            {newChatMode === 'PATIENT' && (
-              <div className="mt-4 space-y-3">
-                <select
-                  value={selectedPatientId}
-                  onChange={(e) =>
-                    setSelectedPatientId(
-                      e.target.value,
-                    )
-                  }
-                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#1b7b68]"
-                >
-                  <option value="">
-                    Select patient
-                  </option>
-
-                  {patientOptions.map((item) => {
-                    const patient =
-                      item.patient;
-
-                    const id = idOf(
-                      patient?._id ||
-                        patient?.id,
-                    );
-
-                    return (
-                      <option
-                        key={id}
-                        value={id}
-                      >
-                        {patient?.firstName}{' '}
-                        {patient?.lastName} ·{' '}
-                        {patient?.mrn ||
-                          'No MRN'}
-                      </option>
-                    );
-                  })}
-                </select>
-
-                <input
-                  value={staffSearch}
-                  onChange={(e) =>
-                    void searchForStaff(
-                      e.target.value,
-                    )
-                  }
-                  placeholder="Search care-team staff"
-                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-[#1b7b68]"
-                />
-
-                <div className="max-h-40 overflow-y-auto">
-                  {staffResults.map((staff) => {
-                    const name =
-                      `${staff.staff?.firstName || ''} ${staff.staff?.lastName || ''}`.trim() ||
-                      staff.email;
-
-                    const selected =
-                      selectedMembers.includes(
-                        staff.id,
-                      );
-
-                    return (
-                      <button
-                        key={staff.id}
-                        type="button"
-                        onClick={() =>
-                          setSelectedMembers(
-                            (current) =>
-                              selected
-                                ? current.filter(
-                                    (id) =>
-                                      id !==
-                                      staff.id,
-                                  )
-                                : [
-                                    ...current,
-                                    staff.id,
-                                  ],
-                          )
-                        }
-                        className={`flex w-full items-center gap-3 rounded-xl p-3 text-left ${
-                          selected
-                            ? 'bg-[#e8f5f3]'
-                            : 'hover:bg-slate-50'
-                        }`}
-                      >
-                        <span className="flex-1 text-xs font-semibold text-slate-700">
-                          {name}
-                        </span>
-
-                        {selected && (
-                          <Check className="h-4 w-4 text-[#1b7b68]" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <button
-                  type="button"
-                  disabled={creatingChat}
-                  onClick={() =>
-                    void createSelectedConversation()
-                  }
-                  className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#1b7b68] text-[10px] font-bold uppercase tracking-wider text-white disabled:opacity-50"
-                >
-                  {creatingChat ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <MessageCircle className="h-4 w-4" />
-                  )}
-                  Create patient care chat
                 </button>
               </div>
             )}

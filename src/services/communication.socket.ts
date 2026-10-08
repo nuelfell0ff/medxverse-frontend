@@ -1,6 +1,6 @@
 import { getCommunicationWebSocketUrl } from '@/services/communication.service';
 
-import { Message } from '@/types/communication';
+import { Conversation, Message } from '@/types/communication';
 
 type CommunicationSocketState =
   | 'connecting'
@@ -10,7 +10,7 @@ type CommunicationSocketState =
 export type CommunicationSocketEvent = {
   state: CommunicationSocketState;
   type?: string;
-  payload?: Message;
+  payload?: Message | Conversation;
   conversationId?: string;
 };
 
@@ -257,7 +257,7 @@ class CommunicationSocketManager {
 
       let data: {
         type?: string;
-        payload?: Message;
+        payload?: Message | Conversation;
         conversationId?: string;
       };
 
@@ -277,7 +277,9 @@ class CommunicationSocketManager {
       }
 
       if (
-        data.type === 'message.created' &&
+        (data.type === 'message.created' ||
+          data.type === 'conversation.created' ||
+          data.type === 'conversation.updated') &&
         data.payload
       ) {
         this.emit({
