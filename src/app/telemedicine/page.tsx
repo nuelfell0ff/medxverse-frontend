@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   Activity,
   CalendarClock,
+  Check,
   CheckCircle2,
   Clock3,
   Loader2,
@@ -189,6 +190,16 @@ export default function TelemedicinePage() {
       window.clearInterval(timer);
     };
   }, [selectedId]);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isFirstScrollRef = useRef(true);
+
+  useEffect(() => {
+    if (!messagesEndRef.current) return;
+    const behavior = isFirstScrollRef.current ? 'instant' : 'smooth';
+    isFirstScrollRef.current = false;
+    messagesEndRef.current.scrollIntoView({ behavior: behavior as ScrollBehavior });
+  }, [messages]);
 
   async function createSession(event: FormEvent) {
     event.preventDefault();
@@ -491,14 +502,53 @@ export default function TelemedicinePage() {
                       <p className="mt-3 text-xs font-semibold text-slate-600">No messages yet</p>
                       <p className="mt-1 text-[10px] text-slate-400">Start a secure conversation with your care team below.</p>
                     </div>
-                  ) : messages.map((message) => (
-                    <div key={message._id} className="flex justify-start">
-                      <div className="max-w-[85%] rounded-2xl rounded-bl-md border border-slate-100 bg-white px-4 py-2.5 shadow-sm">
-                        <p className="whitespace-pre-wrap break-words text-sm leading-5 text-slate-700">{message.messageText}</p>
-                        <p className="mt-1 text-right text-[9px] text-slate-400">{formatDateTime(message.sentAt)}</p>
-                      </div>
+                  ) : (
+                    <div className="mx-auto max-w-3xl space-y-3">
+                      {messages.map((message) => {
+                        const currentUserId = String(account?.patientId || account?.userId || account?.id || '');
+                        const isMine =
+                          (Boolean(message.senderId && currentUserId) && String(message.senderId) === currentUserId) ||
+                          (isPatientPortal ? message.senderModel === 'Patient' : message.senderModel !== 'Patient');
+
+                        return (
+                          <div
+                            key={message._id}
+                            className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}
+                          >
+                            <div
+                              className={`max-w-[82%] rounded-2xl px-4 py-2.5 shadow-sm ${
+                                isMine
+                                  ? 'rounded-br-md bg-[#1b7b68] text-white'
+                                  : 'rounded-bl-md border border-slate-100 bg-white text-slate-700'
+                              }`}
+                            >
+                              {!isMine && (
+                                <p className="mb-1 text-[9px] font-bold uppercase tracking-wider text-[#1b7b68]">
+                                  {isPatientPortal
+                                    ? `Dr. ${displayName(selectedSession.doctorId)}`
+                                    : message.senderModel === 'Patient'
+                                    ? displayName(selectedSession.patientId)
+                                    : 'Care team'}
+                                </p>
+                              )}
+                              <p className="whitespace-pre-wrap break-words text-sm leading-5">
+                                {message.messageText}
+                              </p>
+                              <div
+                                className={`mt-1 flex items-center justify-end gap-1 text-[9px] ${
+                                  isMine ? 'text-white/70' : 'text-slate-400'
+                                }`}
+                              >
+                                <span>{formatTime(message.sentAt) || formatDateTime(message.sentAt)}</span>
+                                {isMine && <Check className="h-3 w-3" />}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div ref={messagesEndRef} />
                     </div>
-                  ))}
+                  )}
                 </div>
                 <form onSubmit={sendMessage} className="shrink-0 border-t border-slate-100 bg-white p-3 sm:p-4">
                   <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2 focus-within:border-[#1b7b68] focus-within:bg-white">

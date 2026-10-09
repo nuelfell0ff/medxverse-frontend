@@ -129,11 +129,6 @@ export default function PatientShell({ children }: PatientShellProps) {
               </Link>
             );
           })}
-          {!collapsed && <div className="px-3 pb-1 pt-6 text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">Account</div>}
-          <Link href="/portal#hospital-connection" onClick={() => setMobileOpen(false)} title={collapsed ? "Hospital connection" : undefined} className="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-500 transition hover:bg-[#e8f5f3] hover:text-[#1b7b68]">
-            <ShieldCheck className="h-4 w-4 shrink-0 text-slate-400 group-hover:text-[#1b7b68]" />
-            {!collapsed && <span className="truncate">Hospital connection</span>}
-          </Link>
         </nav>
 
         <div className="mt-2 space-y-2 border-t border-slate-100 pt-3">
