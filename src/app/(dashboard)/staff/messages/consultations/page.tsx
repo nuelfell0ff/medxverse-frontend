@@ -267,37 +267,31 @@ export default function StaffPatientConsultationsPage() {
   };
 
   const joinConsultation = async (session: Consultation) => {
-    const savedUrl = String(session.meetingUrl || '').trim();
-    const isUsableSavedUrl = /^https:\/\//i.test(savedUrl) && !savedUrl.includes('telemed.hospital.com');
-    const meetingUrl = isUsableSavedUrl
-      ? savedUrl
-      : session.meetingRoomId
-        ? `https://meet.jit.si/${encodeURIComponent(session.meetingRoomId)}`
-        : '';
+    setError('');
 
-    if (!meetingUrl) {
-      setError('This consultation has no valid meeting link or room ID. Ask the administrator to check the consultation setup.');
+    if (!session.meetingRoomId && !session.meetingUrl) {
+      setError('This consultation has no meeting link or room ID. Ask the administrator to check the consultation setup.');
       return;
     }
 
-    const meetingWindow = window.open('about:blank', '_blank');
-    if (meetingWindow) meetingWindow.opener = null;
-
-    setError('');
     if (session.status === 'WAITING_ROOM') {
       try {
-        await apiClient.patch(`/telemedicine/sessions/${encodeURIComponent(session._id)}/status`, { status: 'IN_PROGRESS' });
-        setSessions((current) => current.map((item) => item._id === session._id ? { ...item, status: 'IN_PROGRESS' } : item));
+        await apiClient.patch(
+          `/telemedicine/sessions/${encodeURIComponent(session._id)}/status`,
+          { status: 'IN_PROGRESS' }
+        );
+        setSessions((current) =>
+          current.map((item) =>
+            item._id === session._id ? { ...item, status: 'IN_PROGRESS' } : item
+          )
+        );
       } catch (cause: any) {
-        setError(cause?.message || 'The call is opening, but the consultation status could not be updated.');
+        setError(cause?.message || 'The call page will open, but consultation status could not be updated.');
       }
     }
 
-    if (meetingWindow) {
-      meetingWindow.location.href = meetingUrl;
-    } else {
-      window.location.assign(meetingUrl);
-    }
+    // Open the staff-specific call interface inside the existing staff layout.
+    window.location.assign(`/staff/call/${encodeURIComponent(session._id)}`);
   };
 
   const completeConsultation = async (session: Consultation) => {

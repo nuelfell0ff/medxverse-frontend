@@ -29,6 +29,8 @@ export interface TelemedicineSession {
   meetingUrl?: string;
   chiefComplaint?: string;
   clinicalNotes?: string;
+  actualStartTime?: string;
+  endTime?: string;
   durationMinutes?: number;
 }
 
@@ -56,7 +58,18 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload.data as T;
 }
 
+export interface JaaSMeetingToken {
+  domain: '8x8.vc';
+  appId: string;
+  roomName: string;
+  jwt: string;
+  meetingUrl: string;
+  expiresAt: string;
+}
+
 export const telemedicineService = {
+  getMeetingToken: (sessionId: string) =>
+    request<JaaSMeetingToken>(`/sessions/${encodeURIComponent(sessionId)}/meeting-token`),
   getDirectory: () => request<{ patients: TelemedicinePerson[]; doctors: TelemedicinePerson[] }>('/directory'),
   getSessions: () => request<{ sessions: TelemedicineSession[]; total: number; page: number; totalPages: number }>('/sessions?limit=50'),
   createSessionForAppointment: (appointmentId: string) =>

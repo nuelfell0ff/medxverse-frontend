@@ -21,7 +21,7 @@ type PatientShellProps = { children: React.ReactNode };
 
 const navigation = [
   { label: "Overview", href: "/portal", icon: Home },
-  { label: "Virtual care", href: "/telemedicine", icon: Video },
+  { label: "Virtual care", href: "/portal/telemedicine", icon: Video },
 ];
 
 export default function PatientShell({ children }: PatientShellProps) {
@@ -91,7 +91,7 @@ export default function PatientShell({ children }: PatientShellProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          <Link href="/telemedicine" aria-label="Virtual care" className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-50 hover:text-[#1b7b68]">
+          <Link href="/portal/telemedicine" aria-label="Virtual care" className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-50 hover:text-[#1b7b68]">
             <CalendarClock className="h-5 w-5" />
           </Link>
           <div className="mx-1 hidden h-6 w-px bg-slate-200 sm:block" />

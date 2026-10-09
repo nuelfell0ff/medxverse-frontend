@@ -1,0 +1,141 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
+import { ArrowLeft, CalendarClock, Loader2, Video } from 'lucide-react';
+import JitsiMeetingEmbed from '@/components/telemedicine/JitsiMeetingEmbed';
+import { useAuthStore } from '@/store/useAuthStore';
+import { telemedicineService, type TelemedicineSession } from '@/services/telemedicine.service';
+
+function personName(person: TelemedicineSession['patientId'] | TelemedicineSession['doctorId']): string {
+  if (typeof person === 'string') return 'Consultation participant';
+  return `${person.firstName || ''} ${person.lastName || ''}`.trim() || 'Consultation participant';
+}
+
+
+export default function StaffCallPage() {
+  const params = useParams<{ sessionId: string }>();
+  const router = useRouter();
+  const account = useAuthStore((state) => state.account);
+  const sessionId = Array.isArray(params.sessionId) ? params.sessionId[0] : params.sessionId;
+  const [session, setSession] = useState<TelemedicineSession | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [statusSaving, setStatusSaving] = useState(false);
+
+  const loadSession = useCallback(async () => {
+    if (!sessionId) return;
+    setLoading(true);
+    setError('');
+    try {
+      const result = await telemedicineService.getSessions();
+      const found = (result.sessions || []).find((item) => item._id === sessionId) || null;
+      if (!found) throw new Error('This consultation could not be found or you do not have access to it.');
+      setSession(found);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to load this consultation.');
+    } finally {
+      setLoading(false);
+    }
+  }, [sessionId]);
+
+  useEffect(() => { void loadSession(); }, [loadSession]);
+
+  const displayName = account?.name || 'MedXVerse staff member';
+
+  const updateStatus = async (status: 'IN_PROGRESS' | 'COMPLETED') => {
+    if (!session) return;
+    setStatusSaving(true);
+    try {
+      const updated = await telemedicineService.updateStatus(session._id, status);
+      setSession(updated);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to update consultation status.');
+    } finally {
+      setStatusSaving(false);
+    }
+  };
+
+  return (
+    <main className="mx-auto w-full max-w-[1600px] space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <Link href="/staff/messages/consultations" className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 transition hover:text-[#1b7b68]">
+            <ArrowLeft className="h-4 w-4" /> Back to consultations
+          </Link>
+          <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.2em] text-[#1b7b68]">MedXVerse Care</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Video consultation</h1>
+          <p className="mt-2 text-sm text-slate-500">A private consultation workspace inside your staff portal.</p>
+        </div>
+        {session && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+              <CalendarClock className="h-4 w-4 text-[#1b7b68]" />
+              {new Date(session.scheduledStartTime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+            </span>
+            {session.status === 'WAITING_ROOM' && (
+              <button type="button" disabled={statusSaving} onClick={() => void updateStatus('IN_PROGRESS')} className="rounded-xl bg-[#1b7b68] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#176c5c] disabled:opacity-60">
+                {statusSaving ? 'Updating…' : 'Start consultation'}
+              </button>
+            )}
+            {session.status === 'IN_PROGRESS' && (
+              <button type="button" disabled={statusSaving} onClick={() => void updateStatus('COMPLETED')} className="rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-60">
+                {statusSaving ? 'Updating…' : 'Complete consultation'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+
+      {loading ? (
+        <div className="flex min-h-[420px] items-center justify-center rounded-3xl border border-slate-100 bg-white text-sm text-slate-500 shadow-sm">
+          <Loader2 className="mr-2 h-5 w-5 animate-spin text-[#1b7b68]" /> Loading consultation…
+        </div>
+      ) : session ? (
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="min-w-0">
+            {session.consultationType !== 'CHAT' && session.status !== 'COMPLETED' && session.status !== 'CANCELLED' ? (
+              <JitsiMeetingEmbed
+                sessionId={session._id}
+                displayName={displayName}
+                voiceOnly={session.consultationType === 'VOICE'}
+                onJoined={() => { if (session.status === 'WAITING_ROOM') void updateStatus('IN_PROGRESS'); }}
+                onLeft={() => { /* A participant leaving does not necessarily mean the consultation is complete. */ }}
+                onClose={() => router.push('/staff/messages/consultations')}
+              />
+            ) : (
+              <section className="flex min-h-[360px] flex-col items-center justify-center rounded-3xl border border-slate-100 bg-white p-8 text-center shadow-sm">
+                <Video className="h-10 w-10 text-[#1b7b68]" />
+                <h2 className="mt-4 text-lg font-bold text-slate-900">Video call unavailable</h2>
+                <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">This consultation is chat-only or has already been completed. Check the consultation setup or return to the consultation list.</p>
+              </section>
+            )}
+          </div>
+          <aside className="space-y-4">
+            <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Patient details</p>
+              <h2 className="mt-2 text-lg font-bold text-slate-900">{personName(session.patientId)}</h2>
+              <p className="mt-1 text-xs text-slate-500">Consultation with {personName(session.doctorId)}</p>
+              <div className="mt-4 rounded-xl bg-[#f4f7f6] p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Status</p>
+                <p className="mt-1 text-sm font-bold text-[#1b7b68]">{session.status.replaceAll('_', ' ')}</p>
+              </div>
+              <div className="mt-4">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Reason for consultation</p>
+                <p className="mt-1 text-sm leading-6 text-slate-700">{session.chiefComplaint || 'No reason was provided.'}</p>
+              </div>
+            </section>
+            <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+              <h3 className="text-sm font-bold text-slate-800">Consultation workspace</h3>
+              <p className="mt-2 text-xs leading-5 text-slate-500">The call is displayed inside the staff portal. Keep clinical notes and any follow-up documentation in the authorized patient record.</p>
+              <Link href={`/staff/messages/consultations`} className="mt-4 inline-flex text-xs font-bold text-[#1b7b68] hover:underline">Open consultation list</Link>
+            </section>
+          </aside>
+        </div>
+      ) : null}
+    </main>
+  );
+}

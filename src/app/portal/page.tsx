@@ -159,7 +159,7 @@ export default function PatientPortalHomePage() {
     {
       label: "Virtual Care",
       description: "Join consultations and message your care team.",
-      href: "/telemedicine",
+      href: "/portal/telemedicine",
       icon: Video,
       disabled: !linked,
     },
@@ -349,7 +349,7 @@ export default function PatientPortalHomePage() {
                   </p>
                   <button
                     type="button"
-                    onClick={() => router.push("/telemedicine")}
+                    onClick={() => router.push("/portal/telemedicine")}
                     className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#1b7b68] px-3.5 py-2 text-xs font-bold text-white transition hover:bg-[#146253]"
                   >
                     Open virtual care <ArrowRight className="h-3.5 w-3.5" />

@@ -78,22 +78,17 @@ export default function StaffAppointmentsPage() {
   }, [loadAppointments]);
 
   const connect = async (appointment: IAppointment) => {
-    // Open a tab during the click gesture so the browser is less likely to block the meeting.
-    const meetingWindow = window.open('about:blank', '_blank');
     setConnectingId(appointment._id);
     setError('');
     try {
       const session = await telemedicineService.createSessionForAppointment(appointment._id);
-      if (!session?._id) throw new Error('The consultation session ID was not returned by the server.');
-      if (meetingWindow && session.meetingUrl && /^https?:\/\//i.test(session.meetingUrl)) {
-        meetingWindow.opener = null;
-        meetingWindow.location.href = session.meetingUrl;
-      } else if (meetingWindow) {
-        meetingWindow.close();
+      if (!session?._id) {
+        throw new Error('The consultation session ID was not returned by the server.');
       }
-      router.push(`/telemedicine?sessionId=${encodeURIComponent(session._id)}`);
+
+      // Open the staff-specific MedXVerse call screen within the staff workspace.
+      router.push(`/staff/call/${encodeURIComponent(session._id)}`);
     } catch (err) {
-      if (meetingWindow) meetingWindow.close();
       setError(err instanceof Error ? err.message : 'Unable to connect with this patient.');
     } finally {
       setConnectingId(null);
