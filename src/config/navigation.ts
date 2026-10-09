@@ -230,4 +230,17 @@ export const NAV_CONFIG: Record<AccountType, NavItem[]> = {
       icon: Settings,
     },
   ],
+
+  [AccountType.PATIENT_PORTAL]: [
+    {
+      label: 'Overview',
+      href: '/portal',
+      icon: Building2,
+    },
+    {
+      label: 'Virtual Care',
+      href: '/telemedicine',
+      icon: Stethoscope,
+    },
+  ],
 };

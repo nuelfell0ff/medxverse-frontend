@@ -12,6 +12,7 @@ import {
   UserPlus,
   Users,
   X,
+  Video,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { communicationService } from '@/services/communication.service';
@@ -118,7 +119,7 @@ function avatarLetters(name: string) {
 export default function StaffMessagesPage() {
   const { account, token } = useAuthStore();
 
-  const currentUserId = account?.userId || '';
+  const currentUserId = account?.userId || account?.id || account?._id || '';
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -173,8 +174,8 @@ export default function StaffMessagesPage() {
     });
   }, [conversations, search, currentUserId]);
 
-  const loadInbox = useCallback(async () => {
-    setLoadingInbox(true);
+  const loadInbox = useCallback(async (showSpinner = false) => {
+    if (showSpinner) setLoadingInbox(true);
 
     try {
       const result = await communicationService.getInbox();
@@ -191,7 +192,7 @@ export default function StaffMessagesPage() {
         err?.message || 'Unable to load your conversations.',
       );
     } finally {
-      setLoadingInbox(false);
+      if (showSpinner) setLoadingInbox(false);
     }
   }, []);
 
@@ -230,7 +231,7 @@ export default function StaffMessagesPage() {
   }, []);
 
   useEffect(() => {
-    void loadInbox();
+    void loadInbox(true);
   }, [loadInbox]);
 
   useEffect(() => {
@@ -349,7 +350,7 @@ export default function StaffMessagesPage() {
           );
 
           if (!existing) {
-            void loadInbox();
+            void loadInbox(false);
             return current;
           }
 
@@ -397,58 +398,45 @@ export default function StaffMessagesPage() {
   }, [account?.userType, token, loadInbox]);
 
   /*
-   * HTTP FALLBACK
+   * HTTP safety-net polling
    *
-   * If WebSocket is unavailable, refresh every 5 seconds while the WebSocket is unavailable.
+   * Keep this running even when the WebSocket reports connected. A socket can
+   * successfully open while an event is missed or not broadcast to this user.
+   * The socket gives immediate updates; polling keeps the inbox reliable.
    */
   useEffect(() => {
     if (!token || account?.userType !== 'STAFF') return;
 
     const poll = window.setInterval(() => {
-      if (socketConnectedRef.current) {
-        return;
-      }
+      void loadInbox(false);
 
-      void loadInbox();
+      const conversationId = selectedIdRef.current;
+      if (!conversationId) return;
 
-      const conversationId =
-        selectedIdRef.current;
+      void communicationService
+        .getMessages(conversationId)
+        .then((result) => {
+          if (selectedIdRef.current !== conversationId) return;
 
-      if (conversationId) {
-        void communicationService
-          .getMessages(conversationId)
-          .then((result) => {
-            setMessages((current) => {
-              const pending = current.filter(
-                (message) =>
-                  String(message._id).startsWith('local-'),
-              );
+          setMessages((current) => {
+            const pending = current.filter(
+              (message) => message.conversationId === conversationId && String(message._id).startsWith('local-'),
+            );
+            const merged = [...(result.items || [])];
 
-              const serverMessages =
-                result.items || [];
-
-              const merged = [...serverMessages];
-
-              for (const item of pending) {
-                if (
-                  !merged.some(
-                    (message) =>
-                      message._id === item._id,
-                  )
-                ) {
-                  merged.push(item);
-                }
+            for (const item of pending) {
+              if (!merged.some((message) => message._id === item._id)) {
+                merged.push(item);
               }
+            }
 
-              return merged;
-            });
-          })
-          .catch(() => undefined);
-      }
-    }, 5000);
+            return merged;
+          });
+        })
+        .catch(() => undefined);
+    }, 4000);
 
-    return () =>
-      window.clearInterval(poll);
+    return () => window.clearInterval(poll);
   }, [account?.userType, loadInbox, token]);
 
   useEffect(() => {
@@ -759,14 +747,24 @@ export default function StaffMessagesPage() {
                 </h1>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setShowNewChat(true)}
-                className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#1b7b68] text-white shadow-sm transition hover:bg-[#176c5c]"
-                aria-label="New conversation"
-              >
-                <Plus className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <a
+                  href="/staff/messages/consultations"
+                  className="flex h-9 items-center gap-2 rounded-xl border border-[#cce8e2] bg-[#f0faf7] px-3 text-[10px] font-bold text-[#176c5c] transition hover:bg-[#e3f5ef]"
+                  title="Open patient consultations"
+                >
+                  <Video className="h-4 w-4" />
+                  <span className="hidden sm:inline">Patient care</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setShowNewChat(true)}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#1b7b68] text-white shadow-sm transition hover:bg-[#176c5c]"
+                  aria-label="New conversation"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <div className="relative mt-4">

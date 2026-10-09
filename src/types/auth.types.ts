@@ -1,6 +1,7 @@
 export enum AccountType {
   HOSPITAL = 'HOSPITAL',
   HMO = 'HMO',
+  PATIENT_PORTAL = 'PATIENT_PORTAL',
 }
 
 export interface AccountPayload {
@@ -13,11 +14,13 @@ export interface AccountPayload {
   code?: string;
   address?: string;
   modules?: string[];
-  userType?: 'ACCOUNT' | 'STAFF';
+  userType?: 'ACCOUNT' | 'STAFF' | 'PATIENT';
   role?: string;
   staffId?: string;
   userId?: string;
   hospitalId?: string;
+  patientId?: string;
+  mrn?: string;
   firstName?: string;
   lastName?: string;
   jobTitle?: string;
