@@ -64,9 +64,6 @@ export default function StaffCallPage() {
           <Link href="/staff/messages/consultations" className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 transition hover:text-[#1b7b68]">
             <ArrowLeft className="h-4 w-4" /> Back to consultations
           </Link>
-          <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.2em] text-[#1b7b68]">MedXVerse Care</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Video consultation</h1>
-          <p className="mt-2 text-sm text-slate-500">A private consultation workspace inside your staff portal.</p>
         </div>
         {session && (
           <div className="flex flex-wrap items-center gap-2">
@@ -95,7 +92,7 @@ export default function StaffCallPage() {
           <Loader2 className="mr-2 h-5 w-5 animate-spin text-[#1b7b68]" /> Loading consultation…
         </div>
       ) : session ? (
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="grid gap-4 w-full">
           <div className="min-w-0">
             {session.consultationType !== 'CHAT' && session.status !== 'COMPLETED' && session.status !== 'CANCELLED' ? (
               <JitsiMeetingEmbed
@@ -114,26 +111,6 @@ export default function StaffCallPage() {
               </section>
             )}
           </div>
-          <aside className="space-y-4">
-            <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Patient details</p>
-              <h2 className="mt-2 text-lg font-bold text-slate-900">{personName(session.patientId)}</h2>
-              <p className="mt-1 text-xs text-slate-500">Consultation with {personName(session.doctorId)}</p>
-              <div className="mt-4 rounded-xl bg-[#f4f7f6] p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Status</p>
-                <p className="mt-1 text-sm font-bold text-[#1b7b68]">{session.status.replaceAll('_', ' ')}</p>
-              </div>
-              <div className="mt-4">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Reason for consultation</p>
-                <p className="mt-1 text-sm leading-6 text-slate-700">{session.chiefComplaint || 'No reason was provided.'}</p>
-              </div>
-            </section>
-            <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-800">Consultation workspace</h3>
-              <p className="mt-2 text-xs leading-5 text-slate-500">The call is displayed inside the staff portal. Keep clinical notes and any follow-up documentation in the authorized patient record.</p>
-              <Link href={`/staff/messages/consultations`} className="mt-4 inline-flex text-xs font-bold text-[#1b7b68] hover:underline">Open consultation list</Link>
-            </section>
-          </aside>
         </div>
       ) : null}
     </main>

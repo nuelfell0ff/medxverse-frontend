@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Activity,
   CalendarClock,
@@ -80,6 +82,7 @@ const initials = (name: string) =>
     .toUpperCase() || 'VC';
 
 export default function TelemedicinePage() {
+  const router = useRouter();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const account = useAuthStore((state) => state.account);
   const isPatientPortal = account?.userType === 'PATIENT';
@@ -144,10 +147,14 @@ export default function TelemedicinePage() {
         return items.some((item) => item._id === current) ? current : items[0]?._id || '';
       });
 
-      // Appointment and staff consultation entry points use this query parameter
-      // to open the call inside MedXVerse instead of navigating to Jitsi.
+      // Legacy patient links now open the dedicated patient call page.
+      // Staff can continue to use the embedded call experience in this workspace.
       if (requestedSessionExists && requestedSessionId) {
-        setEmbeddedCallSessionId(requestedSessionId);
+        if (isPatientPortal) {
+          router.replace(`/portal/call/${encodeURIComponent(requestedSessionId)}`);
+        } else {
+          setEmbeddedCallSessionId(requestedSessionId);
+        }
       }
     } catch (err) {
       setError(
@@ -158,7 +165,7 @@ export default function TelemedicinePage() {
     } finally {
       setLoading(false);
     }
-  }, [isPatientPortal, isPatientLinked]);
+  }, [isPatientPortal, isPatientLinked, router]);
 
   useEffect(() => {
     if (isAuthenticated && (!isPatientPortal || isPatientLinked)) {
@@ -470,10 +477,16 @@ export default function TelemedicinePage() {
                   </p>
                 )}
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {selectedSession.consultationType !== 'CHAT' && selectedSession.status !== 'COMPLETED' && selectedSession.status !== 'CANCELLED' && (
-                    <button type="button" onClick={() => setEmbeddedCallSessionId(selectedSession._id)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#1b7b68] px-3 py-2 text-[10px] font-bold text-white transition hover:bg-[#176c5c]">
-                      <VideoIcon className="h-3.5 w-3.5" /> {embeddedCallSessionId === selectedSession._id ? 'Call open below' : 'Join consultation'}
-                    </button>
+                  {selectedSession.consultationType !== 'CHAT' && selectedSession.status !== 'COMPLETED' && selectedSession.status !== 'CANCELLED' && selectedSession.status !== 'NO_SHOW' && (
+                    isPatientPortal ? (
+                      <Link href={`/portal/call/${encodeURIComponent(selectedSession._id)}`} className="inline-flex items-center gap-1.5 rounded-lg bg-[#1b7b68] px-3 py-2 text-[10px] font-bold text-white transition hover:bg-[#176c5c]">
+                        <VideoIcon className="h-3.5 w-3.5" /> Join consultation
+                      </Link>
+                    ) : (
+                      <button type="button" onClick={() => setEmbeddedCallSessionId(selectedSession._id)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#1b7b68] px-3 py-2 text-[10px] font-bold text-white transition hover:bg-[#176c5c]">
+                        <VideoIcon className="h-3.5 w-3.5" /> {embeddedCallSessionId === selectedSession._id ? 'Call open below' : 'Join consultation'}
+                      </button>
+                    )
                   )}
                   <button type="button" onClick={() => {
                     setPatientId(isPatientPortal ? account?.patientId || '' : idOf(selectedSession.patientId));
@@ -497,7 +510,7 @@ export default function TelemedicinePage() {
                 </div>
               </div>
 
-              {embeddedCallSessionId === selectedSession._id && selectedSession.consultationType !== 'CHAT' && (
+              {!isPatientPortal && embeddedCallSessionId === selectedSession._id && selectedSession.consultationType !== 'CHAT' && (
                 <div className="shrink-0 border-b border-slate-100 bg-white p-3 sm:p-4">
                   <JitsiMeetingEmbed
                     sessionId={selectedSession._id}
